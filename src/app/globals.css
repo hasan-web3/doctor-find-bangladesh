@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&text=%E0%A7%A6%E0%A7%A7%E0%A7%A8%E0%A7%A9%E0%A7%AA%E0%A7%AB%E0%A7%AC%E0%A7%AD%E0%A7%AE%E0%A7%AF&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Site-wide Bangla numeral override.
+   Noto Sans Bengali is loaded above with `text=০১২৩৪৫৬৭৮৯`, so the browser
+   only downloads glyphs for U+09E6–U+09EF (Bangla digits ০–৯). When placed
+   first in every font stack, browsers use it for those code points and fall
+   through to Baloo / Hind for all other characters — the surrounding Bangla
+   text keeps its normal weight, only the digits render in Noto's clearer form. */
+@layer base {
+  body,
+  input,
+  textarea,
+  select,
+  button {
+    font-family: "Noto Sans Bengali", var(--font-hind), system-ui, sans-serif;
+  }
+  .font-heading,
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Noto Sans Bengali", var(--font-baloo), system-ui, sans-serif;
+  }
+  .font-body {
+    font-family: "Noto Sans Bengali", var(--font-hind), system-ui, sans-serif;
+  }
+  .font-latin {
+    font-family: "Noto Sans Bengali", var(--font-inter), system-ui, sans-serif;
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-page text-ink font-body antialiased;
+  line-height: 1.6;
+}
+
+::selection {
+  background: #99f6e4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Reveal-on-scroll helper driven by a tiny IntersectionObserver */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Hide the reCAPTCHA badge (v3) — the required disclosure lives on /privacy. */
+.grecaptcha-badge {
+  visibility: hidden;
+}
+
+.flex-full {
+  flex: 0 0 100%;
+}
