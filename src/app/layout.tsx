@@ -6,6 +6,8 @@ import { siteUrl } from "@/lib/seo-utils";
 import { t, isLocale, htmlLang, type Locale } from "@/lib/i18n";
 import { getEnabledConfig } from "@/lib/integrations";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const baloo = Baloo_Da_2({
@@ -97,6 +99,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               fbq('init', '${analytics.fb_pixel_id}'); fbq('track', 'PageView');`}
           </Script>
         )}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
