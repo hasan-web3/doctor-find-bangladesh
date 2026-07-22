@@ -63,7 +63,18 @@ export function HeroSlider({ slides, verifiedLabel }: { slides: Slide[]; verifie
               <div key={slide.id} className="relative min-w-0 flex-full pl-4">
                 <div className="relative aspect-[4/5] w-full overflow-hidden rounded-3xl shadow-[0_20px_50px_rgba(13,148,136,0.18)]">
                   {slide.image_url ? (
-                    <Image src={slide.image_url} alt={slide.title || ''} fill priority sizes="(max-width: 900px) 90vw, 420px" className="object-cover" />
+                    <Image
+                      src={slide.image_url}
+                      alt={slide.title || ''}
+                      fill
+                      // Only the first slide is the LCP candidate; priority-ing
+                      // every slide makes the browser preload every image and
+                      // starves the real LCP.
+                      priority={i === 0}
+                      loading={i === 0 ? undefined : "lazy"}
+                      sizes="(max-width: 900px) 90vw, 420px"
+                      className="object-cover"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-brand-300">
                       <Icon name="user" size={120} />

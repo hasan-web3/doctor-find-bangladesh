@@ -23,7 +23,19 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.ngrok-free.app"],
   images: {
-    remotePatterns: [{ protocol: "https", hostname: r2Host }],
+    // Serve both a custom R2 domain (if configured) and any pub-*.r2.dev bucket
+    // fallback, so images keep resolving whether the env var is set or not.
+    remotePatterns: [
+      { protocol: "https", hostname: r2Host },
+      { protocol: "https", hostname: "*.r2.dev" },
+      { protocol: "https", hostname: "*.r2.cloudflarestorage.com" },
+    ],
+    // Modern formats — Next serves AVIF when the browser accepts it, WebP otherwise.
+    // Cuts LCP image bytes ~30–50% vs the JPEG/PNG originals.
+    formats: ["image/avif", "image/webp"],
+    // Cache the optimized variant for a year — the URLs are content-hashed by
+    // Next, so a re-uploaded R2 object under the same key still busts via query.
+    minimumCacheTTL: 60 * 60 * 24 * 365,
   },
   poweredByHeader: false, // don't advertise "X-Powered-By: Next.js"
   // Server-only Node packages that don't need webpack bundling. Leaving them
