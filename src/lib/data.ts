@@ -59,6 +59,7 @@ export type DoctorCardData = {
   specialty: string; specialty_slug: string | null;
   hospital: string; hospital_slug: string | null;
   chamber: string; area: string; area_slug: string | null; fee: number | null;
+  experience_years: number | null;
 };
 
 // DoctorFull overrides `hospital` to a full object (not the card's string).
@@ -95,13 +96,15 @@ type CardRow = {
   hospital_ml: MLText | null; hospital_slug: string | null;
   chamber_ml: MLText | null; area_ml: MLText | null; area_slug: string | null;
   fee: number | null;
+  experience_years: number | null;
 };
 
 const cardSelect = sql`
   d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified, d.featured,
   sp.name AS specialty_ml, sp.slug AS specialty_slug,
   hp.name AS hospital_ml, hp.slug AS hospital_slug,
-  ch.name AS chamber_ml, ar.name AS area_ml, ar.slug AS area_slug, ch.fee`;
+  ch.name AS chamber_ml, ar.name AS area_ml, ar.slug AS area_slug, ch.fee,
+  d.experience_years`;
 
 const cardFrom = sql`
   FROM doctors d
@@ -135,6 +138,7 @@ function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
     area: ml(row.area_ml, locale),
     area_slug: row.area_slug ?? null,
     fee: row.fee ?? null,
+    experience_years: row.experience_years ?? null,
   };
 }
 

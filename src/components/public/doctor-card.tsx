@@ -4,6 +4,8 @@ import type { DoctorCardData } from "@/lib/data";
 import { localeHref, num, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/dict";
 
+const EXP_LABEL: Record<Locale, string> = { bn: "অভিজ্ঞতা", en: "Exp" };
+
 const TONES = [
   { bg: "#F0FDFA", fg: "#0F766E" },
   { bg: "#ECFDF5", fg: "#059669" },
@@ -28,7 +30,7 @@ export function DoctorCard({
   doctor: DoctorCardData;
   helpline: string;
   locale: Locale;
-  d: Pick<Dict, "verified_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short">;
+  d: Pick<Dict, "verified_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short" | "years_plus">;
 }) {
   const tone = TONES[doctor.id % TONES.length];
   const L = (path: string) => localeHref(locale, path);
@@ -93,8 +95,12 @@ export function DoctorCard({
             </div>
           )}
           <div className="mt-0.5 flex items-center justify-between">
-            <span className="text-[12.5px] font-normal text-ink-ghost">
-              {doctor.verified ? "" : d.new_profile}
+            <span className="text-[12.5px] font-semibold text-brand-700">
+              {doctor.experience_years != null && doctor.experience_years > 0
+                ? `${EXP_LABEL[locale]} ${num(doctor.experience_years, locale)}${d.years_plus}`
+                : doctor.verified
+                  ? ""
+                  : d.new_profile}
             </span>
             {doctor.fee != null && (
               <div className="text-sm font-semibold text-ink">

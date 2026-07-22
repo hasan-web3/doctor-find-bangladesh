@@ -25,7 +25,7 @@ type PropType = {
   slides: DoctorCardData[];
   helpline: string;
   locale: Locale;
-  d: Pick<Dict, "verified_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short">;
+  d: Pick<Dict, "verified_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short" | "years_plus">;
 };
 
 export const DoctorSlider: React.FC<PropType> = (props) => {
