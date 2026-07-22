@@ -42,12 +42,12 @@ const config: Config = {
         },
       },
       fontFamily: {
-        // "Noto Sans Bengali" is subset-loaded with only ০–৯ digits in
-        // globals.css, so the browser uses it purely for those code points
-        // and falls through to Baloo/Hind/Inter for every other character.
-        heading: ['"Noto Sans Bengali"', "var(--font-baloo)", "cursive"],
-        body: ['"Noto Sans Bengali"', "var(--font-hind)", "sans-serif"],
-        latin: ['"Noto Sans Bengali"', "var(--font-inter)", "sans-serif"],
+        // Noto Sans Bengali is self-hosted via next/font (exposed as
+        // --font-noto-bengali). Kept first in every stack so Bangla digits
+        // ০–৯ render in Noto's clearer form; other glyphs fall through.
+        heading: ["var(--font-noto-bengali)", "var(--font-baloo)", "cursive"],
+        body: ["var(--font-noto-bengali)", "var(--font-hind)", "sans-serif"],
+        latin: ["var(--font-noto-bengali)", "var(--font-inter)", "sans-serif"],
       },
       maxWidth: { site: "1400px" },
       typography: ({ theme }: { theme: (path: string) => string }) => ({
@@ -81,9 +81,9 @@ const config: Config = {
             "--tw-prose-invert-code": theme("colors.white"),
             "--tw-prose-invert-pre-code": theme("colors.slate[300]"),
             "--tw-prose-invert-pre-bg": "rgb(0 0 0 / 50%)",
-            "fontFamily": '"Noto Sans Bengali", var(--font-hind), sans-serif',
+            "fontFamily": "var(--font-noto-bengali), var(--font-hind), sans-serif",
             "h2, h3, h4": {
-              fontFamily: '"Noto Sans Bengali", var(--font-baloo), cursive',
+              fontFamily: "var(--font-noto-bengali), var(--font-baloo), cursive",
             },
             "ul > li::marker": {
               //fontSize: "1.2em",

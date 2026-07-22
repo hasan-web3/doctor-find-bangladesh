@@ -1,18 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { JsonLd } from "@/components/json-ld";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { HeroSlider } from "@/components/public/hero-slider";
-import { StatsCounter } from "@/components/public/stats-counter";
-import { FaqAccordion } from "@/components/public/faq-accordion";
-import { TestimonialSlider } from "@/components/public/testimonial-slider";
 import { SearchBar } from "@/components/public/search-bar";
 import { getEnabledConfig } from "@/lib/integrations";
-import { AreaMap } from "@/components/public/area-map";
+
+// Below-the-fold client components — split into their own chunks so they don't
+// share the critical path with the hero/search bar hydration. Each still SSRs
+// (server HTML ships identical to before), only their JS is deferred.
+const StatsCounter = dynamic(() =>
+  import("@/components/public/stats-counter").then((m) => m.StatsCounter),
+);
+const FaqAccordion = dynamic(() =>
+  import("@/components/public/faq-accordion").then((m) => m.FaqAccordion),
+);
+const TestimonialSlider = dynamic(() =>
+  import("@/components/public/testimonial-slider").then((m) => m.TestimonialSlider),
+);
+const AreaMap = dynamic(() =>
+  import("@/components/public/area-map").then((m) => m.AreaMap),
+);
 import {
   getSpecialties, getAreas, getFeaturedDoctors, searchHospitals,
   getHeroSlides, getFaqs, getTestimonials, getBlogPosts, searchDoctors,
@@ -201,7 +214,10 @@ export default async function HomePage({ params }: Props) {
       {/* ===== HERO ===== */}
       <div className="[background:linear-gradient(180deg,#F0FDFA_0%,#F8FAFC_100%)]">
         <div className="mx-auto grid max-w-site grid-cols-1 items-center gap-10 px-5 pb-16 pt-14 min-[900px]:grid-cols-[1.1fr_.9fr]">
-          <div className="animate-fadeup relative z-20">
+          {/* No opacity animation here: this column holds the LCP <h1> and
+              wrapping it in animate-fadeup delays paint of the largest
+              contentful element until the animation starts. */}
+          <div className="relative z-20">
             <div className="mb-[18px] inline-flex items-center gap-2 rounded-full border border-brand-100 bg-white px-3.5 py-1.5 text-[13px] font-semibold text-brand-700 shadow-[0_2px_8px_rgba(13,148,136,0.08)]">
               <span className="inline-block h-2 w-2 rounded-full bg-accent" />
               {heroBadgeText}

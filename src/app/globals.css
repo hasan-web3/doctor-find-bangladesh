@@ -1,32 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&text=%E0%A7%A6%E0%A7%A7%E0%A7%A8%E0%A7%A9%E0%A7%AA%E0%A7%AB%E0%A7%AC%E0%A7%AD%E0%A7%AE%E0%A7%AF&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* Site-wide Bangla numeral override.
-   Noto Sans Bengali is loaded above with `text=০১২৩৪৫৬৭৮৯`, so the browser
-   only downloads glyphs for U+09E6–U+09EF (Bangla digits ০–৯). When placed
-   first in every font stack, browsers use it for those code points and fall
-   through to Baloo / Hind for all other characters — the surrounding Bangla
-   text keeps its normal weight, only the digits render in Noto's clearer form. */
+   Noto Sans Bengali is self-hosted via next/font (see src/app/layout.tsx),
+   exposed as var(--font-noto-bengali). Placed first in every font stack, the
+   browser uses it for Bangla digits ০–৯ and falls through to Baloo / Hind for
+   everything else — surrounding Bangla text keeps its normal weight, only the
+   digits render in Noto's clearer form. Self-hosting removes the previous
+   render-blocking Google Fonts @import chain. */
 @layer base {
   body,
   input,
   textarea,
   select,
   button {
-    font-family: "Noto Sans Bengali", var(--font-hind), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), var(--font-hind), system-ui, sans-serif;
   }
   .font-heading,
   h1, h2, h3, h4, h5, h6 {
-    font-family: "Noto Sans Bengali", var(--font-baloo), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), var(--font-baloo), system-ui, sans-serif;
   }
   .font-body {
-    font-family: "Noto Sans Bengali", var(--font-hind), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), var(--font-hind), system-ui, sans-serif;
   }
   .font-latin {
-    font-family: "Noto Sans Bengali", var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), var(--font-inter), system-ui, sans-serif;
   }
 }
 

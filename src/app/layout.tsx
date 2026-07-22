@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Baloo_Da_2, Hind_Siliguri, Inter } from "next/font/google";
+import { Baloo_Da_2, Hind_Siliguri, Inter, Noto_Sans_Bengali } from "next/font/google";
 import { getSettings } from "@/lib/settings";
 import { siteUrl } from "@/lib/seo-utils";
 import { t, isLocale, htmlLang, type Locale } from "@/lib/i18n";
@@ -28,6 +28,17 @@ const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+// Noto Sans Bengali is used only to render Bangla digits (০–৯) crisply — it
+// sits first in every font stack, and other Bangla glyphs fall through to
+// Baloo / Hind. Self-hosting via next/font kills the render-blocking Google
+// Fonts @import chain that used to live at the top of globals.css.
+const notoBengali = Noto_Sans_Bengali({
+  subsets: ["bengali"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-noto-bengali",
   display: "swap",
 });
 
@@ -61,7 +72,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : null;
 
   return (
-    <html lang={htmlLang(locale)} className={`${baloo.variable} ${hind.variable} ${inter.variable}`}>
+    <html lang={htmlLang(locale)} className={`${baloo.variable} ${hind.variable} ${inter.variable} ${notoBengali.variable}`}>
       <body suppressHydrationWarning={true}>
         {/* React 19 automatically hoists <link rel="preconnect"> and
             rel="dns-prefetch" into <head>. Rendering them inside <body>
