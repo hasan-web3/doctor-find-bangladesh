@@ -151,31 +151,38 @@ export async function detectAreaByIp(ip: string): Promise<GeoResult> {
   return { ...EMPTY, lat: loc.lat, lng: loc.lng };
 }
 
-// Visitor's served area: explicit cookie choice wins, then IP-based lookup from middleware.
-// Reconstructs the GeoResult from middleware headers to avoid redundant DB/API calls.
+// Visitor's served area: explicit cookie choice wins, then a fast geo-cache
+// cookie set by a prior request, and finally IP-based lookup (done here rather
+// than in middleware because unstable_cache-backed helpers are illegal there).
 export async function detectArea(): Promise<GeoResult> {
   const jar = await cookies();
   const areas = (await getAreasForGeo()) as GeoArea[];
 
-  // 1. Explicit cookie choice wins if present (e.g. user manually selects area)
+  // 1. Explicit cookie choice wins (user manually picked an area).
   const chosen = jar.get("db_area")?.value;
   if (chosen) {
     const area = areas.find((a) => a.slug === chosen);
     if (area) return withArea(area, "cookie", area.lat, area.lng);
   }
 
-  // 2. Otherwise, use the location determined by the middleware passed via headers
-  const h = await headers();
-  const areaSlug = h.get("x-geo-area-slug");
+  // 2. Fast path: cached IP result from a previous visit.
+  const cached = jar.get("geo-location-cache")?.value;
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (parsed?.areaSlug) {
+        const area = areas.find((a) => a.slug === parsed.areaSlug);
+        if (area) return withArea(area, "cookie", parsed.lat ?? null, parsed.lng ?? null);
+      }
+    } catch { /* ignore */ }
+  }
 
-  if (areaSlug) {
-    const area = areas.find((a) => a.slug === areaSlug);
-    if (area) {
-      const source = (h.get("x-geo-source") as GeoResult["source"]) || "none";
-      const lat = h.get("x-geo-lat") ? Number(h.get("x-geo-lat")) : null;
-      const lng = h.get("x-geo-lng") ? Number(h.get("x-geo-lng")) : null;
-      return withArea(area, source, lat, lng);
-    }
+  // 3. IP-based lookup using the client IP forwarded by middleware.
+  const h = await headers();
+  const ip = h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  if (ip) {
+    const geo = await detectAreaByIp(ip);
+    if (geo.areaSlug) return geo;
   }
 
   return EMPTY;

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
 import { jwtVerify } from "jose";
-import { detectAreaByIp } from "./lib/geo";
 
 export const runtime = 'nodejs';
 
@@ -116,48 +115,17 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
     return NextResponse.redirect(url, 307); // temporary: user preference, not canonical
   }
 
-  // ---- Geolocation and i18n Handling ----
+  // ---- i18n Handling ----
+  // Geo detection is intentionally NOT done here: middleware runs in a context
+  // where next/cache's unstable_cache has no incrementalCache and throws on
+  // Vercel. IP-based area lookup is performed lazily in detectArea() (server
+  // components) instead. We only forward the client IP so that path can use it.
   const requestHeaders = new Headers(req.headers);
-  const GEO_CACHE_COOKIE = "geo-location-cache";
-
-  // 1. Geolocation Detection
-  let areaSlug: string | null = null;
-  let geoSource: string = "none";
-  let lat: number | null = null;
-  let lng: number | null = null;
-  let setGeoCookie = false;
-
-  if (!NO_GEO.test(pathname)) {
-    const geoCookie = req.cookies.get(GEO_CACHE_COOKIE)?.value;
-    if (geoCookie) {
-      try {
-        const parsed = JSON.parse(geoCookie);
-        areaSlug = parsed.areaSlug;
-        geoSource = "cookie";
-        lat = parsed.lat;
-        lng = parsed.lng;
-      } catch (e) { /* ignore invalid cookie */ }
-    }
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  if (clientIp && !NO_GEO.test(pathname)) {
+    requestHeaders.set("x-client-ip", clientIp);
   }
 
-  if (!areaSlug && !NO_GEO.test(pathname)) {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-    const geo = await detectAreaByIp(ip);
-    if (geo.areaSlug) {
-      areaSlug = geo.areaSlug;
-      geoSource = geo.source;
-      lat = geo.lat;
-      lng = geo.lng;
-      setGeoCookie = true; // Mark that we need to set the cache cookie
-    }
-  }
-
-  requestHeaders.set("x-geo-area-slug", areaSlug || "");
-  requestHeaders.set("x-geo-source", geoSource);
-  requestHeaders.set("x-geo-lat", lat ? String(lat) : "");
-  requestHeaders.set("x-geo-lng", lng ? String(lng) : "");
-  
-  // 2. Locale-based Response Generation
   let response: NextResponse;
   if (isEnglishPath) {
     requestHeaders.set("x-locale", "en");
@@ -168,16 +136,6 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
     requestHeaders.set("x-locale", "bn");
     requestHeaders.set("x-internal-locale-rewrite", "bn");
     response = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
-  }
-
-  // 3. Set geo-cache cookie if needed
-  if (setGeoCookie && areaSlug) {
-    response.cookies.set(GEO_CACHE_COOKIE, JSON.stringify({ areaSlug, source: geoSource, lat, lng }), {
-      maxAge: 30 * 60, // 30 minutes
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-    });
   }
 
   return response;
