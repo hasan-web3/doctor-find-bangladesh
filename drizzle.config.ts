@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
-// This file is used to configure Drizzle Kit, which is a tool for managing database migrations in TypeScript projects.
 export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./migrations/drizzle",
