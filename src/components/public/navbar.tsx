@@ -18,7 +18,7 @@ export function Navbar({
 }: {
   locale: Locale;
   d: Pick<Dict,
-    "nav_home" | "nav_doctors" | "nav_specialties" | "nav_hospitals" | "nav_areas" |
+    "nav_home" | "nav_doctors" | "nav_specialties" | "nav_hospitals" | "nav_districts" | "nav_areas" |
     "nav_blog" | "nav_contact" | "book_appointment" | "call_for_help" | "doctor_add_profile" | "menu" | "close">;
   helplineDisplay: string;
   helpline: string;
@@ -47,6 +47,7 @@ export function Navbar({
     { label: d.nav_doctors, href: "/doctors" },
     { label: d.nav_specialties, href: "/specialties" },
     { label: d.nav_hospitals, href: "/hospitals" },
+    { label: d.nav_districts, href: "/districts" },
     { label: d.nav_areas, href: "/areas" },
     { label: d.nav_blog, href: "/blog" },
     { label: d.nav_contact, href: "/contact" },

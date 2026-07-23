@@ -9,6 +9,7 @@ import { AnimatedGrid } from "@/components/animated-grid";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch,
+  getDistrictBySlug,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -19,73 +20,56 @@ import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
 type SP = { [key: string]: string | string[] | undefined };
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<SP> };
+type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<SP> };
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
-  const { locale } = await params;
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
-  const pageNum = sp.page ? Math.max(1, Number(sp.page)) : 1;
-  const hasThinFilter = Boolean(sp.q || sp.gender || sp.maxFee);
+  const district = await getDistrictBySlug(slug, locale);
+  if (!district) return {};
 
-  const geo = await detectArea();
-  const d = getDict(locale);
-  const geoDistrictName = geo.districtName ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) : null;
-
-  const title = geoDistrictName
-    ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
-    : (locale === "bn" ? "আপনার এলাকার ডাক্তারদের তালিকা" : "Doctors in Your Area");
-
-  const description = geoDistrictName
-    ? (locale === "bn"
-      ? `${bnPossessive(geoDistrictName)} যাচাইকৃত বিশেষজ্ঞ ডাক্তারদের সম্পূর্ণ তালিকা। বিভাগ, এলাকা ও ফি অনুযায়ী ফিল্টার করে আপনার পছন্দের ডাক্তার বেছে নিন।`
-      : `The complete list of verified specialist doctors in ${geoDistrictName}. Filter by specialty, area and fee to find your doctor.`)
-    : d.listing_sub_empty;
+  const title = locale === 'bn' ? `${district.name} জেলার ডাক্তারদের তালিকা` : `Doctors in ${district.name} District`;
+  const description = locale === 'bn' 
+    ? `${district.name} জেলার বিশেষজ্ঞ ডাক্তারদের সম্পূর্ণ তালিকা খুঁজুন। আপনার প্রয়োজন অনুযায়ী ফিল্টার করে সেরা ডাক্তার বেছে নিন।`
+    : `Find a complete list of specialist doctors in ${district.name} District. Filter by your needs to choose the best doctor.`;
 
   return buildMetadata({
     locale,
-    path: "/doctors",
-    title,
-    description,
-    ogTitle: title,
-    canonicalQuery: pageNum > 1 ? `?page=${pageNum}` : undefined,
-    noindex: hasThinFilter,
+    path: `/districts/${slug}`,
+    title: district.meta_title || title,
+    description: district.meta_description || description,
   });
 }
 
-export default async function DoctorsPage({ params, searchParams }: Props) {
-  const { locale: raw } = await params;
-  if (!isLocale(raw)) notFound();
-  const locale: Locale = raw;
-  const d = getDict(locale);
+export default async function DistrictDoctorsPage({ params, searchParams }: Props) {
+  const { slug, locale } = await params;
+  if (!isLocale(locale)) notFound();
+  
   const sp = await searchParams;
-
+  const d = getDict(locale);
+  
   const perPageOptions = [12, 24, 48, 96];
   const perPage = sp.perPage ? Math.max(1, Number(sp.perPage)) : 12;
   const sanitizedPerPage = perPageOptions.includes(perPage) ? perPage : 12;
 
-  const [settings, specialties, areas, hospitalData, geo, searchDistricts, searchThanas] = await Promise.all([
-    getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, searchHospitals({}, locale), detectArea(),
-    getDistrictsForSearch(), getThanasForSearch(),
+  const [settings, district, specialties, allThanas, hospitalData, geo, allDistricts, allSearchThanas] = await Promise.all([
+    getSettings(),
+    getDistrictBySlug(slug, locale),
+    getSpecialties(locale),
+    getAreas(locale) as Promise<Area[]>,
+    searchHospitals({}, locale),
+    detectArea(),
+    getDistrictsForSearch(),
+    getThanasForSearch(),
   ]);
 
+  if (!district) notFound();
+
   const hospitals = hospitalData.rows;
-
-  const geoDistrictName = geo.districtName ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) : null;
-  const pageTitle = geoDistrictName
-    ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
-    : (locale === "bn" ? "আপনার এলাকার ডাক্তারদের তালিকা" : "Doctors in Your Area");
-
-
+  
   const query: DoctorSearchParams = {
-    q: typeof sp.q === "string" ? sp.q : undefined,
-    specialty: sp.specialty,
-    area: sp.area,
-    district: sp.district,
-    hospital: sp.hospital,
-    gender: typeof sp.gender === "string" ? sp.gender : undefined,
-    maxFee: sp.maxFee ? Number(sp.maxFee) : undefined,
-    sort: (typeof sp.sort === "string" ? sp.sort : undefined) as DoctorSearchParams["sort"],
+    ...sp,
+    district: [slug], // Always filter by the current district slug
     page: sp.page ? Math.max(1, Number(sp.page)) : 1,
     perPage: sanitizedPerPage,
     preferAreaId: !sp.area && !sp.sort ? geo.areaId : null,
@@ -97,18 +81,22 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
   const { rows, total } = await searchDoctors(query, locale);
   const totalPages = Math.ceil(total / (query.perPage || 12));
 
+  const pageTitle = locale === 'bn' ? `${district.name} জেলার ডাক্তারগণ` : `Doctors in ${district.name} District`;
   const pageSub = total > 0
-  ? (geoDistrictName
-    ? (locale === "bn"
-      ? `${num(total, locale)} জন যাচাইকৃত ডাক্তারের মধ্যে থেকে ${bnPossessive(geoDistrictName)} সেরা ডাক্তারদের বেছে নিন।`
-      : `Choose from ${num(total, locale)} verified doctors in ${geoDistrictName}.`)
-    : `${num(total, locale)} ${d.listing_sub_prefix}`)
-  : d.listing_sub_empty;
+    ? (locale === 'bn'
+      ? `${num(total, locale)} জন যাচাইকৃত ডাক্তারের মধ্যে থেকে সেরা ডাক্তারদের বেছে নিন।`
+      : `Choose from ${num(total, locale)} verified doctors.`)
+    : d.listing_sub_empty;
 
+  const breadcrumbs = [
+    { name: d.breadcrumb_home, path: "/" },
+    { name: d.nav_districts || "Districts", path: "/districts" },
+    { name: district.name },
+  ];
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
-      <Breadcrumbs locale={locale} items={[{ name: d.breadcrumb_home, path: "/" }, { name: d.breadcrumb_doctors }]} />
+      <Breadcrumbs locale={locale} items={breadcrumbs} />
       <h1 className="mb-1.5 font-heading text-[clamp(26px,4vw,34px)] font-bold text-ink">{pageTitle}</h1>
       <p className="mb-6 text-base text-ink-mute">{pageSub}</p>
 
@@ -116,12 +104,12 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
         <Suspense>
           <ListingFilters
             specialties={specialties.map((s) => ({ slug: s.slug, name: s.name }))}
-            districts={searchDistricts.map((x) => ({
+            districts={allDistricts.map((x) => ({
               slug: x.slug,
               name: locale === "bn" ? x.name_bn : (x.name_en || x.name_bn),
               name_en: x.name_en,
             }))}
-            thanas={searchThanas.map((t) => ({
+            thanas={allSearchThanas.map((t) => ({
               slug: t.slug,
               name: locale === "bn" ? t.name_bn : (t.name_en || t.name_bn),
               name_en: t.name_en,
@@ -135,6 +123,7 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
             }))}
             locale={locale}
             d={d}
+            districtSlug={slug}
           />
         </Suspense>
 

@@ -45,6 +45,7 @@ export function ListingFilters({
   hospitals = [],
   locale,
   d,
+  districtSlug, // Add districtSlug prop
 }: {
   specialties: Opt[];
   districts: Opt[];
@@ -52,6 +53,7 @@ export function ListingFilters({
   hospitals?: HospitalOpt[];
   locale: Locale;
   d: FilterDict;
+  districtSlug?: string; // Add districtSlug type
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -86,24 +88,28 @@ export function ListingFilters({
   const currentHospital = params.get("hospital") || null;
   const currentGender = params.get("gender");
 
+  // If a districtSlug is passed directly (e.g. on district page), use it.
+  // Otherwise fall back to the district from search params.
+  const effectiveDistrict = districtSlug || currentDistrict;
+
   // Index maps
   const specIdx = useSlugIndex(specialties);
   const distIdx = useSlugIndex(districts);
 
   // Only thanas within the chosen district (empty when none picked)
   const thanasInDistrict = useMemo(
-    () => (currentDistrict ? thanas.filter((t) => t.district_slug === currentDistrict) : []),
-    [thanas, currentDistrict]
+    () => (effectiveDistrict ? thanas.filter((t) => t.district_slug === effectiveDistrict) : []),
+    [thanas, effectiveDistrict]
   );
   const thanaIdx = useSlugIndex(thanasInDistrict);
 
   // Hospitals shrink to selected district/thana when set; otherwise show all.
   const hospitalsFiltered = useMemo(() => {
     let out = hospitals;
-    if (currentDistrict) out = out.filter((h) => !h.district_slug || h.district_slug === currentDistrict);
+    if (effectiveDistrict) out = out.filter((h) => !h.district_slug || h.district_slug === effectiveDistrict);
     if (currentThana) out = out.filter((h) => !h.area_slug || h.area_slug === currentThana);
     return out;
-  }, [hospitals, currentDistrict, currentThana]);
+  }, [hospitals, effectiveDistrict, currentThana]);
   const hospitalIdx = useSlugIndex(hospitalsFiltered);
 
   const specOptions: Option[] = specialties.map((s, i) => ({ id: i + 1, label: s.name, label_en: s.name_en ?? null }));
@@ -132,25 +138,29 @@ export function ListingFilters({
         />
       </div>
 
-      {/* District → cascades to Thana */}
-      <div className="mb-[9px] text-sm font-semibold text-ink-soft">
-        {locale === "bn" ? "জেলা" : "District"}
-      </div>
-      <div className="mb-3">
-        <SearchableSelect
-          options={distOptions}
-          value={currentDistrict ? distIdx.slugToId.get(currentDistrict) ?? null : null}
-          onChange={(id) => {
-            const slug = id ? distIdx.idToSlug.get(id) ?? null : null;
-            setParams([["district", slug], ["area", null]]);
-          }}
-          placeholder={d.select_district ?? (locale === "bn" ? "জেলা নির্বাচন করুন" : "Select district")}
-          emptyLabel={locale === "bn" ? "কোনো জেলা নেই" : "No districts"}
-        />
-      </div>
+      {/* District → cascades to Thana. Hide if we have a locked districtSlug */}
+      {!districtSlug && (
+        <>
+          <div className="mb-[9px] text-sm font-semibold text-ink-soft">
+            {locale === "bn" ? "জেলা" : "District"}
+          </div>
+          <div className="mb-3">
+            <SearchableSelect
+              options={distOptions}
+              value={currentDistrict ? distIdx.slugToId.get(currentDistrict) ?? null : null}
+              onChange={(id) => {
+                const slug = id ? distIdx.idToSlug.get(id) ?? null : null;
+                setParams([["district", slug], ["area", null]]);
+              }}
+              placeholder={d.select_district ?? (locale === "bn" ? "জেলা নির্বাচন করুন" : "Select district")}
+              emptyLabel={locale === "bn" ? "কোনো জেলা নেই" : "No districts"}
+            />
+          </div>
+        </>
+      )}
 
-      {/* Thana — only shown once a district is picked */}
-      {currentDistrict && (
+      {/* Thana — only shown once a district is picked/locked */}
+      {effectiveDistrict && (
         <>
           <div className="mb-[9px] text-sm font-semibold text-ink-soft">{d.filter_area}</div>
           <div className="mb-[18px] animate-fadein">

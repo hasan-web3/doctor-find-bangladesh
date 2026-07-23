@@ -45,6 +45,21 @@ export type Area = {
   doctor_count: number;
 };
 
+export type District = {
+  id: number;
+  slug: string;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+  intro: string;
+  meta_title: string;
+  meta_description: string;
+  active: boolean;
+  sort: number;
+  thana_count: number;
+  doctor_count: number;
+};
+
 export type Hospital = {
   id: number; slug: string; name: string; area_id: number | null; area: string; area_slug: string | null; district_slug: string | null;
   address: string; phone: string | null; lat: number | null; lng: number | null;
@@ -248,6 +263,20 @@ export const getAreaBySlug = async (slug: string, locale: Locale) =>
 export const getAreaBySlugs = async (districtSlug: string, areaSlug: string, locale: Locale) =>
   (await getAreas(locale) as Area[]).find((a) => a.slug === areaSlug && a.district_slug === districtSlug) ?? null;
 
+export const getDistrictBySlug = async (slug: string, locale: Locale) => {
+  const allDistricts = await db.select().from(districts).where(eq(districts.active, true));
+  const district = allDistricts.find(d => d.slug === slug);
+  if (!district) return null;
+
+  return {
+    ...district,
+    name: ml(district.name, locale),
+    intro: ml(district.intro, locale),
+    meta_title: ml(district.metaTitle, locale),
+    meta_description: ml(district.metaDescription, locale),
+  };
+};
+
 // Lightweight district + thana list for the hero search bar. Bangla + English
 // names both sent so the client-side SearchableSelect matches either.
 export const getDistrictsForSearch = unstable_cache(
@@ -419,62 +448,18 @@ export const getHospitalBySlug = async (slug: string, locale: Locale) =>
   }))[0] ?? null;
 
 export async function getHospitalDoctors(hospitalId: number, geo: GeoResult, locale: Locale): Promise<DoctorCardData[]> {
-  const orderParts = [
-    sql`(
-      CASE
-        WHEN d.featured THEN 1
-        WHEN d.verified THEN 2
-        ELSE 3
-      END
-    )`
-  ];
-
-  if (geo.lat != null && geo.lng != null) {
-    orderParts.push(sql`(
-      SELECT MIN(
-        6371 * acos(
-          cos(radians(${geo.lat})) * cos(radians(loc.lat))
-          * cos(radians(loc.lng) - radians(${geo.lng}))
-          + sin(radians(${geo.lat})) * sin(radians(loc.lat))
-        )
-      )
-      FROM (
-        -- For each chamber, calculate its coordinate using the fallback chain:
-        -- Chamber -> Area -> Doctor's Hospital -> Area's District
-        SELECT
-          COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
-          COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
-        FROM chambers cp
-        LEFT JOIN areas ap ON ap.id = cp.area_id
-        LEFT JOIN districts dp ON dp.id = ap.district_id
-        -- Join the doctor's primary hospital to use as a fallback
-        LEFT JOIN hospitals hp ON hp.id = d.hospital_id
-        WHERE cp.doctor_id = d.id AND cp.visible
-
-        UNION ALL
-
-        -- The primary hospital itself is also a potential location
-        SELECT
-          hp.lat,
-          hp.lng
-        FROM hospitals hp
-        WHERE hp.id = d.hospital_id
-      ) loc
-      WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
-    ) ASC NULLS LAST`);
-  }
-  orderParts.push(sql`d.updated_at DESC`);
-  orderParts.push(sql`d.id DESC`);
-  const orderSql = sql.join(orderParts, sql`, `);
-
-  // Doctors are attached to a hospital directly (v2), no chamber hop needed.
-  const rows = await db.execute<CardRow>(sql`
-    SELECT ${cardSelect} ${cardFrom}
-    WHERE d.active AND d.hospital_id = ${hospitalId}
-    ORDER BY ${orderSql}
-    LIMIT 24
-  `);
-  return (rows.rows as CardRow[]).map((r) => mapDoctorCard(r, locale));
+  // This function now uses the same core query-building logic as searchDoctors
+  // to ensure consistent sorting rules everywhere. We pass in the hospitalId
+  // and the user's geo-location preferences.
+  const results = await searchDoctors({
+    hospitalId,
+    perPage: 24,
+    preferLat: geo.lat,
+    preferLng: geo.lng,
+    preferAreaId: geo.areaId,
+    preferDistrictId: geo.districtId,
+  }, locale);
+  return results.rows;
 }
 
 export type EnrichedDoctor = DoctorCardData & { all_specialties: string[] };
@@ -530,157 +515,16 @@ export async function getHomepageDoctors(
   locale: Locale,
   limit = 12
 ): Promise<DoctorCardData[]> {
-  const userLat = geo.lat;
-  const userLng = geo.lng;
-  const userAreaId = geo.areaId;
-  const userDistrictId = geo.districtId;
-
-  let orderSql;
-
-  if (userLat != null && userLng != null) {
-    const minDistanceSql = sql`(
-      SELECT MIN(
-        6371 * acos(
-          cos(radians(${userLat})) * cos(radians(loc.lat))
-          * cos(radians(loc.lng) - radians(${userLng}))
-          + sin(radians(${userLat})) * sin(radians(loc.lat))
-        )
-      )
-      FROM (
-        -- For each chamber, calculate its coordinate using the fallback chain:
-        -- Chamber -> Area -> Doctor's Hospital -> Area's District
-        SELECT
-          COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
-          COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
-        FROM chambers cp
-        LEFT JOIN areas ap ON ap.id = cp.area_id
-        LEFT JOIN districts dp ON dp.id = ap.district_id
-        -- Join the doctor's primary hospital to use as a fallback
-        LEFT JOIN hospitals hp ON hp.id = d.hospital_id
-        WHERE cp.doctor_id = d.id AND cp.visible
-
-        UNION ALL
-
-        -- The primary hospital itself is also a potential location
-        SELECT
-          hp.lat,
-          hp.lng
-        FROM hospitals hp
-        WHERE hp.id = d.hospital_id
-      ) loc
-      WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
-    )`;
-
-    orderSql = sql`
-      CASE
-        -- 1. Featured doctor within 100km
-        WHEN d.featured AND (${minDistanceSql}) <= 100 THEN 1
-
-        -- 2. Verified doctor in user's specific area
-        WHEN d.verified AND EXISTS (
-          SELECT 1 FROM chambers cg 
-          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
-        ) THEN 2
-
-        -- 3. Verified doctor in user's broader district
-        WHEN d.verified AND EXISTS (
-          SELECT 1 FROM chambers cd 
-          JOIN areas ad ON ad.id = cd.area_id 
-          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
-        ) THEN 3
-
-        -- 4. Normal public doctor in user's specific area
-        WHEN d.active AND EXISTS (
-          SELECT 1 FROM chambers cg 
-          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
-        ) THEN 4
-
-        -- 5. Normal public doctor in user's broader district
-        WHEN d.active AND EXISTS (
-          SELECT 1 FROM chambers cd 
-          JOIN areas ad ON ad.id = cd.area_id 
-          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
-        ) THEN 5
-
-        -- 6. Other featured doctors (any distance)
-        WHEN d.featured THEN 6
-
-        -- 7. Other verified doctors (any distance)
-        WHEN d.verified THEN 7
-
-        -- 8. Anything else
-        ELSE 8
-      END ASC,
-      -- Within the same priority group, sort by distance if coordinates are available
-      (${minDistanceSql}) ASC NULLS LAST,
-      d.updated_at DESC,
-      d.id DESC
-    `;
-  } else {
-    // Fallback if no coordinates are available (just use area/district IDs)
-    orderSql = sql`
-      CASE
-        -- 1. Featured doctor in user's specific area
-        WHEN d.featured AND EXISTS (
-          SELECT 1 FROM chambers cg 
-          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
-        ) THEN 1
-
-        -- 2. Featured doctor in user's broader district
-        WHEN d.featured AND EXISTS (
-          SELECT 1 FROM chambers cd 
-          JOIN areas ad ON ad.id = cd.area_id 
-          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
-        ) THEN 2
-
-        -- 3. Verified doctor in user's specific area
-        WHEN d.verified AND EXISTS (
-          SELECT 1 FROM chambers cg 
-          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
-        ) THEN 3
-
-        -- 4. Verified doctor in user's broader district
-        WHEN d.verified AND EXISTS (
-          SELECT 1 FROM chambers cd 
-          JOIN areas ad ON ad.id = cd.area_id 
-          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
-        ) THEN 4
-
-        -- 5. Normal public doctor in user's specific area
-        WHEN d.active AND EXISTS (
-          SELECT 1 FROM chambers cg 
-          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
-        ) THEN 5
-
-        -- 6. Normal public doctor in user's broader district
-        WHEN d.active AND EXISTS (
-          SELECT 1 FROM chambers cd 
-          JOIN areas ad ON ad.id = cd.area_id 
-          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
-        ) THEN 6
-
-        -- 7. Other featured doctors
-        WHEN d.featured THEN 7
-
-        -- 8. Other verified doctors
-        WHEN d.verified THEN 8
-
-        -- 9. Anything else
-        ELSE 9
-      END ASC,
-      d.updated_at DESC,
-      d.id DESC
-    `;
-  }
-
-  const res = await db.execute<CardRow>(sql`
-    SELECT ${cardSelect} ${cardFrom}
-    WHERE d.active
-    ORDER BY ${orderSql}
-    LIMIT ${limit}
-  `);
-
-  return (res.rows as CardRow[]).map((r) => mapDoctorCard(r, locale));
+  // The homepage now uses the main search function to ensure logic is unified.
+  // We pass the geo-preferences and a limit.
+  const results = await searchDoctors({
+    perPage: limit,
+    preferLat: geo.lat,
+    preferLng: geo.lng,
+    preferAreaId: geo.areaId,
+    preferDistrictId: geo.districtId,
+  }, locale);
+  return results.rows;
 }
 
 export type DoctorSearchParams = {
@@ -708,7 +552,7 @@ export async function searchDoctors(
   p: DoctorSearchParams,
   locale: Locale
 ): Promise<{ rows: DoctorCardData[]; total: number }> {
-  const buildQueryParts = (params: DoctorSearchParams, withLocation: boolean) => {
+  const buildQueryParts = (params: DoctorSearchParams) => {
     const conditions = [sql`d.active`];
     if (params.excludeId) {
       conditions.push(sql`d.id != ${params.excludeId}`);
@@ -779,103 +623,128 @@ export async function searchDoctors(
       conditions.push(sql`EXISTS (SELECT 1 FROM chambers c4 WHERE c4.doctor_id = d.id AND c4.visible AND c4.fee <= ${params.maxFee})`);
     }
     const whereSql = sql.join(conditions, sql` AND `);
-    const orderParts = [
-      sql`(CASE WHEN d.featured THEN 1 WHEN d.verified THEN 2 ELSE 3 END)`,
-    ];
 
-    if (withLocation) {
-      if (params.preferLat != null && params.preferLng != null) {
-        orderParts.push(sql`(
-          SELECT MIN(
-            6371 * acos(
-              cos(radians(${params.preferLat})) * cos(radians(loc.lat))
-              * cos(radians(loc.lng) - radians(${params.preferLng}))
-              + sin(radians(${params.preferLat})) * sin(radians(loc.lat))
-            )
+    let orderSql;
+    const userLat = params.preferLat;
+    const userLng = params.preferLng;
+    const userAreaId = params.preferAreaId;
+    const userDistrictId = params.preferDistrictId;
+
+    // If a specific sort order is requested (e.g., by fee), use it.
+    if (params.sort) {
+      const orderParts = [];
+      switch (params.sort) {
+        case "fee_asc": orderParts.push(sql`ch.fee ASC NULLS LAST`); break;
+        case "fee_desc": orderParts.push(sql`ch.fee DESC NULLS LAST`); break;
+        case "experience": orderParts.push(sql`d.experience_years DESC NULLS LAST`); break;
+      }
+      // Even with an explicit sort, we still use quality signals as a tie-breaker.
+      orderParts.push(sql`(CASE WHEN d.featured THEN 1 WHEN d.verified THEN 2 ELSE 3 END)`);
+      orderParts.push(sql`d.updated_at DESC`);
+      orderParts.push(sql`d.id DESC`);
+      orderSql = sql.join(orderParts, sql`, `);
+    }
+    // If no explicit sort, use the location-aware ranking logic.
+    else if (userLat != null && userLng != null) {
+      // Subquery to find the minimum distance from the user to any of a doctor's locations,
+      // using the specified coordinate fallback logic.
+      const minDistanceSql = sql`(
+        SELECT MIN(
+          6371 * acos(
+            cos(radians(${userLat})) * cos(radians(loc.lat))
+            * cos(radians(loc.lng) - radians(${userLng}))
+            + sin(radians(${userLat})) * sin(radians(loc.lat))
           )
-          FROM (
-            -- For each chamber, calculate its coordinate using the fallback chain:
-            -- Chamber -> Area -> Doctor's Hospital -> Area's District
-            SELECT
-              COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
-              COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
-            FROM chambers cp
-            LEFT JOIN areas ap ON ap.id = cp.area_id
-            LEFT JOIN districts dp ON dp.id = ap.district_id
-            -- Join the doctor's primary hospital to use as a fallback
-            LEFT JOIN hospitals hp ON hp.id = d.hospital_id
-            WHERE cp.doctor_id = d.id AND cp.visible
+        )
+        FROM (
+          -- Coordinate fallback chain: Chamber -> Thana -> Hospital -> District
+          SELECT
+            COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
+            COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
+          FROM chambers cp
+          LEFT JOIN areas ap ON ap.id = cp.area_id
+          LEFT JOIN districts dp ON dp.id = ap.district_id
+          LEFT JOIN hospitals hp ON hp.id = d.hospital_id
+          WHERE cp.doctor_id = d.id AND cp.visible
 
-            UNION ALL
+          UNION ALL
 
-            -- The primary hospital itself is also a potential location
-            SELECT
-              hp.lat,
-              hp.lng
-            FROM hospitals hp
-            WHERE hp.id = d.hospital_id
-          ) loc
-          WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
-        ) ASC NULLS LAST`);
-      }
-      if (params.preferAreaId || params.preferDistrictId) {
-        orderParts.push(sql`(
-          CASE
-            WHEN EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${params.preferAreaId ?? null}) THEN 1
-            WHEN EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${params.preferDistrictId ?? null}) THEN 2
-            ELSE 3
-          END
-        )`);
-      }
+          -- The doctor's primary hospital is also a potential location.
+          SELECT hp.lat, hp.lng
+          FROM hospitals hp
+          WHERE hp.id = d.hospital_id
+        ) loc
+        WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
+      )`;
+
+      orderSql = sql`
+        CASE
+          -- 1. Featured doctor within 100km
+          WHEN d.featured AND (${minDistanceSql}) <= 100 THEN 1
+          -- 2. Verified doctor in user's specific area (thana)
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 2
+          -- 3. Verified doctor in user's broader district
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 3
+          -- 4. Normal public doctor in user's specific area
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 4
+          -- 5. Normal public doctor in user's broader district
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 5
+          -- 6. Other featured doctors (any distance)
+          WHEN d.featured THEN 6
+          -- 7. Other verified doctors (any distance)
+          WHEN d.verified THEN 7
+          -- 8. Anything else
+          ELSE 8
+        END ASC,
+        -- Within the same priority group, sort by distance.
+        (${minDistanceSql}) ASC NULLS LAST,
+        d.updated_at DESC,
+        d.id DESC
+      `;
+    } else {
+      // Fallback if no coordinates are available, but we have area/district IDs.
+      orderSql = sql`
+        CASE
+          -- 1. Featured in user's area
+          WHEN d.featured AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 1
+          -- 2. Featured in user's district
+          WHEN d.featured AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 2
+          -- 3. Verified in user's area
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 3
+          -- 4. Verified in user's district
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 4
+          -- 5. Normal in user's area
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 5
+          -- 6. Normal in user's district
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 6
+          -- 7. Other featured
+          WHEN d.featured THEN 7
+          -- 8. Other verified
+          WHEN d.verified THEN 8
+          -- 9. Anything else
+          ELSE 9
+        END ASC,
+        d.updated_at DESC,
+        d.id DESC
+      `;
     }
-
-    // Default sort: newest active doctors surface first when no proximity or
-    // explicit sort is given. Rating-based sort was removed with the reviews
-    // rating column.
-    switch (params.sort) {
-      case "fee_asc": orderParts.push(sql`ch.fee ASC NULLS LAST`); break;
-      case "fee_desc": orderParts.push(sql`ch.fee DESC NULLS LAST`); break;
-      case "experience": orderParts.push(sql`d.experience_years DESC NULLS LAST`); break;
-      default: orderParts.push(sql`d.updated_at DESC`);
-    }
-    orderParts.push(sql`d.id DESC`);
-    const orderSql = sql.join(orderParts, sql`, `);
-
     return { whereSql, orderSql };
   };
 
   const perPage = Math.min(p.perPage || 12, 48);
   const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
 
-  // --- Initial Query (with location preference) ---
-  const { whereSql: whereSqlPrimary, orderSql: orderSqlPrimary } = buildQueryParts(p, true);
-  let [rowsRes, countRes] = await Promise.all([
+  const { whereSql, orderSql } = buildQueryParts(p);
+
+  const [rowsRes, countRes] = await Promise.all([
     db.execute<CardRow>(sql`
       SELECT ${cardSelect} ${cardFrom}
-      WHERE ${whereSqlPrimary}
-      ORDER BY ${orderSqlPrimary}
+      WHERE ${whereSql}
+      ORDER BY ${orderSql}
       LIMIT ${perPage} OFFSET ${offset}
     `),
-    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM doctors d WHERE ${whereSqlPrimary}`),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM doctors d WHERE ${whereSql}`),
   ]);
-
-  // --- Fallback Query (if initial returns nothing) ---
-  // If the location-aware query yields no results, run a simpler one ignoring
-  // location to ensure we don't show a blank page for out-of-area visitors.
-  if (rowsRes.rows.length === 0) {
-    const { whereSql: whereSqlFallback, orderSql: orderSqlFallback } = buildQueryParts(p, false);
-    const [fallbackRowsRes, fallbackCountRes] = await Promise.all([
-      db.execute<CardRow>(sql`
-        SELECT ${cardSelect} ${cardFrom}
-        WHERE ${whereSqlFallback}
-        ORDER BY ${orderSqlFallback}
-        LIMIT ${perPage} OFFSET ${offset}
-      `),
-      db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM doctors d WHERE ${whereSqlFallback}`),
-    ]);
-    rowsRes = fallbackRowsRes;
-    countRes = fallbackCountRes;
-  }
 
   const rows = (rowsRes.rows as CardRow[]).map((r) => mapDoctorCard(r, locale));
   const total = (countRes.rows[0] as { c: number } | undefined)?.c ?? rows.length;
@@ -1434,6 +1303,104 @@ export async function searchAreas(
       meta_description: ml(a.meta_description, locale),
       active: a.active, sort: a.sort,
       doctor_count: a.doctor_count,
+  }));
+
+  const total = (countRes.rows[0] as { c: number } | undefined)?.c ?? rows.length;
+  return { rows, total };
+}
+
+export type DistrictSearchParams = {
+  q?: string;
+  page?: number;
+  perPage?: number;
+  preferLat?: number | null;
+  preferLng?: number | null;
+};
+
+export async function searchDistricts(
+  p: DistrictSearchParams,
+  locale: Locale
+): Promise<{ rows: District[]; total: number }> {
+  const conditions = [sql`districts.active`];
+
+  if (p.q) {
+    const raw = p.q.trim();
+    const like = `%${raw}%`;
+    conditions.push(sql`(
+      districts.name->>'bn' ILIKE ${like} OR districts.name->>'en' ILIKE ${like}
+      OR word_similarity(${raw}, districts.name->>'bn') > 0.4
+      OR word_similarity(${raw}, districts.name->>'en') > 0.4
+    )`);
+  }
+  
+  const whereSql = sql.join(conditions, sql` AND `);
+  const orderParts = [];
+
+  if (p.preferLat != null && p.preferLng != null) {
+    orderParts.push(sql`
+      6371 * acos(
+        cos(radians(${p.preferLat})) * cos(radians(districts.lat))
+        * cos(radians(districts.lng) - radians(${p.preferLng}))
+        + sin(radians(${p.preferLat})) * sin(radians(districts.lat))
+      )
+    ASC NULLS LAST`);
+  }
+  orderParts.push(sql`districts.sort ASC`);
+  orderParts.push(sql`districts.id ASC`);
+
+  const orderSql = sql.join(orderParts, sql`, `);
+
+  const perPage = Math.min(p.perPage || 24, 48);
+  const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
+
+  const thanaCountSubquery = sql`(
+    SELECT COUNT(*)::int FROM ${areasT}
+    WHERE ${areasT.districtId} = districts.id AND ${areasT.active}
+  )`;
+
+  const doctorCountSubquery = sql`(
+    SELECT COUNT(DISTINCT doc.id)::int
+    FROM ${doctorsT} doc
+    JOIN ${chambersT} c ON c.doctor_id = doc.id
+    JOIN ${areasT} a ON a.id = c.area_id
+    WHERE a.district_id = districts.id AND doc.active AND c.visible
+  )`;
+
+  const rowsQuery = db.execute<{
+    id: number; slug: string; name: MLText;
+    lat: number | null; lng: number | null; intro: MLText;
+    meta_title: MLText; meta_description: MLText; active: boolean; sort: number;
+    thana_count: number;
+    doctor_count: number;
+  }>(sql`
+    SELECT 
+      districts.id, districts.slug, districts.name, districts.lat, districts.lng, districts.intro,
+      districts.meta_title, districts.meta_description, districts.active, districts.sort,
+      ${thanaCountSubquery} AS thana_count,
+      ${doctorCountSubquery} AS doctor_count
+    FROM ${districts}
+    WHERE ${whereSql}
+    ORDER BY ${orderSql}
+    LIMIT ${perPage} OFFSET ${offset}
+  `);
+
+  const countQuery = db.execute<{ c: number }>(sql`
+    SELECT COUNT(*)::int AS c 
+    FROM ${districts}
+    WHERE ${whereSql}
+  `);
+
+  const [rowsRes, countRes] = await Promise.all([rowsQuery, countQuery]);
+
+  const rows = rowsRes.rows.map((d): District => ({
+      id: d.id, slug: d.slug,
+      name: ml(d.name, locale),
+      lat: d.lat, lng: d.lng,
+      intro: ml(d.intro, locale), meta_title: ml(d.meta_title, locale),
+      meta_description: ml(d.meta_description, locale),
+      active: d.active, sort: d.sort,
+      thana_count: d.thana_count,
+      doctor_count: d.doctor_count,
   }));
 
   const total = (countRes.rows[0] as { c: number } | undefined)?.c ?? rows.length;

@@ -64,7 +64,15 @@ export default async function HospitalPage({ params }: Props) {
   const [settings, faqs, initialDoctorData, maps, allSpecialties] = await Promise.all([
     getSettings(),
     getFaqs("hospital", h.id, locale),
-    searchDoctors({ hospitalId: h.id, page: 1, perPage: 12 }, locale),
+    searchDoctors({
+      hospitalId: h.id,
+      page: 1,
+      perPage: 12,
+      preferLat: geo.lat,
+      preferLng: geo.lng,
+      preferAreaId: geo.areaId,
+      preferDistrictId: geo.districtId,
+    }, locale),
     getEnabledConfig("google_maps"),
     getSpecialties(locale, true),
   ]);
