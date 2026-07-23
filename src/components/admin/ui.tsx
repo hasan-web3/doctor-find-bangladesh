@@ -135,7 +135,7 @@ export function MLInput({
         {label}
         {required && <span className="mr-1 text-[#DC2626]"> *</span>}
       </label>
-      <div className={`grid grid-cols-1 gap-2 ${richText ? "" : "sm:grid-cols-2"}`}>
+      <div className={`grid grid-cols-1 gap-2 sm:grid-cols-2`}>
         <div>
           <div className="mb-1 text-[11px] font-bold text-brand-600">বাংলা {required ? "(আবশ্যক)" : ""}</div>
           {richText ? (

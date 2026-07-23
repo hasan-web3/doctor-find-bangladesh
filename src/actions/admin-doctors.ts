@@ -279,3 +279,81 @@ export async function deleteDoctor(id: number): Promise<ActionResult> {
   return { ok: true, message: "ডাক্তার মুছে ফেলা হয়েছে" };
 }
 
+import { type DoctorInitial } from "@/app/admin/doctors/doctor-form";
+import { type SocialLinksDraft, toML, EMPTY_SOCIAL_LINKS } from "@/lib/utils";
+import { sql } from "drizzle-orm";
+
+export async function getDoctor(id: number): Promise<DoctorInitial | null> {
+  const doctorId = Number(id);
+  if (!Number.isFinite(doctorId)) return null;
+
+  type MLRaw = { bn?: string; en?: string } | null;
+
+  const { rows: docRows } = await db.execute<{
+    id: number; slug: string; name: MLRaw; degrees: MLRaw; bio: MLRaw;
+    gender: string | null; experience_years: number | null; patients_served: MLRaw;
+    hospital_id: number | null;
+    verified: boolean; featured: boolean; active: boolean;
+    meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
+    social_links: Partial<SocialLinksDraft> | null;
+  }>(sql`SELECT * FROM doctors WHERE id=${doctorId}`);
+  const doc = docRows[0];
+  if (!doc) return null;
+
+  const [specialtyIdsRes, chambersRes] = await Promise.all([
+    db.execute<{ specialty_id: number }>(
+      sql`SELECT specialty_id FROM doctor_specialties WHERE doctor_id=${doctorId} ORDER BY is_primary DESC`
+    ),
+    db.execute<{
+      id: number; name: MLRaw; address: MLRaw; area_id: number | null; district_id: number | null;
+      fee: number; phone: string | null; map_url: string | null;
+      visible: boolean; lat: number | null; lng: number | null;
+      schedule: { days: MLRaw; time: MLRaw }[];
+    }>(sql`
+      SELECT c.id, c.name, c.address, c.area_id, a.district_id,
+        c.fee, c.phone, c.map_url, c.visible, c.lat, c.lng, c.schedule
+      FROM chambers c LEFT JOIN areas a ON a.id = c.area_id
+      WHERE c.doctor_id=${doctorId} ORDER BY c.sort
+    `),
+  ]);
+
+  const initial: DoctorInitial = {
+    id: doc.id,
+    name: toML(doc.name),
+    slug: doc.slug,
+    degrees: toML(doc.degrees),
+    bio: toML(doc.bio),
+    gender: doc.gender,
+    experience_years: doc.experience_years,
+    patients_served: toML(doc.patients_served),
+    hospital_id: doc.hospital_id ?? null,
+    verified: doc.verified,
+    featured: doc.featured,
+    active: doc.active,
+    meta_title: toML(doc.meta_title),
+    meta_description: toML(doc.meta_description),
+    photo_url: doc.photo_url,
+    social_links: { ...EMPTY_SOCIAL_LINKS(), ...(doc.social_links || {}) },
+    specialty_ids: specialtyIdsRes.rows.map((r) => r.specialty_id),
+    chambers: chambersRes.rows.map((c) => ({
+      id: c.id,
+      name: toML(c.name),
+      address: toML(c.address),
+      district_id: c.district_id,
+      area_id: c.area_id,
+      fee: c.fee,
+      phone: c.phone || "",
+      map_url: c.map_url || "",
+      visible: c.visible,
+      lat: c.lat,
+      lng: c.lng,
+      schedule:
+        Array.isArray(c.schedule) && c.schedule.length > 0
+          ? c.schedule.map((s) => ({ days: toML(s.days), time: toML(s.time) }))
+          : [],
+    })),
+  };
+
+  return initial;
+}
+

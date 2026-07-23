@@ -220,19 +220,21 @@ export function PagesManager({ pages }: { pages: PageDraft[] }) {
             )}
           </Field>
         </div>
-
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <button
-            onClick={submit}
-            disabled={pending}
-            className="rounded-[10px] bg-brand-600 px-6 py-3 text-[14.5px] font-bold text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ (দুই ভাষা একসাথে)"}
-          </button>
-          <span className="text-[12.5px] text-ink-ghost">
-            Save করলে বাংলা ও ইংরেজি — দুটোই একসাথে DB-তে যাবে।
-          </span>
-        </div>
+      </div>
+      {/* Sticky Footer */}
+      <div className="sticky bottom-0 z-10 mt-4 border-t border-line bg-white/80 p-4 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-[980px] items-center justify-end gap-3">
+              <span className="text-[12.5px] text-ink-ghost">
+                Save করলে বাংলা ও ইংরেজি — দুটোই একসাথে DB-তে যাবে।
+              </span>
+              <button
+                onClick={submit}
+                disabled={pending}
+                className="rounded-[10px] bg-brand-600 px-6 py-3 text-[14.5px] font-bold text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ (দুই ভাষা একসাথে)"}
+              </button>
+          </div>
       </div>
     </div>
   );

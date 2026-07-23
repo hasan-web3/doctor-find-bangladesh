@@ -27,7 +27,7 @@ export function UsersManager({ rows, isSuperAdmin, selfId }: { rows: Row[]; isSu
   };
 
   return (
-    <div className="max-w-[760px]">
+    <div>
       <Toast result={result} />
       {!isSuperAdmin && (
         <div className="mb-4 rounded-xl bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">

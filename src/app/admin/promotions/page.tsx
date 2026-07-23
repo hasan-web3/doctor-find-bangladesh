@@ -6,10 +6,16 @@ import { bnNum, bnMoney } from "@/lib/bn";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPromotionsPage() {
+type SP = { page?: string; perPage?: string };
+
+export default async function AdminPromotionsPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const perPage = Number(sp.perPage) || 30;
+
   await expirePromotions();
 
-  const [statsRes, rowsRes, doctorsRes] = await Promise.all([
+  const [statsRes, rowsRes, totalRes, doctorsRes] = await Promise.all([
     db.execute<{ month_revenue: number; active: number; expiring: number; new_leads: number }>(sql`
       SELECT
         (SELECT COALESCE(SUM(amount),0)::int FROM promotions WHERE starts_on >= date_trunc('month', CURRENT_DATE)) AS month_revenue,
@@ -24,13 +30,16 @@ export default async function AdminPromotionsPage() {
       SELECT p.id, p.doctor_id, d.name->>'bn' AS doctor_bn, p.plan, p.amount,
         p.starts_on::text, p.ends_on::text, p.status, p.notes
       FROM promotions p JOIN doctors d ON d.id = p.doctor_id
-      ORDER BY p.created_at DESC LIMIT 100
+      ORDER BY p.created_at DESC
+      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int as c FROM promotions`),
     db.execute<{ id: number; name_bn: string }>(sql`SELECT id, name->>'bn' AS name_bn FROM doctors ORDER BY name->>'bn'`),
   ]);
   const stats = statsRes.rows[0];
   const rows = rowsRes.rows;
   const doctors = doctorsRes.rows;
+  const totalPages = Math.ceil((totalRes.rows[0]?.c ?? 0) / perPage);
 
   const cards = [
     { label: "চলতি মাসের আয়", value: bnMoney(stats?.month_revenue ?? 0) },
@@ -52,7 +61,13 @@ export default async function AdminPromotionsPage() {
         ))}
       </div>
 
-      <PromotionsManager rows={rows} doctors={doctors} />
+      <PromotionsManager
+        rows={rows}
+        doctors={doctors}
+        totalPages={totalPages}
+        page={page}
+        perPage={perPage}
+      />
     </div>
   );
 }

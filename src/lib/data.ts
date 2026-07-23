@@ -504,6 +504,143 @@ export const getFeaturedDoctors = unstable_cache(
   { tags: ["doctors", "reviews"] }
 );
 
+export async function getHomepageDoctors(
+  geo: GeoResult,
+  locale: Locale,
+  limit = 12
+): Promise<DoctorCardData[]> {
+  const userLat = geo.lat;
+  const userLng = geo.lng;
+  const userAreaId = geo.areaId;
+  const userDistrictId = geo.districtId;
+
+  let orderSql;
+
+  if (userLat != null && userLng != null) {
+    const minDistanceSql = sql`(
+      SELECT MIN(
+        6371 * acos(
+          cos(radians(${userLat})) * cos(radians(COALESCE(cp.lat, ap.lat)))
+          * cos(radians(COALESCE(cp.lng, ap.lng)) - radians(${userLng}))
+          + sin(radians(${userLat})) * sin(radians(COALESCE(cp.lat, ap.lat)))
+        )
+      )
+      FROM chambers cp LEFT JOIN areas ap ON ap.id = cp.area_id
+      WHERE cp.doctor_id = d.id AND cp.visible AND COALESCE(cp.lat, ap.lat) IS NOT NULL
+    )`;
+
+    orderSql = sql`
+      CASE
+        -- 1. Featured doctor within 100km
+        WHEN d.featured AND (${minDistanceSql}) <= 100 THEN 1
+
+        -- 2. Verified doctor in user's specific area
+        WHEN d.verified AND EXISTS (
+          SELECT 1 FROM chambers cg 
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 2
+
+        -- 3. Verified doctor in user's broader district
+        WHEN d.verified AND EXISTS (
+          SELECT 1 FROM chambers cd 
+          JOIN areas ad ON ad.id = cd.area_id 
+          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
+        ) THEN 3
+
+        -- 4. Normal public doctor in user's specific area
+        WHEN d.active AND EXISTS (
+          SELECT 1 FROM chambers cg 
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 4
+
+        -- 5. Normal public doctor in user's broader district
+        WHEN d.active AND EXISTS (
+          SELECT 1 FROM chambers cd 
+          JOIN areas ad ON ad.id = cd.area_id 
+          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
+        ) THEN 5
+
+        -- 6. Other featured doctors (any distance)
+        WHEN d.featured THEN 6
+
+        -- 7. Other verified doctors (any distance)
+        WHEN d.verified THEN 7
+
+        -- 8. Anything else
+        ELSE 8
+      END ASC,
+      -- Within the same priority group, sort by distance if coordinates are available
+      (${minDistanceSql}) ASC NULLS LAST,
+      d.updated_at DESC,
+      d.id DESC
+    `;
+  } else {
+    // Fallback if no coordinates are available (just use area/district IDs)
+    orderSql = sql`
+      CASE
+        -- 1. Featured doctor in user's specific area
+        WHEN d.featured AND EXISTS (
+          SELECT 1 FROM chambers cg 
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 1
+
+        -- 2. Featured doctor in user's broader district
+        WHEN d.featured AND EXISTS (
+          SELECT 1 FROM chambers cd 
+          JOIN areas ad ON ad.id = cd.area_id 
+          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
+        ) THEN 2
+
+        -- 3. Verified doctor in user's specific area
+        WHEN d.verified AND EXISTS (
+          SELECT 1 FROM chambers cg 
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 3
+
+        -- 4. Verified doctor in user's broader district
+        WHEN d.verified AND EXISTS (
+          SELECT 1 FROM chambers cd 
+          JOIN areas ad ON ad.id = cd.area_id 
+          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
+        ) THEN 4
+
+        -- 5. Normal public doctor in user's specific area
+        WHEN d.active AND EXISTS (
+          SELECT 1 FROM chambers cg 
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 5
+
+        -- 6. Normal public doctor in user's broader district
+        WHEN d.active AND EXISTS (
+          SELECT 1 FROM chambers cd 
+          JOIN areas ad ON ad.id = cd.area_id 
+          WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}
+        ) THEN 6
+
+        -- 7. Other featured doctors
+        WHEN d.featured THEN 7
+
+        -- 8. Other verified doctors
+        WHEN d.verified THEN 8
+
+        -- 9. Anything else
+        ELSE 9
+      END ASC,
+      d.updated_at DESC,
+      d.id DESC
+    `;
+  }
+
+  const res = await db.execute<CardRow>(sql`
+    SELECT ${cardSelect} ${cardFrom}
+    WHERE d.active
+    ORDER BY ${orderSql}
+    LIMIT ${limit}
+  `);
+
+  return (res.rows as CardRow[]).map((r) => mapDoctorCard(r, locale));
+}
+
 export type DoctorSearchParams = {
   q?: string;
   specialty?: string | string[];

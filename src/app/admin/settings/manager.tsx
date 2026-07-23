@@ -41,7 +41,7 @@ export function SettingsManager({
     });
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Toast result={result} />
 
       {/* basic info */}

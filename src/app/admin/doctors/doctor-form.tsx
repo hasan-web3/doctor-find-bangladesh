@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import { saveDoctor } from "@/actions/admin-doctors";
 import {
   quickCreateArea,
@@ -75,14 +76,24 @@ export function DoctorForm({
   areas: initialAreas,
   hospitals: initialHospitals,
   districts: initialDistricts,
+  onFinished,
 }: {
   initial: DoctorInitial;
   specialties: Opt[];
   areas: AreaOpt[];
   hospitals: Opt[];
   districts: Opt[];
+  onFinished?: () => void;
 }) {
   const router = useRouter();
+  const handleFinished = onFinished || (() => {
+    router.push("/admin/doctors");
+    router.refresh();
+  });
+  const handleCancel = onFinished || (() => {
+    router.push("/admin/doctors");
+  });
+
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -117,8 +128,7 @@ export function DoctorForm({
       });
       setResult(res);
       if (res.ok) {
-        router.push("/admin/doctors");
-        router.refresh();
+        handleFinished();
       } else {
         window.scrollTo(0, 0);
       }
@@ -144,310 +154,323 @@ export function DoctorForm({
     }));
 
   return (
-    <div className="max-w-[980px]">
-      <Toast result={result} />
-
-      <div className="grid grid-cols-1 gap-5 min-[900px]:grid-cols-[220px_1fr]">
-        {/* photo */}
-        <div>
-          <ImageUpload
-            currentUrl={removePhoto ? null : form.photo_url}
-            label="ডাক্তারের ছবি"
-            onChange={(data) => { setPhotoData(data); setRemovePhoto(false); }}
-            onRemove={() => { setPhotoData(undefined); setRemovePhoto(true); }}
-          />
-          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
-            <Toggle checked={form.verified} onChange={(v) => set("verified", v)} label="ভেরিফায়েড" />
-            <Toggle checked={form.featured} onChange={(v) => set("featured", v)} label="ফিচার্ড হিসেবে দেখান" />
-            <Toggle checked={form.active} onChange={(v) => set("active", v)} label="সক্রিয় (পাবলিক সাইটে দেখাবে)" />
-          </div>
-        </div>
-
-        {/* main fields */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-6">
-          <MLInput label="নাম" required value={form.name} onChange={(v) => set("name", v)} />
-          <Field label="Slug (URL)" hint="খালি রাখলে ইংরেজি/বাংলা নাম থেকে তৈরি হবে। বদলালে পুরনো URL স্বয়ংক্রিয়ভাবে রিডাইরেক্ট হবে।">
-            <input className={inputCls + " font-latin"} value={form.slug} onChange={(e) => set("slug", e.target.value)} placeholder="dr-example" />
-          </Field>
-          <MLInput label="ডিগ্রি ও পদবি" value={form.degrees} onChange={(v) => set("degrees", v)} />
-          <MLInput label="পরিচিতি" richText value={form.bio} onChange={(v) => set("bio", v)} hint="বোল্ড, লিস্ট, শিরোনাম ইত্যাদি ব্যবহার করে ডাক্তারের বিস্তারিত পরিচিতি লিখুন।" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label="লিঙ্গ">
-              <select className={inputCls} value={form.gender || ""} onChange={(e) => set("gender", e.target.value || null)}>
-                <option value="">নির্বাচন করুন</option>
-                <option value="male">পুরুষ</option>
-                <option value="female">নারী</option>
-                <option value="other">অন্যান্য</option>
-              </select>
-            </Field>
-            <Field label="অভিজ্ঞতা (বছর)">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                className={inputCls + " font-latin"}
-                value={form.experience_years ?? ""}
-                onChange={(e) => {
-                  // Normalize Bangla digits to English so Number() doesn't
-                  // choke on "১৮" and drop the whole field silently.
-                  const raw = e.target.value.replace(/[০-৯]/g, (d) =>
-                    String("০১২৩৪৫৬৭৮৯".indexOf(d))
-                  );
-                  const n = raw === "" ? null : parseInt(raw, 10);
-                  set("experience_years", Number.isFinite(n as number) ? (n as number) : null);
-                }}
-              />
-            </Field>
-            <div />
-          </div>
-          <MLInput label="রোগী দেখেছেন" hint="যেমন: ১০,০০০+ / 10,000+" value={form.patients_served} onChange={(v) => set("patients_served", v)} />
-
-          <Field label="প্রধান হাসপাতাল" hint="ডাক্তার মূলত যে হাসপাতালে কর্মরত। তালিকায় না থাকলে সাথে সাথে যোগ করা যাবে।">
-            <SearchableSelect
-              options={hospitalOptions}
-              value={form.hospital_id}
-              onChange={(id) => set("hospital_id", id)}
-              placeholder="হাসপাতাল নির্বাচন করুন"
-              addLabel="+ নতুন হাসপাতাল যোগ করুন"
-              onAddClick={() => setModal({ kind: "hospital" })}
-            />
-          </Field>
-
-          <Field label="বিশেষজ্ঞ বিভাগ (একাধিক নির্বাচন করা যাবে, প্রথমটি প্রধান)">
-            <SearchableMultiSelect
-              options={specialtyOptions}
-              value={form.specialty_ids}
-              onChange={(ids) => set("specialty_ids", ids)}
-              placeholder="বিভাগ নির্বাচন করুন"
-              addLabel="+ নতুন বিভাগ যোগ করুন"
-              onAddClick={() => setModal({ kind: "specialty" })}
-              primaryHint="★"
-            />
-          </Field>
-        </div>
-      </div>
-
-      {/* chambers */}
-      <div className="mt-5 rounded-2xl border border-line bg-white p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="font-heading text-base font-bold text-ink">চেম্বার ও সময়সূচি</div>
+    <div className="relative">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-white p-4 sm:p-5">
+        <h2 className="font-heading text-xl font-bold text-ink">
+          {form.id ? `ডাক্তার এডিট: ${form.name.bn}` : "নতুন ডাক্তার যুক্ত করুন"}
+        </h2>
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => set("chambers", [...form.chambers, EMPTY_CHAMBER()])}
-            className="rounded-[9px] border border-brand-600 bg-white px-3.5 py-2 text-[13px] font-semibold text-brand-700"
+            onClick={handleCancel}
+            className="rounded-[10px] border border-line bg-white px-4 py-2 text-sm font-semibold text-ink-mute hover:bg-slate-50 transition-colors"
           >
-            + চেম্বার যোগ করুন
+            বাতিল
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="rounded-[10px] bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60 transition-colors"
+          >
+            {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ করুন"}
+          </button>
+          <div className="h-6 w-px bg-line mx-1" />
+          <button
+            type="button"
+            onClick={handleCancel}
+            aria-label="Close"
+            className="rounded-full p-2 text-ink-ghost transition-colors hover:bg-slate-100 hover:text-ink"
+          >
+            <X size={24} />
           </button>
         </div>
+      </div>
 
-        {form.chambers.length === 0 && (
-          <p className="text-sm text-ink-ghost">এখনো কোনো চেম্বার নেই। উপরের বাটন থেকে যোগ করুন।</p>
-        )}
+      {/* Scrollable form content */}
+      <div className="p-6 pb-28">
+        <Toast result={result} />
 
-        <div className="flex flex-col gap-4">
-          {form.chambers.map((c, i) => (
-            <div key={i} className="rounded-[14px] border border-line p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm font-bold text-ink-soft">চেম্বার {i + 1}</div>
-                <div className="flex items-center gap-4">
-                  <Toggle
-                    checked={c.visible}
-                    onChange={(v) => setChamber(i, { visible: v })}
-                    label="পাবলিক সাইটে দেখান"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => set("chambers", form.chambers.filter((_, idx) => idx !== i))}
-                    className="text-[12.5px] font-semibold text-[#DC2626]"
-                  >
-                    মুছুন
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-col gap-3">
-                <MLInput label="চেম্বারের নাম" required value={c.name} onChange={(v) => setChamber(i, { name: v })} />
-                <MLInput label="ঠিকানা" value={c.address} onChange={(v) => setChamber(i, { address: v })} />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="জেলা" hint="আগে জেলা বাছুন, পরে সেই জেলার থানা / উপজেলা তালিকায় আসবে">
-                    <SearchableSelect
-                      options={districtOptions}
-                      value={c.district_id}
-                      onChange={(id) => setChamber(i, { district_id: id, area_id: null })}
-                      placeholder="জেলা নির্বাচন করুন"
-                      addLabel="+ নতুন জেলা যোগ করুন"
-                      onAddClick={() => setModal({ kind: "district", chamberIndex: i })}
-                    />
-                  </Field>
-                  <Field label="থানা / উপজেলা">
-                    <SearchableSelect
-                      options={areasForDistrict(c.district_id)}
-                      value={c.area_id}
-                      onChange={(id) => setChamber(i, { area_id: id })}
-                      placeholder={c.district_id ? "থানা / উপজেলা নির্বাচন করুন" : "প্রথমে জেলা বাছুন"}
-                      addLabel="+ নতুন থানা / উপজেলা যোগ করুন"
-                      onAddClick={
-                        c.district_id
-                          ? () => setModal({ kind: "area", chamberIndex: i, districtId: c.district_id! })
-                          : undefined
-                      }
-                      disabled={!c.district_id}
-                    />
-                  </Field>
-                  <Field label="ভিজিট ফি (টাকা)">
-                    <input type="number" className={inputCls} value={c.fee || ""} onChange={(e) => setChamber(i, { fee: Number(e.target.value) || 0 })} />
-                  </Field>
-                  <Field label="সিরিয়াল নম্বর (ফোন)">
-                    <input className={inputCls + " font-latin"} value={c.phone} onChange={(e) => setChamber(i, { phone: e.target.value })} placeholder="01XXXXXXXXX" />
-                  </Field>
-                </div>
-                <Field
-                  label="গুগল ম্যাপ (ঐচ্ছিক)"
-                  hint="সম্পূর্ণ <iframe ...> ট্যাগ বা শুধু URL — যেকোনোটা paste করুন। server auto-extract করে শুধু map link সংরক্ষণ করবে। খালি রাখলে frontend-এ map hidden থাকবে।"
-                >
-                  <textarea
-                    rows={3}
-                    className={inputCls + " font-latin resize-y"}
-                    value={c.map_url}
-                    onChange={(e) => {
-                      // Any change to the map URL re-syncs lat/lng from it:
-                      //   • URL yields coords → overwrite lat/lng (URL is the
-                      //     source of truth, so a fresh paste replaces stale
-                      //     values from a previous location).
-                      //   • URL cleared     → drop lat/lng too; the fields
-                      //     vanish alongside the map.
-                      //   • URL has no extractable coords (e.g. a short link
-                      //     like maps.app.goo.gl) → leave whatever the admin
-                      //     typed by hand so it isn't wiped by an unrelated
-                      //     paste.
-                      const nextUrl = e.target.value;
-                      const coords = parseLatLng(nextUrl);
-                      const patch: Partial<ChamberDraft> = { map_url: nextUrl };
-                      if (coords) {
-                        patch.lat = coords.lat;
-                        patch.lng = coords.lng;
-                      } else if (!nextUrl.trim()) {
-                        patch.lat = null;
-                        patch.lng = null;
-                      }
-                      setChamber(i, patch);
-                    }}
-                    placeholder={'<iframe src="https://www.google.com/maps/embed?pb=..." ...></iframe>  বা  https://maps.app.goo.gl/xxx'}
-                  />
-                </Field>
-                {/* Lat/Lng only show once the map URL yields a parseable pair
-                    (or the admin has typed a value manually). No URL = no
-                    field, matching the "if not provided, hide" requirement. */}
-                {(c.map_url.trim() && (c.lat != null || c.lng != null || parseLatLng(c.map_url))) && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Latitude" hint="ম্যাপ থেকে অটো-এক্সট্র্যাক্ট হয়েছে; দরকার হলে এডিট করুন।">
-                      <input
-                        type="number"
-                        step="any"
-                        className={inputCls + " font-latin"}
-                        value={c.lat ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          setChamber(i, { lat: raw === "" ? null : Number(raw) });
-                        }}
-                        placeholder="22.821203"
-                      />
-                    </Field>
-                    <Field label="Longitude" hint="ম্যাপ থেকে অটো-এক্সট্র্যাক্ট হয়েছে; দরকার হলে এডিট করুন।">
-                      <input
-                        type="number"
-                        step="any"
-                        className={inputCls + " font-latin"}
-                        value={c.lng ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          setChamber(i, { lng: raw === "" ? null : Number(raw) });
-                        }}
-                        placeholder="89.538703"
-                      />
-                    </Field>
-                  </div>
-                )}
-              </div>
-              <div className="mt-4">
-                <div className="mb-1.5 text-[13px] font-semibold text-ink-soft">সময়সূচি</div>
-                <ScheduleDayPicker
-                  value={c.schedule}
-                  onChange={(next) => setChamber(i, { schedule: next })}
-                  // Feed the picker every OTHER chamber's schedule so overlap
-                  // detection catches "sat 6-9 PM in chamber 1 AND chamber 2".
-                  bookedElsewhere={scheduleToRangesByDay(
-                    form.chambers.flatMap((oc, oi) => (oi === i ? [] : oc.schedule))
-                  )}
-                />
+        <div className="flex flex-col gap-5">
+          {/* Main Details */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
+            <div>
+              <ImageUpload
+                currentUrl={removePhoto ? null : form.photo_url}
+                label="ডাক্তারের ছবি"
+                onChange={(data) => {
+                  setPhotoData(data);
+                  setRemovePhoto(false);
+                }}
+                onRemove={() => {
+                  setPhotoData(undefined);
+                  setRemovePhoto(true);
+                }}
+              />
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
+                <Toggle checked={form.verified} onChange={(v) => set("verified", v)} label="ভেরিফায়েড" />
+                <Toggle checked={form.featured} onChange={(v) => set("featured", v)} label="ফিচার্ড হিসেবে দেখান" />
+                <Toggle checked={form.active} onChange={(v) => set("active", v)} label="সক্রিয় (পাবলিক সাইটে দেখাবে)" />
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-6">
+              <MLInput label="নাম" required value={form.name} onChange={(v) => set("name", v)} />
+              <Field
+                label="Slug (URL)"
+                hint="খালি রাখলে ইংরেজি/বাংলা নাম থেকে তৈরি হবে। বদলালে পুরনো URL স্বয়ংক্রিয়ভাবে রিডাইরেক্ট হবে।"
+              >
+                <input
+                  className={inputCls + " font-latin"}
+                  value={form.slug}
+                  onChange={(e) => set("slug", e.target.value)}
+                  placeholder="dr-example"
+                />
+              </Field>
+              <MLInput label="ডিগ্রি ও পদবি" value={form.degrees} onChange={(v) => set("degrees", v)} />
+            </div>
+          </div>
 
-      {/* Social profiles → sameAs schema.
-          These become the `sameAs` array in the Physician JSON-LD, which is
-          the strongest E-E-A-T signal Google uses to decide whether to build
-          a Knowledge Panel for a physician. Paste the FULL profile URL
-          (https://...) — bare handles are ignored server-side. */}
-      <div className="mt-5 rounded-2xl border border-line bg-white p-6">
-        <div className="mb-1 font-heading text-base font-bold text-ink">
-          সামাজিক প্রোফাইল / Social profiles (SEO)
-        </div>
-        <p className="mb-4 mt-0 text-[13px] text-ink-ghost">
-          ডাক্তারের ভেরিফায়েড পাবলিক প্রোফাইল লিঙ্ক দিন — এগুলো Physician schema-এর <code className="font-latin">sameAs</code>-এ যায় এবং Google Knowledge Panel-এর যোগ্যতা বাড়ায়। পুরো URL (https://...) দিন; নাহলে সেভ হবে না।
-        </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {[
-            { key: "website" as const, label: "অফিসিয়াল ওয়েবসাইট / Website", placeholder: "https://drname.com" },
-            { key: "linkedin" as const, label: "LinkedIn", placeholder: "https://www.linkedin.com/in/..." },
-            { key: "facebook" as const, label: "Facebook", placeholder: "https://www.facebook.com/..." },
-            { key: "twitter" as const, label: "Twitter / X", placeholder: "https://x.com/..." },
-            { key: "instagram" as const, label: "Instagram", placeholder: "https://www.instagram.com/..." },
-            { key: "youtube" as const, label: "YouTube", placeholder: "https://www.youtube.com/@..." },
-            { key: "researchgate" as const, label: "ResearchGate", placeholder: "https://www.researchgate.net/profile/..." },
-          ].map(({ key, label, placeholder }) => (
-            <Field key={key} label={label}>
-              <input
-                type="url"
-                className={inputCls + " font-latin"}
-                value={form.social_links[key]}
-                onChange={(e) => set("social_links", { ...form.social_links, [key]: e.target.value })}
-                placeholder={placeholder}
+          {/* Bio */}
+          <div className="rounded-2xl border border-line bg-white p-6">
+            <MLInput
+              label="পরিচিতি"
+              richText
+              value={form.bio}
+              onChange={(v) => set("bio", v)}
+              hint="বোল্ড, লিস্ট, শিরোনাম ইত্যাদি ব্যবহার করে ডাক্তারের বিস্তারিত পরিচিতি লিখুন।"
+            />
+          </div>
+
+          {/* Other Info */}
+          <div className="rounded-2xl border border-line bg-white p-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <Field label="লিঙ্গ">
+                <select className={inputCls} value={form.gender || ""} onChange={(e) => set("gender", e.target.value || null)}>
+                  <option value="">নির্বাচন করুন</option>
+                  <option value="male">পুরুষ</option>
+                  <option value="female">নারী</option>
+                  <option value="other">অন্যান্য</option>
+                </select>
+              </Field>
+              <Field label="অভিজ্ঞতা (বছর)">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  className={inputCls + " font-latin"}
+                  value={form.experience_years ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[০-৯]/g, (d) => String("০১২৩৪৫৬৭৮৯".indexOf(d)));
+                    const n = raw === "" ? null : parseInt(raw, 10);
+                    set("experience_years", Number.isFinite(n as number) ? (n as number) : null);
+                  }}
+                />
+              </Field>
+              <MLInput
+                label="রোগী দেখেছেন"
+                hint="যেমন: ১০,০০০+ / 10,000+"
+                value={form.patients_served}
+                onChange={(v) => set("patients_served", v)}
               />
-            </Field>
-          ))}
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="প্রধান হাসপাতাল" hint="ডাক্তার মূলত যে হাসপাতালে কর্মরত। তালিকায় না থাকলে সাথে সাথে যোগ করা যাবে।">
+                    <SearchableSelect
+                    options={hospitalOptions}
+                    value={form.hospital_id}
+                    onChange={(id) => set("hospital_id", id)}
+                    placeholder="হাসপাতাল নির্বাচন করুন"
+                    addLabel="+ নতুন হাসপাতাল যোগ করুন"
+                    onAddClick={() => setModal({ kind: "hospital" })}
+                    />
+                </Field>
+                <Field label="বিশেষজ্ঞ বিভাগ (একাধিক নির্বাচন করা যাবে, প্রথমটি প্রধান)">
+                    <SearchableMultiSelect
+                    options={specialtyOptions}
+                    value={form.specialty_ids}
+                    onChange={(ids) => set("specialty_ids", ids)}
+                    placeholder="বিভাগ নির্বাচন করুন"
+                    addLabel="+ নতুন বিভাগ যোগ করুন"
+                    onAddClick={() => setModal({ kind: "specialty" })}
+                    primaryHint="★"
+                    />
+                </Field>
+            </div>
+          </div>
+
+          {/* chambers */}
+          <div className="rounded-2xl border border-line bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="font-heading text-base font-bold text-ink">চেম্বার ও সময়সূচি</div>
+              <button
+                type="button"
+                onClick={() => set("chambers", [...form.chambers, EMPTY_CHAMBER()])}
+                className="rounded-[9px] border border-brand-600 bg-white px-3.5 py-2 text-[13px] font-semibold text-brand-700"
+              >
+                + চেম্বার যোগ করুন
+              </button>
+            </div>
+
+            {form.chambers.length === 0 && (
+              <p className="text-sm text-ink-ghost">এখনো কোনো চেম্বার নেই। উপরের বাটন থেকে যোগ করুন।</p>
+            )}
+
+            <div className="flex flex-col gap-4">
+              {form.chambers.map((c, i) => (
+                <div key={i} className="rounded-[14px] border border-line p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm font-bold text-ink-soft">চেম্বার {i + 1}</div>
+                    <div className="flex items-center gap-4">
+                      <Toggle checked={c.visible} onChange={(v) => setChamber(i, { visible: v })} label="পাবলিক সাইটে দেখান" />
+                      <button
+                        type="button"
+                        onClick={() => set("chambers", form.chambers.filter((_, idx) => idx !== i))}
+                        className="text-[12.5px] font-semibold text-[#DC2626]"
+                      >
+                        মুছুন
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <MLInput label="চেম্বারের নাম" required value={c.name} onChange={(v) => setChamber(i, { name: v })} />
+                    <MLInput label="ঠিকানা" value={c.address} onChange={(v) => setChamber(i, { address: v })} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="জেলা" hint="আগে জেলা বাছুন, পরে সেই জেলার থানা / উপজেলা তালিকায় আসবে">
+                        <SearchableSelect
+                          options={districtOptions}
+                          value={c.district_id}
+                          onChange={(id) => setChamber(i, { district_id: id, area_id: null })}
+                          placeholder="জেলা নির্বাচন করুন"
+                          addLabel="+ নতুন জেলা যোগ করুন"
+                          onAddClick={() => setModal({ kind: "district", chamberIndex: i })}
+                        />
+                      </Field>
+                      <Field label="থানা / উপজেলা">
+                        <SearchableSelect
+                          options={areasForDistrict(c.district_id)}
+                          value={c.area_id}
+                          onChange={(id) => setChamber(i, { area_id: id })}
+                          placeholder={c.district_id ? "থানা / উপজেলা নির্বাচন করুন" : "প্রথমে জেলা বাছুন"}
+                          addLabel="+ নতুন থানা / উপজেলা যোগ করুন"
+                          onAddClick={ c.district_id ? () => setModal({ kind: "area", chamberIndex: i, districtId: c.district_id! }) : undefined }
+                          disabled={!c.district_id}
+                        />
+                      </Field>
+                      <Field label="ভিজিট ফি (টাকা)">
+                        <input type="number" className={inputCls} value={c.fee || ""} onChange={(e) => setChamber(i, { fee: Number(e.target.value) || 0 })} />
+                      </Field>
+                      <Field label="সিরিয়াল নম্বর (ফোন)">
+                        <input className={inputCls + " font-latin"} value={c.phone} onChange={(e) => setChamber(i, { phone: e.target.value })} placeholder="01XXXXXXXXX" />
+                      </Field>
+                    </div>
+                    <Field
+                      label="গুগল ম্যাপ (ঐচ্ছিক)"
+                      hint="সম্পূর্ণ <iframe ...> ট্যাগ বা শুধু URL — যেকোনোটা paste করুন। server auto-extract করে শুধু map link সংরক্ষণ করবে। খালি রাখলে frontend-এ map hidden থাকবে।"
+                    >
+                      <textarea
+                        rows={3}
+                        className={inputCls + " font-latin resize-y"}
+                        value={c.map_url}
+                        onChange={(e) => {
+                          const nextUrl = e.target.value;
+                          const coords = parseLatLng(nextUrl);
+                          const patch: Partial<ChamberDraft> = { map_url: nextUrl };
+                          if (coords) { patch.lat = coords.lat; patch.lng = coords.lng; }
+                          else if (!nextUrl.trim()) { patch.lat = null; patch.lng = null; }
+                          setChamber(i, patch);
+                        }}
+                        placeholder={'<iframe src="https://www.google.com/maps/embed?pb=..." ...></iframe>  বা  https://maps.app.goo.gl/xxx'}
+                      />
+                    </Field>
+                    {c.map_url.trim() && (c.lat != null || c.lng != null || parseLatLng(c.map_url)) && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label="Latitude" hint="ম্যাপ থেকে অটো-এক্সট্র্যাক্ট হয়েছে; দরকার হলে এডিট করুন।">
+                          <input type="number" step="any" className={inputCls + " font-latin"} value={c.lat ?? ""} onChange={(e) => { const raw = e.target.value; setChamber(i, { lat: raw === "" ? null : Number(raw) }); }} placeholder="22.821203" />
+                        </Field>
+                        <Field label="Longitude" hint="ম্যাপ থেকে অটো-এক্সট্র্যাক্ট হয়েছে; দরকার হলে এডিট করুন।">
+                          <input type="number" step="any" className={inputCls + " font-latin"} value={c.lng ?? ""} onChange={(e) => { const raw = e.target.value; setChamber(i, { lng: raw === "" ? null : Number(raw) }); }} placeholder="89.538703" />
+                        </Field>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4">
+                    <div className="mb-1.5 text-[13px] font-semibold text-ink-soft">সময়সূচি</div>
+                    <ScheduleDayPicker
+                      value={c.schedule}
+                      onChange={(next) => setChamber(i, { schedule: next })}
+                      bookedElsewhere={scheduleToRangesByDay( form.chambers.flatMap((oc, oi) => (oi === i ? [] : oc.schedule)) )}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Social profiles */}
+          <div className="rounded-2xl border border-line bg-white p-6">
+            <div className="mb-1 font-heading text-base font-bold text-ink">সামাজিক প্রোফাইল / Social profiles (SEO)</div>
+            <p className="mb-4 mt-0 text-[13px] text-ink-ghost">
+              ডাক্তারের ভেরিফায়েড পাবলিক প্রোফাইল লিঙ্ক দিন — এগুলো Physician schema-এর{" "}
+              <code className="font-latin">sameAs</code>-এ যায় এবং Google Knowledge Panel-এর যোগ্যতা বাড়ায়। পুরো URL
+              (https://...) দিন; নাহলে সেভ হবে না।
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {[
+                { key: "website" as const, label: "অফিসিয়াল ওয়েবসাইট / Website", placeholder: "https://drname.com" },
+                { key: "linkedin" as const, label: "LinkedIn", placeholder: "https://www.linkedin.com/in/..." },
+                { key: "facebook" as const, label: "Facebook", placeholder: "https://www.facebook.com/..." },
+                { key: "twitter" as const, label: "Twitter / X", placeholder: "https://x.com/..." },
+                { key: "instagram" as const, label: "Instagram", placeholder: "https://www.instagram.com/..." },
+                { key: "youtube" as const, label: "YouTube", placeholder: "https://www.youtube.com/@..." },
+                { key: "researchgate" as const, label: "ResearchGate", placeholder: "https://www.researchgate.net/profile/...", },
+              ].map(({ key, label, placeholder }) => (
+                <Field key={key} label={label}>
+                  <input
+                    type="url"
+                    className={inputCls + " font-latin"}
+                    value={form.social_links[key]}
+                    onChange={(e) => set("social_links", { ...form.social_links, [key]: e.target.value })}
+                    placeholder={placeholder}
+                  />
+                </Field>
+              ))}
+            </div>
+          </div>
+
+          {/* SEO */}
+          <div className="rounded-2xl border border-line bg-white p-6">
+            <div className="mb-1 font-heading text-base font-bold text-ink">SEO (ঐচ্ছিক)</div>
+            <p className="mb-4 mt-0 text-[13px] text-ink-ghost">
+              বাংলা মেটা বাংলা সার্চে, ইংরেজি মেটা ইংরেজি সার্চে (/en পেজে) ব্যবহৃত হবে। খালি রাখলে স্বয়ংক্রিয়ভাবে তৈরি হবে।
+            </p>
+            <div className="flex flex-col gap-4">
+              <MLInput label="মেটা টাইটেল" value={form.meta_title} onChange={(v) => set("meta_title", v)} />
+              <MLInput label="মেটা ডেসক্রিপশন" textarea rows={2} value={form.meta_description} onChange={(v) => set("meta_description", v)} />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* SEO */}
-      <div className="mt-5 rounded-2xl border border-line bg-white p-6">
-        <div className="mb-1 font-heading text-base font-bold text-ink">SEO (ঐচ্ছিক)</div>
-        <p className="mb-4 mt-0 text-[13px] text-ink-ghost">
-          বাংলা মেটা বাংলা সার্চে, ইংরেজি মেটা ইংরেজি সার্চে (/en পেজে) ব্যবহৃত হবে। খালি রাখলে স্বয়ংক্রিয়ভাবে তৈরি হবে।
-        </p>
-        <div className="flex flex-col gap-4">
-          <MLInput label="মেটা টাইটেল" value={form.meta_title} onChange={(v) => set("meta_title", v)} />
-          <MLInput label="মেটা ডেসক্রিপশন" textarea rows={2} value={form.meta_description} onChange={(v) => set("meta_description", v)} />
+      {/* Sticky Footer */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-line bg-white/80 p-4 backdrop-blur-sm">
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-[10px] border border-line bg-white px-6 py-3 text-[14.5px] font-semibold text-ink-mute"
+          >
+            বাতিল
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="rounded-[10px] bg-brand-600 px-6 py-3 text-[14.5px] font-bold text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ করুন"}
+          </button>
         </div>
-      </div>
-
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={pending}
-          className="rounded-[10px] bg-brand-600 px-6 py-3 text-[14.5px] font-bold text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ করুন"}
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/admin/doctors")}
-          className="rounded-[10px] border border-line bg-white px-6 py-3 text-[14.5px] font-semibold text-ink-mute"
-        >
-          বাতিল
-        </button>
       </div>
 
       {/* Quick-add modals — one component per shape, wired to matching action. */}
@@ -458,7 +481,10 @@ export function DoctorForm({
           onSubmit={async (name) => {
             const res = await quickCreateHospital(name);
             if (!res.ok) return { ok: false, message: res.message };
-            setHospitals((prev) => [...prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en }]);
+            setHospitals((prev) => [
+              ...prev,
+              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
+            ]);
             set("hospital_id", res.row.id);
             setModal(null);
             return { ok: true };
@@ -472,7 +498,10 @@ export function DoctorForm({
           onSubmit={async (name) => {
             const res = await quickCreateSpecialty(name);
             if (!res.ok) return { ok: false, message: res.message };
-            setSpecialties((prev) => [...prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en }]);
+            setSpecialties((prev) => [
+              ...prev,
+              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
+            ]);
             set("specialty_ids", [...form.specialty_ids, res.row.id]);
             setModal(null);
             return { ok: true };
@@ -486,7 +515,10 @@ export function DoctorForm({
           onSubmit={async (name) => {
             const res = await quickCreateDistrict(name);
             if (!res.ok) return { ok: false, message: res.message };
-            setDistricts((prev) => [...prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en }]);
+            setDistricts((prev) => [
+              ...prev,
+              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
+            ]);
             const idx = modal.chamberIndex;
             setChamber(idx, { district_id: res.row.id, area_id: null });
             setModal(null);
@@ -505,7 +537,9 @@ export function DoctorForm({
             setAreas((prev) => [
               ...prev,
               {
-                id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en,
+                id: res.row.id,
+                name_bn: res.row.name_bn,
+                name_en: res.row.name_en,
                 district_id: modal.districtId,
                 district_bn: dist?.name_bn ?? null,
                 district_en: dist?.name_en ?? null,

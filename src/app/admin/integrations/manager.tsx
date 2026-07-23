@@ -110,7 +110,7 @@ function Card({ item }: { item: IntegrationView }) {
 
 export function IntegrationsManager({ items }: { items: IntegrationView[] }) {
   return (
-    <div className="flex max-w-[760px] flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {items.map((item) => (
         <Card key={item.key} item={item} />
       ))}

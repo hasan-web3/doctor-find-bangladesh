@@ -2,11 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveSpecialty, deleteSpecialty } from "@/actions/admin-content";
-import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton, MLInput } from "@/components/admin/ui";
-import { toML, emptyML, type ML } from "@/lib/utils";
-import { Icon, ICON_KEYS } from "@/components/icons";
+import { deleteSpecialty } from "@/actions/admin-content";
+import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
+import { toML, type ML } from "@/lib/utils";
+import { Icon } from "@/components/icons";
 import { bnNum } from "@/lib/bn";
+import { Pagination } from "@/components/admin/pagination";
+import { FullPageModal } from "@/components/admin/full-page-modal";
+import { SpecialtyForm, EMPTY_SPECIALTY } from "./form";
 
 export type SpecialtyRow = {
   id: number; slug: string; name: unknown; icon: string; tint: number;
@@ -19,86 +22,49 @@ type Draft = {
   intro: ML; meta_title: ML; meta_description: ML; active: boolean; sort: number;
 };
 
-const EMPTY: Draft = {
-  slug: "", name: { ...emptyML }, icon: "activity", tint: 0,
-  intro: { ...emptyML }, meta_title: { ...emptyML }, meta_description: { ...emptyML },
-  active: true, sort: 0,
-};
-
-export function SpecialtiesManager({ rows }: { rows: SpecialtyRow[] }) {
+export function SpecialtiesManager({
+  rows,
+  totalPages,
+  page,
+  perPage,
+  totalCount,
+}: {
+  rows: SpecialtyRow[];
+  totalPages: number;
+  page: number;
+  perPage: number;
+  totalCount: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null);
 
-  const submit = () => {
-    if (!editing) return;
-    startTransition(async () => {
-      const res = await saveSpecialty(editing);
-      setResult(res);
-      if (res.ok) { setEditing(null); router.refresh(); }
-    });
-  };
+  const handleClose = () => {
+    setEditing(null);
+    router.refresh();
+  }
 
   return (
     <div>
       <Toast result={result} />
       <div className="mb-4 flex justify-end">
         <button
-          onClick={() => setEditing({ ...EMPTY, sort: rows.length })}
+          onClick={() => setEditing({ ...EMPTY_SPECIALTY, sort: totalCount })}
           className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + নতুন বিভাগ
         </button>
       </div>
 
-      {editing && (
-        <div className="mb-5 rounded-2xl border border-brand-200 bg-white p-6">
-          <div className="mb-4 font-heading text-base font-bold text-ink">
-            {editing.id ? "বিভাগ এডিট" : "নতুন বিভাগ"}
-          </div>
-          <div className="flex flex-col gap-4">
-            <MLInput label="নাম" required value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Slug" hint="খালি রাখলে ইংরেজি নাম থেকে তৈরি হবে">
-                <input className={inputCls + " font-latin"} value={editing.slug} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} />
-              </Field>
-              <Field label="ক্রম">
-                <input type="number" className={inputCls} value={editing.sort} onChange={(e) => setEditing({ ...editing, sort: Number(e.target.value) || 0 })} />
-              </Field>
-            </div>
-            <Field label="আইকন">
-              <div className="mt-1 flex flex-wrap gap-2">
-                {ICON_KEYS.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setEditing({ ...editing, icon: key })}
-                    className={`flex h-10 w-10 items-center justify-center rounded-[10px] border ${
-                      editing.icon === key ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-faint"
-                    }`}
-                    aria-label={key}
-                  >
-                    <Icon name={key} size={20} />
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <MLInput label="ভূমিকা (ল্যান্ডিং পেজের বর্ণনা)" textarea value={editing.intro} onChange={(v) => setEditing({ ...editing, intro: v })} />
-            <MLInput label="মেটা টাইটেল (SEO)" value={editing.meta_title} onChange={(v) => setEditing({ ...editing, meta_title: v })} />
-            <MLInput label="মেটা ডেসক্রিপশন (SEO)" value={editing.meta_description} onChange={(v) => setEditing({ ...editing, meta_description: v })} />
-            <Toggle checked={editing.active} onChange={(v) => setEditing({ ...editing, active: v })} label="সক্রিয়" />
-          </div>
-          <div className="mt-5 flex gap-3">
-            <button onClick={submit} disabled={pending} className="rounded-[10px] bg-brand-600 px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60">
-              {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ করুন"}
-            </button>
-            <button onClick={() => setEditing(null)} className="rounded-[10px] border border-line bg-white px-6 py-2.5 text-sm text-ink-mute">
-              বাতিল
-            </button>
-          </div>
-        </div>
-      )}
+      <FullPageModal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing?.id ? "বিভাগ এডিট" : "নতুন বিভাগ"}
+        hideHeader={true}
+      >
+        {editing && <SpecialtyForm initial={editing} onFinished={handleClose} />}
+      </FullPageModal>
 
       <div className="overflow-x-auto rounded-2xl border border-line bg-white p-1.5">
         <table className="w-full min-w-[640px] border-collapse">
@@ -157,6 +123,12 @@ export function SpecialtiesManager({ rows }: { rows: SpecialtyRow[] }) {
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        perPage={perPage}
+        showPerPageSelector={true}
+      />
     </div>
   );
 }

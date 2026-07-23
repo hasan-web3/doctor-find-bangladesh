@@ -28,7 +28,7 @@ const AreaMap = dynamic(() =>
 );
 import {
   getSpecialties, getAreas, getFeaturedDoctors, searchHospitals,
-  getHeroSlides, getFaqs, getTestimonials, getBlogPosts, searchDoctors,
+  getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
   getDistrictsForSearch, getThanasForSearch, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -93,13 +93,13 @@ export default async function HomePage({ params }: Props) {
   const blog = blogResult.rows;
   const hospitals = hospitalData.rows;
 
-  // Geo-preferred featured doctors: matching area first, sorted by proximity.
-  const featured = geo.areaId
-    ? (await searchDoctors(
-        { preferAreaId: geo.areaId, preferLat: geo.lat, preferLng: geo.lng, perPage: 12 },
-        locale
-      )).rows
-    : await getFeaturedDoctors(locale, 12);
+  // For the homepage, we leverage getHomepageDoctors's precise ranking:
+  // 1. Featured doctors within 100km of the user
+  // 2. Verified doctors in the user's specific area / district
+  // 3. Normal public doctors in the user's specific area / district
+  // 4. Distant featured doctors (>100km away)
+  // This perfectly handles the local-first hierarchy.
+  const doctorsForHomepage = await getHomepageDoctors(geo, locale, 12);
 
   // Dynamic titles and subtitles.
   // If we have a detected district, we use that (e.g. "খুলনার" / "Khulna's").
@@ -350,9 +350,9 @@ export default async function HomePage({ params }: Props) {
             </Link>
           </div>
         </Reveal>
-        {featured.length > 0 ? (
+        {doctorsForHomepage.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 min-[1000px]:grid-cols-4">
-            {featured.map((doc, i) => (
+            {doctorsForHomepage.map((doc, i) => (
               <Reveal key={doc.id} delay={Math.min(i * 60, 240)}>
                 <DoctorCard doctor={doc} helpline={settings.helpline} locale={locale} d={d} />
               </Reveal>

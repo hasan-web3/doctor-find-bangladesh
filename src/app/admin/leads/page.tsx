@@ -2,27 +2,37 @@ import Link from "next/link";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { LeadRow } from "./row";
+import { Pagination } from "@/components/admin/pagination";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [["", "সব"], ["new", "নতুন"], ["in_progress", "চলমান"], ["resolved", "সমাধান"]] as const;
 
-type SP = { status?: string; type?: string };
+type SP = { status?: string; type?: string; page?: string; perPage?: string };
 
 export default async function AdminLeadsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const perPage = Number(sp.perPage) || 30;
+
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`status = ${sp.status}::lead_status`);
   if (sp.type) conds.push(sql`type = ${sp.type}::lead_type`);
   const where = sql.join(conds, sql` AND `);
 
-  const { rows } = await db.execute<{
-    id: number; type: "patient" | "doctor"; name: string; phone: string; message: string | null;
-    status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
-  }>(sql`
+  const [rowsRes, totalRes] = await Promise.all([
+    db.execute<{
+      id: number; type: "patient" | "doctor"; name: string; phone: string; message: string | null;
+      status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
+    }>(sql`
     SELECT id, type, name, phone, message, status, created_at::text, extra FROM leads
-    WHERE ${where} ORDER BY created_at DESC LIMIT 100
-  `);
+    WHERE ${where} ORDER BY created_at DESC
+    LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+  `),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM leads WHERE ${where}`),
+  ]);
+  const rows = rowsRes.rows;
+  const totalPages = Math.ceil((totalRes.rows[0]?.c ?? 0) / perPage);
 
   return (
     <div>
@@ -67,6 +77,13 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
           </div>
         )}
       </div>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        perPage={perPage}
+        showPerPageSelector={true}
+      />
     </div>
   );
 }

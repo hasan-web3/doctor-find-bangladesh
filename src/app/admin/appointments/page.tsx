@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { Pagination } from "@/components/public/pagination";
+import { Pagination } from "@/components/admin/pagination";
 import { AppointmentRow } from "./row";
 import { num as bnNum } from "@/lib/i18n";
 
@@ -16,9 +16,7 @@ type SP = { status?: string; q?: string; page?: string; perPage?: string };
 export default async function AdminAppointmentsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
-  const perPageOptions = [20, 50, 100];
-  const perPage = sp.perPage ? Math.max(1, Number(sp.perPage)) : 20;
-  const sanitizedPerPage = perPageOptions.includes(perPage) ? perPage : 20;
+  const perPage = Number(sp.perPage) || 30;
 
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`a.status = ${sp.status}::appointment_status`);
@@ -84,7 +82,7 @@ export default async function AdminAppointmentsPage({ searchParams }: { searchPa
         page={page}
         totalPages={totalPages}
         locale="bn"
-        perPage={sanitizedPerPage}
+        perPage={perPage}
         showPerPageSelector
       />
       <div className="mt-2 text-[13px] text-ink-ghost">মোট {bnNum(totalRow?.c ?? 0, "bn")}টি</div>

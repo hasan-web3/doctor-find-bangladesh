@@ -24,6 +24,9 @@ import { slugify } from "@/lib/slugify";
 import { recordSlugChange } from "@/lib/seo";
 import type { ActionResult } from "./admin-doctors";
 
+import { type PostInitial } from "@/app/admin/blog/post-form";
+import { toML } from "@/lib/utils";
+
 const mlSchema = z.object({ bn: z.string().default(""), en: z.string().default("") });
 const mlRequired = (message: string) => z.object({ bn: z.string().min(1, message), en: z.string().default("") });
 
@@ -442,6 +445,33 @@ export async function deleteBlogCategory(id: number): Promise<ActionResult> {
   await db.delete(blogCategories).where(eq(blogCategories.id, id));
   revalidatePublic(["blog"]);
   return { ok: true, message: "ক্যাটাগরি মুছে ফেলা হয়েছে" };
+}
+
+export async function getPost(id: number): Promise<PostInitial | null> {
+  const postId = Number(id);
+  if (!Number.isFinite(postId)) return null;
+
+  const { rows: postRows } = await db.execute<{
+    id: number; slug: string; title: { bn?: string; en?: string } | null; excerpt: { bn?: string; en?: string } | null; content: { bn?: string; en?: string } | null;
+    category_id: number | null; published: boolean; meta_title: { bn?: string; en?: string } | null;
+    meta_description: { bn?: string; en?: string } | null; cover_url: string | null;
+  }>(sql`SELECT * FROM blog_posts WHERE id=${postId}`);
+  
+  const post = postRows[0];
+  if (!post) return null;
+
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: toML(post.title),
+    excerpt: toML(post.excerpt),
+    content: toML(post.content),
+    category_id: post.category_id,
+    published: post.published,
+    meta_title: toML(post.meta_title),
+    meta_description: toML(post.meta_description),
+    cover_url: post.cover_url,
+  };
 }
 
 // ---------------- hero slides ----------------

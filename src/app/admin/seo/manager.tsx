@@ -31,7 +31,7 @@ export function SeoManager({
   const [rd, setRd] = useState({ from_path: "", to_path: "" });
 
   return (
-    <div className="flex max-w-[880px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Toast result={result} />
 
       {/* global defaults */}

@@ -2,10 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveDistrict, deleteDistrict } from "@/actions/admin-content";
-import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton, MLInput } from "@/components/admin/ui";
-import { toML, emptyML, type ML } from "@/lib/utils";
+import { deleteDistrict } from "@/actions/admin-content";
+import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
+import { toML, type ML } from "@/lib/utils";
 import { bnNum } from "@/lib/bn";
+import { Pagination } from "@/components/admin/pagination";
+import { FullPageModal } from "@/components/admin/full-page-modal";
+import { DistrictForm, EMPTY_DISTRICT } from "./form";
 
 export type DistrictRow = {
   id: number; slug: string; name: unknown;
@@ -18,77 +21,49 @@ type Draft = {
   intro: ML; meta_title: ML; meta_description: ML; active: boolean; sort: number;
 };
 
-const EMPTY: Draft = {
-  slug: "", name: { ...emptyML }, lat: "", lng: "",
-  intro: { ...emptyML }, meta_title: { ...emptyML }, meta_description: { ...emptyML },
-  active: true, sort: 0,
-};
-
-export function DistrictsManager({ rows }: { rows: DistrictRow[] }) {
+export function DistrictsManager({
+  rows,
+  totalPages,
+  page,
+  perPage,
+  totalCount,
+}: {
+  rows: DistrictRow[];
+  totalPages: number;
+  page: number;
+  perPage: number;
+  totalCount: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null);
 
-  const submit = () => {
-    if (!editing) return;
-    startTransition(async () => {
-      const res = await saveDistrict({
-        ...editing,
-        lat: editing.lat === "" ? null : Number(editing.lat),
-        lng: editing.lng === "" ? null : Number(editing.lng),
-      });
-      setResult(res);
-      if (res.ok) { setEditing(null); router.refresh(); }
-    });
-  };
+  const handleClose = () => {
+    setEditing(null);
+    router.refresh();
+  }
 
   return (
     <div>
       <Toast result={result} />
       <div className="mb-4 flex justify-end">
         <button
-          onClick={() => setEditing({ ...EMPTY, sort: rows.length })}
+          onClick={() => setEditing({ ...EMPTY_DISTRICT, sort: totalCount })}
           className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + নতুন জেলা
         </button>
       </div>
 
-      {editing && (
-        <div className="mb-5 rounded-2xl border border-brand-200 bg-white p-6">
-          <div className="mb-4 font-heading text-base font-bold text-ink">{editing.id ? "জেলা এডিট" : "নতুন জেলা"}</div>
-          <div className="flex flex-col gap-4">
-            <MLInput label="নাম" required value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} hint="ইংরেজি নাম URL ও IP জিও-ম্যাচিংয়ে ব্যবহৃত হয়" />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Slug" hint="খালি রাখলে ইংরেজি নাম থেকে তৈরি হবে">
-                <input className={inputCls + " font-latin"} value={editing.slug} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} />
-              </Field>
-              <Field label="ক্রম">
-                <input type="number" className={inputCls} value={editing.sort} onChange={(e) => setEditing({ ...editing, sort: Number(e.target.value) || 0 })} />
-              </Field>
-              <Field label="অক্ষাংশ (lat)">
-                <input className={inputCls + " font-latin"} value={editing.lat} onChange={(e) => setEditing({ ...editing, lat: e.target.value })} placeholder="22.8456" />
-              </Field>
-              <Field label="দ্রাঘিমাংশ (lng)">
-                <input className={inputCls + " font-latin"} value={editing.lng} onChange={(e) => setEditing({ ...editing, lng: e.target.value })} placeholder="89.5403" />
-              </Field>
-            </div>
-            <MLInput label="ভূমিকা" textarea value={editing.intro} onChange={(v) => setEditing({ ...editing, intro: v })} />
-            <MLInput label="মেটা টাইটেল (SEO)" value={editing.meta_title} onChange={(v) => setEditing({ ...editing, meta_title: v })} />
-            <MLInput label="মেটা ডেসক্রিপশন (SEO)" value={editing.meta_description} onChange={(v) => setEditing({ ...editing, meta_description: v })} />
-            <Toggle checked={editing.active} onChange={(v) => setEditing({ ...editing, active: v })} label="সক্রিয়" />
-          </div>
-          <div className="mt-5 flex gap-3">
-            <button onClick={submit} disabled={pending} className="rounded-[10px] bg-brand-600 px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60">
-              {pending ? "সংরক্ষণ হচ্ছে..." : "সংরক্ষণ করুন"}
-            </button>
-            <button onClick={() => setEditing(null)} className="rounded-[10px] border border-line bg-white px-6 py-2.5 text-sm text-ink-mute">
-              বাতিল
-            </button>
-          </div>
-        </div>
-      )}
+      <FullPageModal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing?.id ? "জেলা এডিট" : "নতুন জেলা"}
+        hideHeader={true}
+      >
+        {editing && <DistrictForm initial={editing} onFinished={handleClose} />}
+      </FullPageModal>
 
       <div className="overflow-x-auto rounded-2xl border border-line bg-white p-1.5">
         <table className="w-full min-w-[600px] border-collapse">
@@ -141,6 +116,12 @@ export function DistrictsManager({ rows }: { rows: DistrictRow[] }) {
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        perPage={perPage}
+        showPerPageSelector={true}
+      />
     </div>
   );
 }

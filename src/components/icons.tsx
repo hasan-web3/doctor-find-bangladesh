@@ -1,6 +1,6 @@
-// Stroke icon set carried over from the Claude Design bundle so the visual
-// language stays identical. Keys are stored in the DB (specialties, slides).
+import { icons, type LucideProps } from "lucide-react";
 
+// Legacy hard-coded icons for backward compatibility
 const PATHS: Record<string, string[]> = {
   heart: ["M12 20s-6.6-4.4-9.1-8.1A5 5 0 0 1 12 6a5 5 0 0 1 9.1 5.9C18.6 15.6 12 20 12 20z"],
   brain: ["M9 4a2.5 2.5 0 0 0-2.5 2.5A3 3 0 0 0 6 12a3 3 0 0 0 3 3M9 4a2 2 0 0 1 3 1.7V17a2 2 0 0 1-3 1.7M15 4a2.5 2.5 0 0 1 2.5 2.5A3 3 0 0 1 18 12a3 3 0 0 1-3 3M15 4a2 2 0 0 0-3 1.7"],
@@ -33,6 +33,13 @@ const PATHS: Record<string, string[]> = {
 export const ICON_KEYS = Object.keys(PATHS);
 
 export function Icon({ name, size = 26, className }: { name: string; size?: number; className?: string }) {
+  // Check if the icon exists in the full lucide-react map first
+  const LucideIcon = icons[name as keyof typeof icons];
+  if (LucideIcon) {
+    return <LucideIcon size={size} className={className} strokeWidth={1.7} />;
+  }
+
+  // Fallback to legacy hard-coded icons
   const paths = PATHS[name] || PATHS.cross;
   return (
     <svg
