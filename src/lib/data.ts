@@ -433,13 +433,34 @@ export async function getHospitalDoctors(hospitalId: number, geo: GeoResult, loc
     orderParts.push(sql`(
       SELECT MIN(
         6371 * acos(
-          cos(radians(${geo.lat})) * cos(radians(COALESCE(cp.lat, ap.lat)))
-          * cos(radians(COALESCE(cp.lng, ap.lng)) - radians(${geo.lng}))
-          + sin(radians(${geo.lat})) * sin(radians(COALESCE(cp.lat, ap.lat)))
+          cos(radians(${geo.lat})) * cos(radians(loc.lat))
+          * cos(radians(loc.lng) - radians(${geo.lng}))
+          + sin(radians(${geo.lat})) * sin(radians(loc.lat))
         )
       )
-      FROM chambers cp LEFT JOIN areas ap ON ap.id = cp.area_id
-      WHERE cp.doctor_id = d.id AND cp.visible AND COALESCE(cp.lat, ap.lat) IS NOT NULL
+      FROM (
+        -- For each chamber, calculate its coordinate using the fallback chain:
+        -- Chamber -> Area -> Doctor's Hospital -> Area's District
+        SELECT
+          COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
+          COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
+        FROM chambers cp
+        LEFT JOIN areas ap ON ap.id = cp.area_id
+        LEFT JOIN districts dp ON dp.id = ap.district_id
+        -- Join the doctor's primary hospital to use as a fallback
+        LEFT JOIN hospitals hp ON hp.id = d.hospital_id
+        WHERE cp.doctor_id = d.id AND cp.visible
+
+        UNION ALL
+
+        -- The primary hospital itself is also a potential location
+        SELECT
+          hp.lat,
+          hp.lng
+        FROM hospitals hp
+        WHERE hp.id = d.hospital_id
+      ) loc
+      WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
     ) ASC NULLS LAST`);
   }
   orderParts.push(sql`d.updated_at DESC`);
@@ -520,13 +541,34 @@ export async function getHomepageDoctors(
     const minDistanceSql = sql`(
       SELECT MIN(
         6371 * acos(
-          cos(radians(${userLat})) * cos(radians(COALESCE(cp.lat, ap.lat)))
-          * cos(radians(COALESCE(cp.lng, ap.lng)) - radians(${userLng}))
-          + sin(radians(${userLat})) * sin(radians(COALESCE(cp.lat, ap.lat)))
+          cos(radians(${userLat})) * cos(radians(loc.lat))
+          * cos(radians(loc.lng) - radians(${userLng}))
+          + sin(radians(${userLat})) * sin(radians(loc.lat))
         )
       )
-      FROM chambers cp LEFT JOIN areas ap ON ap.id = cp.area_id
-      WHERE cp.doctor_id = d.id AND cp.visible AND COALESCE(cp.lat, ap.lat) IS NOT NULL
+      FROM (
+        -- For each chamber, calculate its coordinate using the fallback chain:
+        -- Chamber -> Area -> Doctor's Hospital -> Area's District
+        SELECT
+          COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
+          COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
+        FROM chambers cp
+        LEFT JOIN areas ap ON ap.id = cp.area_id
+        LEFT JOIN districts dp ON dp.id = ap.district_id
+        -- Join the doctor's primary hospital to use as a fallback
+        LEFT JOIN hospitals hp ON hp.id = d.hospital_id
+        WHERE cp.doctor_id = d.id AND cp.visible
+
+        UNION ALL
+
+        -- The primary hospital itself is also a potential location
+        SELECT
+          hp.lat,
+          hp.lng
+        FROM hospitals hp
+        WHERE hp.id = d.hospital_id
+      ) loc
+      WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
     )`;
 
     orderSql = sql`
@@ -746,13 +788,34 @@ export async function searchDoctors(
         orderParts.push(sql`(
           SELECT MIN(
             6371 * acos(
-              cos(radians(${params.preferLat})) * cos(radians(COALESCE(cp.lat, ap.lat)))
-              * cos(radians(COALESCE(cp.lng, ap.lng)) - radians(${params.preferLng}))
-              + sin(radians(${params.preferLat})) * sin(radians(COALESCE(cp.lat, ap.lat)))
+              cos(radians(${params.preferLat})) * cos(radians(loc.lat))
+              * cos(radians(loc.lng) - radians(${params.preferLng}))
+              + sin(radians(${params.preferLat})) * sin(radians(loc.lat))
             )
           )
-          FROM chambers cp LEFT JOIN areas ap ON ap.id = cp.area_id
-          WHERE cp.doctor_id = d.id AND cp.visible AND COALESCE(cp.lat, ap.lat) IS NOT NULL
+          FROM (
+            -- For each chamber, calculate its coordinate using the fallback chain:
+            -- Chamber -> Area -> Doctor's Hospital -> Area's District
+            SELECT
+              COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
+              COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
+            FROM chambers cp
+            LEFT JOIN areas ap ON ap.id = cp.area_id
+            LEFT JOIN districts dp ON dp.id = ap.district_id
+            -- Join the doctor's primary hospital to use as a fallback
+            LEFT JOIN hospitals hp ON hp.id = d.hospital_id
+            WHERE cp.doctor_id = d.id AND cp.visible
+
+            UNION ALL
+
+            -- The primary hospital itself is also a potential location
+            SELECT
+              hp.lat,
+              hp.lng
+            FROM hospitals hp
+            WHERE hp.id = d.hospital_id
+          ) loc
+          WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
         ) ASC NULLS LAST`);
       }
       if (params.preferAreaId || params.preferDistrictId) {
