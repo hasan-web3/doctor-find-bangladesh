@@ -106,6 +106,23 @@ const SPECIALTIES = [
   ["urology", "ইউরোলজি", "Urology", "droplet", 4],
   ["oncology", "ক্যান্সার", "Oncology", "shield", 0],
   ["physiotherapy", "ফিজিওথেরাপি", "Physiotherapy", "run", 1],
+  ["general-laparoscopic-surgery", "জেনারেল ও ল্যাপারোস্কোপিক সার্জারি", "General & Laparoscopic Surgery", "Scissors", 2],
+  ["pulmonology-respiratory-medicine", "বক্ষব্যাধি ও অ্যাজমা", "Pulmonology & Respiratory Medicine", "Lungs", 3],
+  ["rheumatology", "বাতব্যথা ও রিউমাটোলজি", "Rheumatology", "Bone", 4],
+  ["physical-medicine-rehabilitation", "ফিজিকেল মেডিসিন ও রিহেবিলিটেশন", "Physical Medicine & Rehabilitation", "PersonStanding", 0],
+  ["neonatology", "নবজাতক রোগ (নিওনেটোলোজি)", "Neonatology", "Baby", 1],
+  ["neurosurgery", "নিউরোসার্জারি", "Neurosurgery", "BrainCircuit", 2],
+  ["cardiac-surgery", "কার্ডিয়াক সার্জারি (হৃদরোগ সার্জারি)", "Cardiac Surgery", "HeartPulse", 3],
+  ["pediatric-surgery", "শিশু সার্জারি", "Pediatric Surgery", "Scissors", 4],
+  ["vascular-surgery", "ভাস্কুলার সার্জারি", "Vascular Surgery", "Activity", 0],
+  ["plastic-cosmetic-surgery", "প্লাস্টিক ও কসমোটিক সার্জারি", "Plastic & Cosmetic Surgery", "Award", 1],
+  ["hematology", "রক্তরোগ (হেমাটোলজি)", "Hematology", "Droplets", 2],
+  ["pain-medicine-anesthesia", "পেইন মেডিসিন ও অ্যানেস্থেসিয়া", "Pain Medicine & Anesthesia", "Siren", 3],
+  ["nutrition-dietetics", "পুষ্টি ও ডায়েট", "Nutrition & Dietetics", "Carrot", 4],
+  ["critical-care-icu", "ক্রিটিক্যাল কেয়ার (আইসিইউ)", "Critical Care & ICU", "Bed", 0],
+  ["radiology-imaging", "রেডিওলজি ও ইমেজিং", "Radiology & Imaging", "Scan", 1],
+  ["hepatology", "হেপাটোলজি (লিভার বিশেষজ্ঞ)", "Hepatology", "Activity", 2],
+  ["infectious-diseases", "সংক্রামক ব্যাধি", "Infectious Diseases", "Bug", 3],
 ];
 
 const HOSPITALS = [
@@ -163,18 +180,18 @@ const HERO_SLIDES = [
 ];
 
 const DEFAULT_SETTINGS = {
-  brand_name: { bn: "ডক্টরবন্ধু", en: "DoctorBondhu" },
+  brand_name: { bn: "ডক্টরস ফাইন্ড বাংলাদেশ", en: "Doctors Find Bangladesh" },
   helpline: "01774739914",
   helpline_bn: "০১৭৭৪৭৩৯৯১৪",
   whatsapp: "8801774739914",
-  email: "info@doctorbondhu.com",
+  email: "info@doctorsfindbangladesh.com",
   address: { bn: "সোনাডাঙ্গা, খুলনা, বাংলাদেশ", en: "Sonadanga, Khulna, Bangladesh" },
   facebook: "",
   youtube: "",
   instagram: "",
   logo_url: "",
-  seo_title_template: { bn: "%s | ডক্টরবন্ধু", en: "%s | DoctorBondhu" },
-  seo_default_title: { bn: "খুলনার সেরা ডাক্তার খুঁজুন | ডক্টরবন্ধু", en: "Find the Best Doctors in Khulna | DoctorBondhu" },
+  seo_title_template: { bn: "%s | DFBD", en: "%s | DFBD" },
+  seo_default_title: { bn: "খুলনার সেরা ডাক্তার খুঁজুন | ডক্টরস ফাইন্ড বাংলাদেশ", en: "Find the Best Doctors in Khulna | Doctors Find Bangladesh" },
   seo_default_description: {
     bn: "খুলনার যাচাইকৃত বিশেষজ্ঞ ডাক্তার এলাকা ও বিভাগ অনুযায়ী খুঁজুন এবং সহজে অ্যাপয়েন্টমেন্ট নিন। চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি এক জায়গায়।",
     en: "Find verified specialist doctors in Khulna by area and specialty, and book appointments easily. Chamber addresses, schedules and visit fees in one place.",

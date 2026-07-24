@@ -70,7 +70,7 @@ export function DistrictsManager({
           <thead>
             <tr>
               {["জেলা", "English", "Slug", "এলাকা", "স্ট্যাটাস", "অ্যাকশন"].map((h) => (
-                <th key={h} className="border-b border-line px-3.5 py-3.5 text-right text-[12.5px] font-semibold text-ink-ghost">{h}</th>
+                <th key={h} className="border-b border-line px-3.5 py-3.5 text-left text-[12.5px] font-semibold text-ink-ghost">{h}</th>
               ))}
             </tr>
           </thead>
