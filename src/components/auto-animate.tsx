@@ -10,6 +10,8 @@ interface AutoAnimateProps {
   className?: string;
 }
 
+// test commit
+
 export function AutoAnimate({
   as: Component = "div",
   children,
