@@ -16,10 +16,13 @@ import { localeHref } from "@/lib/i18n";
 // revalidateTag("sitemap") from src/lib/revalidate.ts for instant refresh.
 export const revalidate = 3600;
 
-// Google accepts up to 50 000 URLs per sub-sitemap. We chunk at 40 000 to
-// leave headroom for the hreflang duplication (each logical entry emits two
-// <url> elements, one per locale — the count Next sees == entries.length).
-const URLS_PER_SHARD = 40_000;
+// Google accepts up to 50 000 URLs OR 50 MB per sub-sitemap — whichever hits
+// first. Our entries carry an hreflang cluster with three alternates each,
+// so a single <url> block averages ~600 bytes; at 40k URLs a shard weighed
+// ~24 MB and Vercel's ISR fallback capped at 19 MB, failing the build with
+// FALLBACK_BODY_TOO_LARGE. Chunking at 8 000 URLs (~5 MB per shard) keeps
+// every file safely under Vercel's cap AND under Google's own 50 MB limit.
+const URLS_PER_SHARD = 8_000;
 
 // Semantic sub-sitemap IDs. generateSitemaps() returns these to Next, which
 // wires up an index at /sitemap.xml with children at /sitemap/<id>.xml.
