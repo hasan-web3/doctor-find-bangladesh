@@ -56,10 +56,10 @@ const appointmentSchema = z.object({
 export async function submitAppointment(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
   const ip = await clientIp();
   if (!rateLimit(`appt:${ip}`, 5, 10 * 60_000)) {
-    return { ok: false, message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" };
+    return { ok: false, message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন। / Too many attempts. Please try again in a few minutes." };
   }
   if (!(await verifyRecaptcha(formData.get("recaptcha_token") as string | null))) {
-    return { ok: false, message: "স্প্যাম যাচাই ব্যর্থ। পেজ রিলোড করে আবার চেষ্টা করুন।" };
+    return { ok: false, message: "স্প্যাম যাচাই ব্যর্থ। পেজ রিলোড করে আবার চেষ্টা করুন। / Spam check failed. Please reload the page and try again." };
   }
 
   const parsed = appointmentSchema.safeParse({
@@ -123,10 +123,10 @@ const leadSchema = z.object({
 export async function submitLead(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
   const ip = await clientIp();
   if (!rateLimit(`lead:${ip}`, 5, 10 * 60_000)) {
-    return { ok: false, message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" };
+    return { ok: false, message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন। / Too many attempts. Please try again in a few minutes." };
   }
   if (!(await verifyRecaptcha(formData.get("recaptcha_token") as string | null))) {
-    return { ok: false, message: "স্প্যাম যাচাই ব্যর্থ। পেজ রিলোড করে আবার চেষ্টা করুন।" };
+    return { ok: false, message: "স্প্যাম যাচাই ব্যর্থ। পেজ রিলোড করে আবার চেষ্টা করুন। / Spam check failed. Please reload the page and try again." };
   }
 
   const parsed = leadSchema.safeParse({
