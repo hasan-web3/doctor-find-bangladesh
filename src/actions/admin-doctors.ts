@@ -1,11 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import { and, eq, ne, notInArray } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray } from "drizzle-orm";
 import { db, chambers, doctorSpecialties, doctors } from "@/db";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { revalidatePublic } from "@/lib/revalidate";
+import { revalidateDoctor } from "@/lib/revalidate";
 import { uploadImage, destroyImage } from "@/lib/storage";
 import { slugify } from "@/lib/slugify";
 import { recordSlugChange } from "@/lib/seo";
@@ -260,14 +260,20 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
   }
 
   await audit(existing ? "update" : "create", "doctors", doctorId, { name: doc.name.bn, slug });
-  revalidatePublic(["doctors", "specialties", "areas", "hospitals"]);
+  // Bust the exact URLs a visitor might have cached, plus the sitemap.
+  // On rename, both old and new slug paths are purged so the previous URL
+  // doesn't keep serving a stale 200 until natural TTL expiry.
+  revalidateDoctor({
+    slug,
+    oldSlug: existing?.slug ?? null,
+  });
   return { ok: true, message: existing ? "ডাক্তারের তথ্য আপডেট হয়েছে" : "নতুন ডাক্তার যুক্ত হয়েছে", id: doctorId };
 }
 
 export async function deleteDoctor(id: number): Promise<ActionResult> {
   await requireSession();
   const [doc] = await db
-    .select({ photoKey: doctors.photoKey, name: doctors.name })
+    .select({ slug: doctors.slug, photoKey: doctors.photoKey, name: doctors.name })
     .from(doctors)
     .where(eq(doctors.id, id))
     .limit(1);
@@ -275,8 +281,35 @@ export async function deleteDoctor(id: number): Promise<ActionResult> {
   await destroyImage(doc.photoKey);
   await db.delete(doctors).where(eq(doctors.id, id));
   await audit("delete", "doctors", id, { name: doc.name?.bn });
-  revalidatePublic(["doctors", "specialties", "areas", "hospitals"]);
+  revalidateDoctor({ slug: doc.slug });
   return { ok: true, message: "ডাক্তার মুছে ফেলা হয়েছে" };
+}
+
+// Bulk delete — same guarantees as deleteDoctor, in one round-trip per shard:
+// R2 photos are destroyed in parallel, then a single SQL DELETE tears down
+// the doctor rows (chambers / specialties / appointments / promotions /
+// reviews cascade via FK ON DELETE CASCADE — see src/db/schema.ts).
+export async function deleteDoctors(ids: number[]): Promise<ActionResult & { deleted: number }> {
+  await requireSession();
+  const clean = Array.from(new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)));
+  if (clean.length === 0) return { ok: false, message: "কোনো ডাক্তার নির্বাচন করা হয়নি", deleted: 0 };
+
+  const rows = await db
+    .select({ id: doctors.id, slug: doctors.slug, photoKey: doctors.photoKey, name: doctors.name })
+    .from(doctors)
+    .where(inArray(doctors.id, clean));
+  if (rows.length === 0) return { ok: false, message: "ডাক্তার খুঁজে পাওয়া যায়নি", deleted: 0 };
+
+  // R2 first: if an object destroy fails we still want the DB row gone, but
+  // parallelising means one hanging bucket call doesn't block the others.
+  await Promise.allSettled(rows.map((r) => destroyImage(r.photoKey)));
+  await db.delete(doctors).where(inArray(doctors.id, rows.map((r) => r.id)));
+
+  for (const r of rows) await audit("delete", "doctors", r.id, { name: r.name?.bn });
+  // Purge each deleted slug's public URLs individually — otherwise Vercel's
+  // edge keeps serving cached 200s for the (now-gone) doctor pages.
+  for (const r of rows) revalidateDoctor({ slug: r.slug });
+  return { ok: true, message: `${rows.length} জন ডাক্তার মুছে ফেলা হয়েছে`, deleted: rows.length };
 }
 
 import { type DoctorInitial } from "@/app/admin/doctors/doctor-form";

@@ -18,7 +18,10 @@ const LOCALE_COOKIE = "NEXT_LOCALE";
 const AREA_COOKIE = "db_area";
 
 // Paths that are locale-neutral and must never be rewritten.
-const NEUTRAL = /^\/(admin|admin-login|api|_next|sitemap\.xml|robots\.txt|icon\.svg|favicon\.ico)/;
+// `sitemap` (no extension anchor) covers both /sitemap.xml (legacy) and
+// /sitemap/<id>.xml sub-sitemaps emitted by generateSitemaps() — the locale
+// rewrite must never touch these or Google gets 404s.
+const NEUTRAL = /^\/(admin|admin-login|api|_next|sitemap|robots\.txt|icon\.svg|favicon\.ico)/;
 
 // Paths that should not trigger geo-detection (e.g. image assets)
 const NO_GEO = /\.(jpg|jpeg|png|svg|webp|ico|txt)$/;
@@ -142,5 +145,5 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|txt)).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|txt|xml)).*)"],
 };

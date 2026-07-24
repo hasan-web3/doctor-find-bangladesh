@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { getDoctor } from "@/actions/admin-doctors";
+import { useMemo, useState, useTransition } from "react";
+import { getDoctor, deleteDoctors } from "@/actions/admin-doctors";
 import { type DoctorInitial, DoctorForm } from "./doctor-form";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { StatusBadge } from "@/components/admin/ui";
@@ -68,6 +68,48 @@ export function DoctorsList({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<DoctorInitial | null>(null);
   const [modalMode, setModalMode] = useState<"add" | "edit">("add");
+
+  // Multi-select state. Keyed by doctor id (Set for O(1) toggle). Reset when
+  // the visible rows change (page nav or filter switch) so a stale selection
+  // never leaks into a different page.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, startDelete] = useTransition();
+
+  const visibleIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  const toggleOne = (id: number, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleAll = (on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) for (const id of visibleIds) next.add(id);
+      else for (const id of visibleIds) next.delete(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const performBulkDelete = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    startDelete(async () => {
+      await deleteDoctors(ids);
+      setConfirmOpen(false);
+      clearSelection();
+      router.refresh();
+    });
+  };
 
   const handleAddNew = () => {
     setEditingDoctor(NEW_DOCTOR);
@@ -134,10 +176,43 @@ export function DoctorsList({
         </div>
       </div>
 
+      {someSelected && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5">
+          <div className="text-sm font-semibold text-brand-800">
+            {bnNum(selected.size)} জন ডাক্তার নির্বাচিত
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="rounded-lg border border-line bg-white px-3 py-1.5 text-[12.5px] font-semibold text-ink-mute hover:bg-page"
+            >
+              বাতিল
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              className="rounded-lg bg-[#DC2626] px-3.5 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#B91C1C]"
+            >
+              নির্বাচিতগুলো মুছুন
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-2xl border border-line bg-white p-1.5">
-        <table className="w-full min-w-[680px] border-collapse">
+        <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr>
+              <th className="w-10 border-b border-line px-3.5 py-3 text-left">
+                <input
+                  type="checkbox"
+                  aria-label="সব নির্বাচন করুন"
+                  checked={allSelected}
+                  onChange={(e) => toggleAll(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer accent-brand-600"
+                />
+              </th>
               {["ডাক্তার", "বিভাগ", "থানা / উপজেলা", "স্ট্যাটাস", "ফিচার্ড", "প্রমোশন মেয়াদ", "অ্যাকশন"].map((h) => (
                 <th key={h} className="border-b border-line px-3.5 py-3 text-left text-[12.5px] font-semibold text-ink-ghost">{h}</th>
               ))}
@@ -145,7 +220,16 @@ export function DoctorsList({
           </thead>
           <tbody>
             {rows.map((d) => (
-              <tr key={d.id}>
+              <tr key={d.id} className={selected.has(d.id) ? "bg-brand-50/40" : ""}>
+                <td className="border-b border-[#F1F5F9] px-3.5 py-3">
+                  <input
+                    type="checkbox"
+                    aria-label={`${d.name_bn} নির্বাচন করুন`}
+                    checked={selected.has(d.id)}
+                    onChange={(e) => toggleOne(d.id, e.target.checked)}
+                    className="h-4 w-4 cursor-pointer accent-brand-600"
+                  />
+                </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">
                   <button onClick={() => handleEdit(d.id)} className="hover:text-brand-600 text-left">
                     {d.name_bn}
@@ -186,7 +270,7 @@ export function DoctorsList({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-ink-ghost">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-ink-ghost">
                   কোনো ডাক্তার পাওয়া যায়নি। উপরের বাটন থেকে নতুন ডাক্তার যুক্ত করুন।
                 </td>
               </tr>
@@ -227,6 +311,46 @@ export function DoctorsList({
           />
         )}
       </FullPageModal>
+
+      {/* Bulk-delete confirmation. Server action wipes each doctor's R2 photo
+          and cascades chambers / specialties / reviews / appointments via
+          Postgres FK ON DELETE CASCADE (see src/db/schema.ts). Irreversible. */}
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !isDeleting && setConfirmOpen(false)}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h3 className="mb-2 font-heading text-lg font-bold text-ink">নিশ্চিত মুছবেন?</h3>
+            <p className="mb-4 text-sm leading-relaxed text-ink-mute">
+              নির্বাচিত <b>{bnNum(selected.size)} জন ডাক্তার</b> এবং তাদের সব চেম্বার, ছবি (Cloudflare R2), স্পেশালিটি ও রিভিউ সম্পূর্ণভাবে মুছে যাবে। এটি বাতিল করা যাবে না।
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink-mute hover:bg-page disabled:opacity-50"
+              >
+                না
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={performBulkDelete}
+                className="rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-bold text-white hover:bg-[#B91C1C] disabled:opacity-60"
+              >
+                {isDeleting ? "মুছছি..." : "হ্যাঁ, মুছে ফেলুন"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
