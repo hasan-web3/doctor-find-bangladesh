@@ -81,6 +81,9 @@ export type DoctorCardData = {
 export type DoctorFull = Omit<DoctorCardData, "hospital"> & {
   bio: string; gender: string | null; experience_years: number | null;
   patients_served: string; photo_key: string | null; active: boolean;
+  // Locale-resolved list of conditions this doctor treats (stored in DB as
+  // bilingual `{ bn: [], en: [] }` JSONB). Empty array when unset.
+  treated_conditions: string[];
   meta_title: string; meta_description: string;
   // Verified social profiles for JSON-LD `sameAs` (Knowledge Panel eligibility).
   social_links: SocialLinks;
@@ -758,11 +761,13 @@ export const getDoctorBySlug = unstable_cache(
       patients_ml: MLText; photo_key: string | null; active: boolean;
       mt_ml: MLText; md_ml: MLText; hospital_id: number | null;
       social_links: SocialLinks | null;
+      treated_conditions: { bn?: string[]; en?: string[] } | null;
     }>(sql`
       SELECT ${cardSelect},
         d.bio AS bio_ml, d.gender, d.experience_years, d.patients_served AS patients_ml, d.photo_key,
         d.active, d.hospital_id, d.meta_title AS mt_ml, d.meta_description AS md_ml,
-        d.social_links
+        d.social_links,
+        d.treated_conditions
       ${cardFrom} WHERE d.slug = ${slug}
     `);
     const doc = docRes.rows[0];
@@ -827,6 +832,15 @@ export const getDoctorBySlug = unstable_cache(
       gender: doc.gender,
       experience_years: doc.experience_years,
       patients_served: ml(doc.patients_ml, locale),
+      // Locale-resolved conditions list; fall back to the other locale so a
+      // doctor who only entered Bangla still shows something on /en/.
+      treated_conditions: (() => {
+        const tc = doc.treated_conditions ?? {};
+        const primary = (locale === "bn" ? tc.bn : tc.en) ?? [];
+        if (primary.length) return primary.filter(Boolean);
+        const fallback = (locale === "bn" ? tc.en : tc.bn) ?? [];
+        return fallback.filter(Boolean);
+      })(),
       photo_key: doc.photo_key,
       active: doc.active,
       meta_title: ml(doc.mt_ml, locale),

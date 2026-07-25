@@ -16,6 +16,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
   const { rows: docRows } = await db.execute<{
     id: number; slug: string; name: MLRaw; degrees: MLRaw; bio: MLRaw;
     gender: string | null; experience_years: number | null; patients_served: MLRaw;
+    treated_conditions: { bn?: string[]; en?: string[] } | null;
     hospital_id: number | null;
     verified: boolean; featured: boolean; active: boolean;
     meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
@@ -72,6 +73,10 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
     gender: doc.gender,
     experience_years: doc.experience_years,
     patients_served: toML(doc.patients_served),
+    treated_conditions: {
+      bn: (doc.treated_conditions?.bn ?? []).join("\n"),
+      en: (doc.treated_conditions?.en ?? []).join("\n"),
+    },
     hospital_id: doc.hospital_id ?? null,
     verified: doc.verified,
     featured: doc.featured,

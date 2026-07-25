@@ -48,6 +48,10 @@ type ChamberDraft = {
 export type DoctorInitial = {
   id?: number; name: ML; slug: string; degrees: ML; bio: ML;
   gender: string | null; experience_years: number | null; patients_served: ML;
+  // Bilingual list of conditions the doctor treats — free-text textarea
+  // where each line becomes one <li> on the public profile. Kept as ML so
+  // bn and en can be edited side-by-side.
+  treated_conditions: ML;
   hospital_id: number | null;
   verified: boolean; featured: boolean; active: boolean;
   meta_title: ML; meta_description: ML; photo_url: string | null;
@@ -272,6 +276,16 @@ export function DoctorForm({
                 hint="যেমন: ১০,০০০+ / 10,000+"
                 value={form.patients_served}
                 onChange={(v) => set("patients_served", v)}
+              />
+            </div>
+            <div className="mt-4">
+              <MLInput
+                label="যে সকল রোগের চিকিৎসা করা হয়"
+                hint="প্রতি লাইনে একটি রোগ/সমস্যা লিখুন। এটি পাবলিক প্রোফাইলে চেকমার্ক লিস্ট হিসেবে দেখাবে।"
+                value={form.treated_conditions}
+                onChange={(v) => set("treated_conditions", v)}
+                textarea
+                rows={8}
               />
             </div>
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

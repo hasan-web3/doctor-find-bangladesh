@@ -217,7 +217,33 @@ export default async function DoctorDetailPage({ params }: Props) {
                 </>
               )}
         </div>
-        
+
+        {/* Treated conditions — appears between bio and chambers so the
+            reader sees "who + why + where" in that funnel order. Chambers
+            still sit above reviews so booking stays priority. Rendered as
+            a 1→2→3-column grid so long lists collapse into scannable
+            columns on desktop without stretching the card vertically. */}
+        {doc.treated_conditions.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-line bg-white p-6">
+            <h2 className="mb-4 mt-0 font-heading text-[22px] md:text-[26px] font-bold text-ink">
+              {d.treated_conditions_title}
+            </h2>
+            <ul className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {doc.treated_conditions.map((cond, i) => (
+                <li key={i} className="flex items-start gap-2 text-[14.5px] text-ink-mute">
+                  <span
+                    aria-hidden
+                    className="mt-[3px] inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded bg-brand-600 text-[11px] font-bold text-white"
+                  >
+                    ✓
+                  </span>
+                  <span>{cond}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="mt-4 rounded-2xl border border-line bg-white p-6">
               <h2 className="mb-4 mt-0 font-heading text-[22px] md:text-[26px] font-bold text-ink">{d.chambers_schedule}</h2>
               {doc.chambers.length > 0 ? (

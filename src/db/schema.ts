@@ -166,6 +166,10 @@ export const doctors = pgTable(
     gender: text("gender"),
     experienceYears: integer("experience_years"),
     patientsServed: jsonb("patients_served").$type<ML>().notNull().default(mlEmpty),
+    // Bilingual list of conditions this doctor treats — rendered on the
+    // public profile as a checkbox list. Shape: { bn: string[], en: string[] }.
+    // Each locale's array is independent (counts may differ).
+    treatedConditions: jsonb("treated_conditions").$type<{ bn?: string[]; en?: string[] }>().notNull().default(sql`'{}'::jsonb`),
     // Primary hospital affiliation (v2). Chambers stay independent physical locations.
     hospitalId: bigint("hospital_id", { mode: "number" }).references(() => hospitals.id, { onDelete: "set null" }),
     photoKey: text("photo_key"),

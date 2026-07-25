@@ -62,6 +62,9 @@ const doctorSchema = z.object({
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   experience_years: z.coerce.number().nullable().optional(),
   patients_served: mlSchema,
+  // Bilingual conditions list — one item per line. Stored as { bn: [], en: [] }
+  // after splitting on newlines and stripping empty lines.
+  treated_conditions: mlSchema,
   hospital_id: z.coerce.number().nullable().optional(),
   verified: z.boolean().default(false),
   featured: z.boolean().default(false),
@@ -145,6 +148,16 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
     photoChanged = true;
   }
 
+  // Split the free-text ML pair into arrays: one line per condition, empty
+  // lines stripped. Storing as JSONB { bn: [], en: [] } lets each locale's
+  // count and order vary independently while staying a single column.
+  const splitList = (v: string): string[] =>
+    v.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const treatedConditions = {
+    bn: splitList(doc.treated_conditions.bn),
+    en: splitList(doc.treated_conditions.en),
+  };
+
   let doctorId: number;
   if (existing) {
     const patch: Partial<typeof doctors.$inferInsert> = {
@@ -155,6 +168,7 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
       gender: doc.gender ?? null,
       experienceYears: doc.experience_years ?? null,
       patientsServed: doc.patients_served,
+      treatedConditions,
       hospitalId: doc.hospital_id ?? null,
       verified: doc.verified,
       featured: doc.featured,
@@ -181,6 +195,7 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
         gender: doc.gender ?? null,
         experienceYears: doc.experience_years ?? null,
         patientsServed: doc.patients_served,
+        treatedConditions,
         hospitalId: doc.hospital_id ?? null,
         verified: doc.verified,
         featured: doc.featured,
@@ -325,6 +340,7 @@ export async function getDoctor(id: number): Promise<DoctorInitial | null> {
   const { rows: docRows } = await db.execute<{
     id: number; slug: string; name: MLRaw; degrees: MLRaw; bio: MLRaw;
     gender: string | null; experience_years: number | null; patients_served: MLRaw;
+    treated_conditions: { bn?: string[]; en?: string[] } | null;
     hospital_id: number | null;
     verified: boolean; featured: boolean; active: boolean;
     meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
@@ -359,6 +375,12 @@ export async function getDoctor(id: number): Promise<DoctorInitial | null> {
     gender: doc.gender,
     experience_years: doc.experience_years,
     patients_served: toML(doc.patients_served),
+    // Hydrate the JSONB arrays back into newline-joined strings for the
+    // ML textarea input. Save action re-splits them on submit.
+    treated_conditions: {
+      bn: (doc.treated_conditions?.bn ?? []).join("\n"),
+      en: (doc.treated_conditions?.en ?? []).join("\n"),
+    },
     hospital_id: doc.hospital_id ?? null,
     verified: doc.verified,
     featured: doc.featured,
