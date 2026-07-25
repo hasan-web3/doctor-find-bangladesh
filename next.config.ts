@@ -118,11 +118,13 @@ const nextConfig: NextConfig = {
   },
   // Server Actions default to a 1 MB request body — every admin upload
   // (doctor photo, hospital gallery, blog cover, brand logos, slides…) ships
-  // as a base64 data-URL inside a Server Action, which easily crosses that
-  // cap. 10 MB matches the client-side 8 MB per-file gate in <ImageUpload>
-  // (src/components/admin/ui.tsx) with headroom for base64's ~33% inflation
-  // and the form envelope.
-  experimental: { serverActions: { bodySizeLimit: "10mb" } },
+  // as a base64 data-URL inside a Server Action. Client-side compression
+  // (src/lib/image-compress.ts) shrinks even a 15 MB phone photo down to
+  // ~200-500 KB WebP before it reaches this boundary, but multi-image
+  // forms (hospital gallery) can batch several at once, so 4 MB gives room
+  // for a handful of compressed images per submit without exposing us to
+  // large-body abuse.
+  experimental: { serverActions: { bodySizeLimit: "4mb" } },
   poweredByHeader: false, // don't advertise "X-Powered-By: Next.js"
   // Server-only Node packages that don't need webpack bundling. Leaving them
   // external means Next.js `require`s them straight from node_modules at

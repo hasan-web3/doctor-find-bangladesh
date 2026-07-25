@@ -190,11 +190,22 @@ export function HospitalForm({
                             accept="image/*"
                             multiple
                             className="hidden"
-                            onChange={(e) => {
+                            onChange={async (e) => {
+                            // Same compression pipeline as ImageUpload — the
+                            // gallery picker accepts multi-file, so this loop
+                            // shrinks each in turn before adding to state.
+                            const { compressImage } = await import("@/lib/image-compress");
                             for (const file of Array.from(e.target.files || [])) {
-                                const reader = new FileReader();
-                                reader.onload = () => setGalleryAdd((prev) => [...prev, String(reader.result)]);
-                                reader.readAsDataURL(file);
+                                if (!file.type.startsWith("image/")) continue;
+                                try {
+                                    const dataUrl = await compressImage(file);
+                                    setGalleryAdd((prev) => [...prev, dataUrl]);
+                                } catch {
+                                    // fall back to raw read if compression fails
+                                    const reader = new FileReader();
+                                    reader.onload = () => setGalleryAdd((prev) => [...prev, String(reader.result)]);
+                                    reader.readAsDataURL(file);
+                                }
                             }
                             e.target.value = "";
                             }}

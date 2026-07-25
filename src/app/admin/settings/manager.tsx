@@ -117,6 +117,11 @@ export function SettingsManager({
                 currentUrl={form.favicon_url || null}
                 label="Favicon"
                 aspect="aspect-square"
+                // Favicons live at their intrinsic size and browsers cache
+                // PNGs more reliably than WebP for tab icons. Also clamp
+                // the compression max to 128px so we never store an oversized
+                // asset that the browser downscales anyway.
+                compress={{ forceMime: "image/png", maxWidth: 128, maxHeight: 128, quality: 0.9 }}
                 onChange={(dataUrl) => setForm({ ...form, favicon_url: dataUrl })}
                 onRemove={() => setForm({ ...form, favicon_url: "" })}
               />

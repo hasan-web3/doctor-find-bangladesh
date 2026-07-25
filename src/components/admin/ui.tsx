@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { RichTextEditor } from "./rich-text";
+import { compressImage, type CompressOptions } from "@/lib/image-compress";
 
 // ---------- shared form primitives ----------
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
@@ -163,41 +164,64 @@ export function MLInput({
 }
 
 // ---------- reusable image upload (drag & drop / click) ----------
-// Emits a data URL upward; the server action uploads to Cloudinary and
-// destroys the previous asset. Used across all admin forms.
+// Emits a compressed data URL upward; the server action uploads to R2 and
+// destroys the previous asset. Used across every admin form.
+//
+// Compression: runs client-side in a <canvas> BEFORE the data URL crosses
+// the Server Action boundary. Typical shrink 4 MB → ~250 KB with no visible
+// quality loss (WebP @ 0.82). Callers can override the pipeline via the
+// `compress` prop — e.g. favicon slots force PNG output for browser-tab
+// caching parity.
 export function ImageUpload({
   currentUrl,
   onChange,
   onRemove,
   label = "ছবি",
   aspect = "aspect-square",
+  compress,
 }: {
   currentUrl: string | null;
   onChange: (dataUrl: string) => void;
   onRemove?: () => void;
   label?: string;
   aspect?: string;
+  compress?: CompressOptions | false; // pass `false` to opt out entirely
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const readFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       if (!file.type.startsWith("image/")) return;
-      if (file.size > 8 * 1024 * 1024) {
-        alert("ছবির সাইজ সর্বোচ্চ ৮ মেগাবাইট হতে পারবে");
+      // Client-side cap generous enough to accept phone-camera originals
+      // (usually 3–12 MB). Compression shrinks these to <500 KB before
+      // touching the server, so the R2 bill stays small.
+      if (file.size > 15 * 1024 * 1024) {
+        alert("ছবির সাইজ সর্বোচ্চ ১৫ মেগাবাইট হতে পারবে");
         return;
       }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = String(reader.result);
+      setBusy(true);
+      try {
+        const dataUrl =
+          compress === false
+            ? await new Promise<string>((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(String(r.result));
+                r.onerror = () => reject(r.error);
+                r.readAsDataURL(file);
+              })
+            : await compressImage(file, compress);
         setPreview(dataUrl);
         onChange(dataUrl);
-      };
-      reader.readAsDataURL(file);
+      } catch {
+        alert("ছবি প্রসেস করতে সমস্যা হয়েছে। অন্য ছবি দিয়ে চেষ্টা করুন।");
+      } finally {
+        setBusy(false);
+      }
     },
-    [onChange]
+    [onChange, compress]
   );
 
   const shown = preview || currentUrl;
@@ -233,6 +257,11 @@ export function ImageUpload({
             {label} আপলোড করতে ক্লিক করুন
             <br />
             <span className="text-xs">অথবা টেনে এনে ছাড়ুন</span>
+          </div>
+        )}
+        {busy && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[12.5px] font-semibold text-brand-700">
+            ছবি অপ্টিমাইজ হচ্ছে…
           </div>
         )}
         <input
