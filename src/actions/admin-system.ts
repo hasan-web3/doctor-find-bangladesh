@@ -22,7 +22,18 @@ import {
 } from "@/lib/integrations";
 import { testSmtp } from "@/lib/mailer";
 import { sendNotification } from "@/lib/mailer";
+import { uploadImage, destroyImage } from "@/lib/storage";
 import type { ActionResult } from "./admin-doctors";
+
+// Keys whose value is a logo asset; if the incoming value is a data-URL we
+// upload to R2, otherwise we pass through (raw URL or empty string). The
+// sibling `<name>_key` field carries the R2 object key so the previous
+// object can be destroyed on replace.
+const LOGO_KEYS = [
+  { url: "logo_desktop_url", key: "logo_desktop_key", folder: "branding" },
+  { url: "logo_mobile_url", key: "logo_mobile_key", folder: "branding" },
+  { url: "favicon_url", key: "favicon_key", folder: "branding" },
+] as const;
 
 // ---------------- appointments ----------------
 export async function updateAppointmentStatus(
@@ -184,7 +195,42 @@ export async function regenerateSitemap(): Promise<ActionResult> {
 // ---------------- site settings ----------------
 export async function saveSettings(entries: Record<string, unknown>): Promise<ActionResult> {
   await requireSession();
-  for (const [key, value] of Object.entries(entries)) {
+
+  // Logo pipeline: intercept the three logo URL fields. If the incoming
+  // value is a data:image URL, upload it to R2 (destroying the previous
+  // object first) and replace the entry with the public URL. Non-data
+  // values (existing URLs, empty string clears) fall through untouched.
+  // The R2 object key is stashed under `<name>_key` so the next replace
+  // can destroy the old object without leaking storage.
+  const patched: Record<string, unknown> = { ...entries };
+  for (const { url, key, folder } of LOGO_KEYS) {
+    const incoming = patched[url];
+    if (typeof incoming !== "string" || !incoming.startsWith("data:image")) continue;
+    const [existing] = await db
+      .select({ value: siteSettings.value })
+      .from(siteSettings)
+      .where(eq(siteSettings.key, key))
+      .limit(1);
+    const prevKey = typeof existing?.value === "string" ? existing.value : null;
+    const up = await uploadImage(incoming, folder, prevKey);
+    patched[url] = up.url;
+    patched[key] = up.key;
+  }
+  // Explicit empty-string clear: also drop the sibling R2 object.
+  for (const { url, key } of LOGO_KEYS) {
+    if (patched[url] === "" && !(key in patched)) {
+      const [existing] = await db
+        .select({ value: siteSettings.value })
+        .from(siteSettings)
+        .where(eq(siteSettings.key, key))
+        .limit(1);
+      const prevKey = typeof existing?.value === "string" ? existing.value : null;
+      if (prevKey) await destroyImage(prevKey);
+      patched[key] = "";
+    }
+  }
+
+  for (const [key, value] of Object.entries(patched)) {
     await db
       .insert(siteSettings)
       .values({ key, value: value as never })
@@ -193,7 +239,7 @@ export async function saveSettings(entries: Record<string, unknown>): Promise<Ac
         set: { value: value as never, updatedAt: new Date() },
       });
   }
-  await audit("update", "site_settings", null, { keys: Object.keys(entries) });
+  await audit("update", "site_settings", null, { keys: Object.keys(patched) });
   revalidatePublic(["settings"]);
   return { ok: true, message: "সেটিংস সংরক্ষণ হয়েছে" };
 }
@@ -369,7 +415,7 @@ export async function deleteUser(id: number): Promise<ActionResult> {
 // ---------------- misc ----------------
 export async function sendTestEmail(): Promise<ActionResult> {
   await requireSession();
-  const ok = await sendNotification("ডক্টরবন্ধু টেস্ট ইমেইল", "<p>SMTP ইন্টিগ্রেশন সঠিকভাবে কাজ করছে।</p>");
+  const ok = await sendNotification("ডক্টরস ফাইন্ড বাংলাদেশ টেস্ট ইমেইল", "<p>SMTP ইন্টিগ্রেশন সঠিকভাবে কাজ করছে।</p>");
   return ok
     ? { ok: true, message: "টেস্ট ইমেইল পাঠানো হয়েছে" }
     : { ok: false, message: "ইমেইল পাঠানো যায়নি। SMTP কনফিগারেশন যাচাই করুন।" };

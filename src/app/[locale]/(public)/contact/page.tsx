@@ -22,8 +22,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: locale === "bn" ? "যোগাযোগ করুন" : "Contact Us",
     description:
       locale === "bn"
-        ? "ডক্টরবন্ধুর সাথে যোগাযোগ করুন। রোগীদের সহায়তা ও ডাক্তারদের প্রোফাইল যুক্ত করার জন্য হেল্পলাইন, হোয়াটসঅ্যাপ ও মেসেজ।"
-        : "Contact DoctorBondhu. Helpline, WhatsApp and messaging for patient support and doctor profile listing.",
+        ? "ডক্টরস ফাইন্ড বাংলাদেশর সাথে যোগাযোগ করুন। রোগীদের সহায়তা ও ডাক্তারদের প্রোফাইল যুক্ত করার জন্য হেল্পলাইন, হোয়াটসঅ্যাপ ও মেসেজ।"
+        : "Contact Doctors Find Bangladesh. Helpline, WhatsApp and messaging for patient support and doctor profile listing.",
   });
 }
 

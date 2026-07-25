@@ -116,6 +116,13 @@ const nextConfig: NextConfig = {
     // Next, so a re-uploaded R2 object under the same key still busts via query.
     minimumCacheTTL: 60 * 60 * 24 * 365,
   },
+  // Server Actions default to a 1 MB request body — every admin upload
+  // (doctor photo, hospital gallery, blog cover, brand logos, slides…) ships
+  // as a base64 data-URL inside a Server Action, which easily crosses that
+  // cap. 10 MB matches the client-side 8 MB per-file gate in <ImageUpload>
+  // (src/components/admin/ui.tsx) with headroom for base64's ~33% inflation
+  // and the form envelope.
+  experimental: { serverActions: { bodySizeLimit: "10mb" } },
   poweredByHeader: false, // don't advertise "X-Powered-By: Next.js"
   // Server-only Node packages that don't need webpack bundling. Leaving them
   // external means Next.js `require`s them straight from node_modules at

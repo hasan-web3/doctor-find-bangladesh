@@ -28,7 +28,7 @@ export function LoginForm({ next }: { next: string }) {
               type="email"
               required
               autoComplete="username"
-              placeholder="admin@doctorbondhu.com"
+              placeholder="admin@doctorsfindbd.com"
               className="w-full rounded-[11px] border border-line px-3.5 py-3 text-[15px] outline-none focus:border-brand-600"
             />
           </div>

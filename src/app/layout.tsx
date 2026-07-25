@@ -49,6 +49,12 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(siteUrl()),
     title: t(settings.seo_default_title, "bn"),
     description: t(settings.seo_default_description, "bn"),
+    // Favicon: admin-uploaded PNG from R2 when set; otherwise Next.js falls
+    // back to the file-based /icon.svg in app/. Passing the URL explicitly
+    // wins over the file-based route.
+    ...(settings.favicon_url
+      ? { icons: { icon: settings.favicon_url, apple: settings.favicon_url } }
+      : {}),
     // GSC verification tag: paste the meta token as GOOGLE_SITE_VERIFICATION env
     // once and Next inlines it into the head of every page. Omit until the
     // token is available so we don't emit an empty content attribute.

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Logo, Icon } from "@/components/icons";
 import { getSettings } from "@/lib/settings";
 import { getDict } from "@/lib/dict";
@@ -46,14 +47,37 @@ export async function Footer({ locale }: { locale: Locale }) {
       <div className="mx-auto grid max-w-site grid-cols-1 gap-[34px] px-5 pt-[52px] sm:grid-cols-2 min-[900px]:grid-cols-[1.6fr_1fr_1fr_1fr_1.2fr]">
         <div>
           <div className="mb-3.5 flex items-center gap-[9px]">
-            <Logo light />
-            <span className="font-heading text-[21px] font-bold text-white">
-              {locale === "bn" ? (
-                <>ডক্টর<span className="text-brand-300">বন্ধু</span></>
-              ) : (
-                <>Doctor<span className="text-brand-300">Bondhu</span></>
-              )}
-            </span>
+            {settings.logo_desktop_url ? (
+              // Same desktop logo drives the footer; on mobile falls back to
+              // the square mark if uploaded, else to the SVG + text block.
+              <>
+                <Image
+                  src={settings.logo_desktop_url}
+                  alt={brand}
+                  width={180}
+                  height={44}
+                  sizes="(max-width: 640px) 0px, 180px"
+                  className="hidden h-11 w-auto object-contain sm:block"
+                />
+                {settings.logo_mobile_url ? (
+                  <Image
+                    src={settings.logo_mobile_url}
+                    alt={brand}
+                    width={44}
+                    height={44}
+                    sizes="(min-width: 641px) 0px, 44px"
+                    className="h-11 w-11 object-contain sm:hidden"
+                  />
+                ) : (
+                  <span className="font-heading text-[21px] font-bold text-white sm:hidden">{brand}</span>
+                )}
+              </>
+            ) : (
+              <>
+                <Logo light />
+                <span className="font-heading text-[21px] font-bold text-white">{brand}</span>
+              </>
+            )}
           </div>
           <p className="mb-4 max-w-[300px] text-sm leading-relaxed">{dynamicTagline}</p>
           <div className="flex flex-col gap-2">

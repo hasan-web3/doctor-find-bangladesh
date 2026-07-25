@@ -22,6 +22,9 @@ export default async function AdminSettingsPage() {
           youtube: settings.youtube,
           instagram: settings.instagram,
           logo_url: settings.logo_url,
+          logo_desktop_url: settings.logo_desktop_url,
+          logo_mobile_url: settings.logo_mobile_url,
+          favicon_url: settings.favicon_url,
           show_plans: settings.show_plans,
         }}
         plans={settings.plans.map((p) => ({

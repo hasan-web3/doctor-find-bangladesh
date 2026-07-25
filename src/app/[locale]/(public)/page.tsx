@@ -144,11 +144,11 @@ export default async function HomePage({ params }: Props) {
 
   const fordocSub = geoDistrictName
     ? (locale === "bn"
-        ? `প্রতিদিন ${bnPossessive(geoDistrictName)} হাজারো রোগী ডক্টরবন্ধুতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।`
-        : `Thousands of patients in ${geoDistrictName} search for doctors on DoctorBondhu every day. Get verified and featured to reach more of them.`)
+        ? `প্রতিদিন ${bnPossessive(geoDistrictName)} হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।`
+        : `Thousands of patients in ${geoDistrictName} search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them.`)
     : (locale === "bn"
-        ? "প্রতিদিন আপনার এলাকার হাজারো রোগী ডক্টরবন্ধুতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
-        : "Thousands of patients in your area search for doctors on DoctorBondhu every day. Get verified and featured to reach more of them.");
+        ? "প্রতিদিন আপনার এলাকার হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
+        : "Thousands of patients in your area search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them.");
 
   const displayedAreas = (
     geo.districtId

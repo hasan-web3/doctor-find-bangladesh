@@ -18,8 +18,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: locale === "bn" ? "আমাদের সম্পর্কে" : "About Us",
     description:
       locale === "bn"
-        ? "ডক্টরবন্ধু খুলনার একটি বিশ্বস্ত ডাক্তার ডিরেক্টরি। আমাদের লক্ষ্য ও মূল্যবোধ সম্পর্কে জানুন।"
-        : "DoctorBondhu is a trusted doctor directory for Khulna. Learn about our mission and values.",
+        ? "ডক্টরস ফাইন্ড বাংলাদেশ খুলনার একটি বিশ্বস্ত ডাক্তার ডিরেক্টরি। আমাদের লক্ষ্য ও মূল্যবোধ সম্পর্কে জানুন।"
+        : "Doctors Find Bangladesh is a trusted doctor directory for Khulna. Learn about our mission and values.",
   });
 }
 

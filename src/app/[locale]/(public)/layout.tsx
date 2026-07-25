@@ -54,6 +54,8 @@ export default async function PublicLayout({
           helplineDisplay={locale === "bn" ? settings.helpline_bn : settings.helpline}
           helpline={settings.helpline}
           brandName={brand}
+          logoDesktopUrl={settings.logo_desktop_url}
+          logoMobileUrl={settings.logo_mobile_url}
         />
         <GeoBanner
           areaName={geo.source === "ip-name" || geo.source === "ip-nearest" ? t(geo.areaName, locale) : null}

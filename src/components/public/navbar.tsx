@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Logo } from "@/components/icons";
@@ -15,6 +16,8 @@ export function Navbar({
   helplineDisplay,
   helpline,
   brandName,
+  logoDesktopUrl,
+  logoMobileUrl,
 }: {
   locale: Locale;
   d: Pick<Dict,
@@ -23,6 +26,8 @@ export function Navbar({
   helplineDisplay: string;
   helpline: string;
   brandName: string;
+  logoDesktopUrl: string;
+  logoMobileUrl: string;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -74,15 +79,42 @@ export function Navbar({
       {/* navbar */}
       <div className="sticky top-0 z-50 border-b border-line bg-white/90 backdrop-blur-[10px]">
         <div className="mx-auto flex max-w-site items-center gap-4 px-5 py-3">
-          <Link href={L("/")} className="flex items-center gap-[9px]">
-            <Logo />
-            <span className="font-heading text-[22px] font-bold text-ink">
-              {locale === "bn" ? (
-                <>ডক্টর<span className="text-brand-600">বন্ধু</span></>
-              ) : (
-                <>Doctor<span className="text-brand-600">Bondhu</span></>
-              )}
-            </span>
+          <Link href={L("/")} className="flex items-center gap-[9px]" aria-label={brandName}>
+            {/* Logo pipeline:
+                - Desktop upload (>=640px viewport) shown when set.
+                - Mobile upload (<640px) shown when set — lets admins upload a
+                  square mark for narrow viewports.
+                - Neither uploaded → fall back to the SVG mark + brand text.
+                The two <Image>s are wrapped in responsive-visibility classes
+                so only one paints per breakpoint (no CLS from swap). */}
+            {logoDesktopUrl ? (
+              <Image
+                src={logoDesktopUrl}
+                alt={brandName}
+                width={180}
+                height={44}
+                priority
+                sizes="(max-width: 640px) 0px, 180px"
+                className="hidden h-11 w-auto object-contain sm:block"
+              />
+            ) : null}
+            {logoMobileUrl ? (
+              <Image
+                src={logoMobileUrl}
+                alt={brandName}
+                width={44}
+                height={44}
+                priority
+                sizes="(min-width: 641px) 0px, 44px"
+                className="h-11 w-11 object-contain sm:hidden"
+              />
+            ) : null}
+            {!logoDesktopUrl && !logoMobileUrl && (
+              <>
+                <Logo />
+                <span className="font-heading text-[22px] font-bold text-ink">{brandName}</span>
+              </>
+            )}
             <span className="sr-only">{brandName}</span>
           </Link>
           <div className="flex-1" />
@@ -140,13 +172,7 @@ export function Navbar({
         )}
       >
         <div className="mb-3.5 flex items-center justify-between">
-          <span className="font-heading text-xl font-bold">
-            {locale === "bn" ? (
-              <>ডক্টর<span className="text-brand-600">বন্ধু</span></>
-            ) : (
-              <>Doctor<span className="text-brand-600">Bondhu</span></>
-            )}
-          </span>
+          <span className="font-heading text-xl font-bold text-ink">{brandName}</span>
           <button
             onClick={() => setOpen(false)}
             className="h-[38px] w-[38px] rounded-[9px] border border-line bg-white text-lg text-ink-mute"

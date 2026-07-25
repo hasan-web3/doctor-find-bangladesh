@@ -3,12 +3,19 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveSettings, sendTestEmail } from "@/actions/admin-system";
-import { Field, inputCls, Toast, MLInput, Toggle } from "@/components/admin/ui";
+import { Field, inputCls, Toast, MLInput, Toggle, ImageUpload } from "@/components/admin/ui";
 import { type ML } from "@/lib/utils";
 
 type Basic = {
   brand_name: ML; helpline: string; helpline_bn: string; whatsapp: string; email: string;
-  address: ML; facebook: string; youtube: string; instagram: string; logo_url: string;
+  address: ML; facebook: string; youtube: string; instagram: string;
+  // Legacy single logo URL — kept for back-compat; new fields below take priority.
+  logo_url: string;
+  // Three brand-logo variants uploaded to R2. Empty string → header/footer
+  // falls back to rendering the `brand_name` text.
+  logo_desktop_url: string;
+  logo_mobile_url: string;
+  favicon_url: string;
   // Controls whether the /for-doctors page renders the promotion plan cards.
   // When off, the page shows only the lead form (still lets doctors sign up).
   show_plans: boolean;
@@ -72,11 +79,52 @@ export function SettingsManager({
             <Field label="ইনস্টাগ্রাম লিংক">
               <input className={inputCls + " font-latin"} value={form.instagram} onChange={(e) => setForm({ ...form, instagram: e.target.value })} />
             </Field>
-            <Field label="লোগো URL (ঐচ্ছিক)">
-              <input className={inputCls + " font-latin"} value={form.logo_url} onChange={(e) => setForm({ ...form, logo_url: e.target.value })} />
-            </Field>
           </div>
         </div>
+
+        {/* --- Brand logos (uploaded to Cloudflare R2) --- */}
+        <div className="mt-6 border-t border-line pt-6">
+          <div className="mb-2 font-heading text-base font-bold text-ink">ব্র্যান্ড লোগো</div>
+          <p className="mb-4 text-[13px] text-ink-faint">
+            আপলোড করলে হেডার/ফুটারে ছবি দেখাবে। খালি থাকলে উপরের <b>ব্র্যান্ড নাম</b>টাই টেক্সট হিসেবে দেখাবে।
+          </p>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">ডেস্কটপ হেডার / ফুটার লোগো</div>
+              <ImageUpload
+                currentUrl={form.logo_desktop_url || null}
+                label="ডেস্কটপ লোগো"
+                aspect="aspect-[4/1]"
+                onChange={(dataUrl) => setForm({ ...form, logo_desktop_url: dataUrl })}
+                onRemove={() => setForm({ ...form, logo_desktop_url: "" })}
+              />
+              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ২০০×৫০ px, PNG/SVG</div>
+            </div>
+            <div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">মোবাইল লোগো</div>
+              <ImageUpload
+                currentUrl={form.logo_mobile_url || null}
+                label="মোবাইল লোগো"
+                aspect="aspect-square"
+                onChange={(dataUrl) => setForm({ ...form, logo_mobile_url: dataUrl })}
+                onRemove={() => setForm({ ...form, logo_mobile_url: "" })}
+              />
+              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ৯৬×৯৬ px, বর্গাকার আইকন</div>
+            </div>
+            <div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">Favicon</div>
+              <ImageUpload
+                currentUrl={form.favicon_url || null}
+                label="Favicon"
+                aspect="aspect-square"
+                onChange={(dataUrl) => setForm({ ...form, favicon_url: dataUrl })}
+                onRemove={() => setForm({ ...form, favicon_url: "" })}
+              />
+              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ৩২×৩২ বা ৬৪×৬৪ px, PNG</div>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-5 flex gap-3">
           <button onClick={() => save(form)} disabled={pending} className="rounded-[10px] bg-brand-600 px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60">
             {pending ? "সংরক্ষণ হচ্ছে..." : "সেটিংস সংরক্ষণ করুন"}

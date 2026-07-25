@@ -19,7 +19,7 @@ function loadFonts() {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const title = (searchParams.get("title") || "ডক্টরবন্ধু").slice(0, 90);
+  const title = (searchParams.get("title") || "ডক্টরস ফাইন্ড বাংলাদেশ").slice(0, 90);
   const subtitle = (searchParams.get("subtitle") || "").slice(0, 80);
   const { regular, bold } = await loadFonts();
 

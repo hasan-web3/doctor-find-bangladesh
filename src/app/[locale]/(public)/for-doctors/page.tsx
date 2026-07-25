@@ -18,8 +18,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: locale === "bn" ? "ডাক্তারদের জন্য: প্রোফাইল যুক্ত করুন" : "For Doctors: List Your Profile",
     description:
       locale === "bn"
-        ? "ডক্টরবন্ধুতে আপনার প্রোফাইল যুক্ত করুন এবং খুলনার হাজারো রোগীর কাছে পৌঁছান। প্রমোশন প্ল্যান ও সুবিধা দেখুন।"
-        : "List your profile on DoctorBondhu and reach thousands of patients in Khulna. See promotion plans and benefits.",
+        ? "ডক্টরস ফাইন্ড বাংলাদেশতে আপনার প্রোফাইল যুক্ত করুন এবং খুলনার হাজারো রোগীর কাছে পৌঁছান। প্রমোশন প্ল্যান ও সুবিধা দেখুন।"
+        : "List your profile on Doctors Find Bangladesh and reach thousands of patients in Khulna. See promotion plans and benefits.",
     ogTitle: locale === "bn" ? "ডাক্তারদের জন্য" : "For Doctors",
   });
 }
