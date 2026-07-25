@@ -38,19 +38,32 @@ export function DoctorCard({
 
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-card transition-all duration-200 hover:-translate-y-1 hover:shadow-cardhover">
-      {/* Photo — 16:10 keeps cards compact, degrees stay one line, buttons stack in a tidy T. */}
-      <Link href={detailsHref} aria-label={doctor.name} className="relative block aspect-[16/10] w-full overflow-hidden">
+      {/* Photo container — 4:3 landscape keeps the card compact (buttons /
+          degrees / hospital all fit without scrolling on mobile) while giving
+          portrait photos enough vertical room. `object-contain` NEVER crops
+          the source; if the aspect doesn't match the container, the tone-
+          tinted background fills the remaining space so the doctor's face
+          is always fully visible. This handles every input:
+            - portrait headshot (3:4): centered, thin tone bars on sides
+            - landscape group photo: centered, thin tone bars top/bottom
+            - odd aspect / cropped shot: still visible end-to-end, no chin cut. */}
+      <Link
+        href={detailsHref}
+        aria-label={doctor.name}
+        className="relative block aspect-[4/3] w-full overflow-hidden"
+        style={{ background: tone.bg }}
+      >
         {doctor.photo_url ? (
           <Image
             src={doctor.photo_url}
             alt={doctor.name}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 900px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            className="object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
+            className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center" style={{ background: tone.bg }}>
-            <span className="font-heading text-[56px] font-semibold" style={{ color: tone.fg }}>
+          <div className="flex h-full w-full items-center justify-center">
+            <span className="font-heading text-[64px] font-semibold" style={{ color: tone.fg }}>
               {initials(doctor.name)}
             </span>
           </div>

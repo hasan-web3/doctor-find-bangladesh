@@ -22,6 +22,12 @@ import { revalidatePublic } from "@/lib/revalidate";
 import { uploadImage, destroyImage } from "@/lib/storage";
 import { slugify } from "@/lib/slugify";
 import { recordSlugChange } from "@/lib/seo";
+import {
+  fillSpecialtyBlanks,
+  fillDistrictBlanks,
+  fillAreaBlanks,
+  fillHospitalBlanks,
+} from "@/lib/seo-defaults";
 import type { ActionResult } from "./admin-doctors";
 
 import { type PostInitial } from "@/app/admin/blog/post-form";
@@ -65,20 +71,29 @@ export async function saveSpecialty(payload: unknown): Promise<ActionResult> {
     .limit(1);
   if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
 
+  // Fill any blank intro / meta title / meta description from the bilingual
+  // template — admin-typed text is preserved untouched.
+  const filled = fillSpecialtyBlanks({
+    name: s.name,
+    intro: s.intro,
+    meta_title: s.meta_title,
+    meta_description: s.meta_description,
+  });
+
   if (existing) {
     await db
       .update(specialties)
       .set({
-        slug, name: s.name, icon: s.icon, tint: s.tint, intro: s.intro,
-        metaTitle: s.meta_title, metaDescription: s.meta_description,
+        slug, name: s.name, icon: s.icon, tint: s.tint, intro: filled.intro,
+        metaTitle: filled.meta_title, metaDescription: filled.meta_description,
         active: s.active, sort: s.sort, updatedAt: new Date(),
       })
       .where(eq(specialties.id, existing.id));
     if (existing.slug !== slug) await recordSlugChange(`/specialties/${existing.slug}`, `/specialties/${slug}`);
   } else {
     await db.insert(specialties).values({
-      slug, name: s.name, icon: s.icon, tint: s.tint, intro: s.intro,
-      metaTitle: s.meta_title, metaDescription: s.meta_description,
+      slug, name: s.name, icon: s.icon, tint: s.tint, intro: filled.intro,
+      metaTitle: filled.meta_title, metaDescription: filled.meta_description,
       active: s.active, sort: s.sort,
     });
   }
@@ -122,19 +137,26 @@ export async function saveDistrict(payload: unknown): Promise<ActionResult> {
   const [clash] = await db.select({ id: districts.id }).from(districts).where(and(eq(districts.slug, slug), idNe(districts.id, d.id))).limit(1);
   if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
 
+  const filled = fillDistrictBlanks({
+    name: d.name,
+    intro: d.intro,
+    meta_title: d.meta_title,
+    meta_description: d.meta_description,
+  });
+
   if (existing) {
     await db
       .update(districts)
       .set({
         slug, name: d.name, lat: d.lat ?? null, lng: d.lng ?? null,
-        intro: d.intro, metaTitle: d.meta_title, metaDescription: d.meta_description,
+        intro: filled.intro, metaTitle: filled.meta_title, metaDescription: filled.meta_description,
         active: d.active, sort: d.sort, updatedAt: new Date(),
       })
       .where(eq(districts.id, existing.id));
   } else {
     await db.insert(districts).values({
       slug, name: d.name, lat: d.lat ?? null, lng: d.lng ?? null,
-      intro: d.intro, metaTitle: d.meta_title, metaDescription: d.meta_description,
+      intro: filled.intro, metaTitle: filled.meta_title, metaDescription: filled.meta_description,
       active: d.active, sort: d.sort,
     });
   }
@@ -191,15 +213,23 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
   const [clash] = await db.select({ id: areas.id }).from(areas).where(and(eq(areas.slug, slug), idNe(areas.id, a.id))).limit(1);
   if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
 
+  const filled = fillAreaBlanks({
+    name: a.name,
+    district: dist.name,
+    intro: a.intro,
+    meta_title: a.meta_title,
+    meta_description: a.meta_description,
+  });
+
   if (existing) {
     const [oldDist] = existing.districtId ? await db.select({slug: districts.slug}).from(districts).where(eq(districts.id, existing.districtId)) : [null];
-    
+
     await db
       .update(areas)
       .set({
         slug, name: a.name, districtId: a.district_id, district: dist.name,
         lat: a.lat ?? null, lng: a.lng ?? null,
-        intro: a.intro, metaTitle: a.meta_title, metaDescription: a.meta_description,
+        intro: filled.intro, metaTitle: filled.meta_title, metaDescription: filled.meta_description,
         active: a.active, sort: a.sort, updatedAt: new Date(),
       })
       .where(eq(areas.id, existing.id));
@@ -210,7 +240,7 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
     await db.insert(areas).values({
       slug, name: a.name, districtId: a.district_id, district: dist.name,
       lat: a.lat ?? null, lng: a.lng ?? null,
-      intro: a.intro, metaTitle: a.meta_title, metaDescription: a.meta_description,
+      intro: filled.intro, metaTitle: filled.meta_title, metaDescription: filled.meta_description,
       active: a.active, sort: a.sort,
     });
   }
@@ -305,12 +335,32 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
     }
   }
 
+  // Look up the linked area name so the hospital template can drop it into
+  // the description ("… in Sonadanga, Bangladesh"). Falls back to unset when
+  // no area is selected — template gracefully omits the location suffix.
+  let areaName: { bn: string; en: string } | null = null;
+  if (h.area_id) {
+    const [ar] = await db
+      .select({ name: areas.name })
+      .from(areas)
+      .where(eq(areas.id, h.area_id))
+      .limit(1);
+    if (ar?.name) areaName = ar.name as { bn: string; en: string };
+  }
+  const filled = fillHospitalBlanks({
+    name: h.name,
+    area: areaName,
+    description: h.description,
+    meta_title: h.meta_title,
+    meta_description: h.meta_description,
+  });
+
   if (existing) {
     const patch: Partial<typeof hospitals.$inferInsert> = {
       slug, name: h.name, areaId: h.area_id || null, address: h.address, phone: h.phone || null,
-      lat: h.lat ?? null, lng: h.lng ?? null, description: h.description, departments: h.departments,
+      lat: h.lat ?? null, lng: h.lng ?? null, description: filled.description, departments: h.departments,
       mapUrl: h.map_url || null,
-      metaTitle: h.meta_title, metaDescription: h.meta_description, active: h.active,
+      metaTitle: filled.meta_title, metaDescription: filled.meta_description, active: h.active,
       gallery, updatedAt: new Date(),
     };
     if (imageChanged) { patch.imageKey = image_key; patch.imageUrl = image_url; }
@@ -319,9 +369,9 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
   } else {
     await db.insert(hospitals).values({
       slug, name: h.name, areaId: h.area_id || null, address: h.address, phone: h.phone || null,
-      lat: h.lat ?? null, lng: h.lng ?? null, description: h.description, departments: h.departments,
+      lat: h.lat ?? null, lng: h.lng ?? null, description: filled.description, departments: h.departments,
       mapUrl: h.map_url || null,
-      metaTitle: h.meta_title, metaDescription: h.meta_description, active: h.active,
+      metaTitle: filled.meta_title, metaDescription: filled.meta_description, active: h.active,
       imageKey: image_key, imageUrl: image_url, gallery,
     });
   }
