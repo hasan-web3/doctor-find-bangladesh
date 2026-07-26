@@ -63,7 +63,13 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
   const ovDesc = ov ? t(ov.meta_description, locale) : "";
 
   const rawTitle = ovTitle || input.title || t(settings.seo_default_title, locale);
-  const template = t(settings.seo_title_template, locale) || "%s";
+  // Admin form documents `%s` as the placeholder, but bare `%` slips in often
+  // enough to be worth tolerating — fill it with the page title too. Match
+  // `%s` first so the more specific token wins on a `%s | brand` template.
+  const rawTemplate = t(settings.seo_title_template, locale) || "%s";
+  const template = rawTemplate.includes("%s")
+    ? rawTemplate
+    : rawTemplate.replace(/(^|[^%])%(?!s)/g, `$1%s`);
   const title = (ovTitle || input.noTemplate) ? rawTitle : template.replace("%s", rawTitle);
   const description = ovDesc || input.description || t(settings.seo_default_description, locale);
 

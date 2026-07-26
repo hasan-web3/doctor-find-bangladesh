@@ -12,6 +12,7 @@ import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, type Locale } from "@/lib/i18n";
+import { withPossessive as bnPossessive } from "@/lib/bn";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
 
 type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
@@ -29,12 +30,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = spec.meta_title ? ml(spec.meta_title, locale) :
     isIpDetected
       ? (locale === "bn" ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors Near You`)
-      : (locale === "bn" ? `${districtName}র সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
+      : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
   
   const description = spec.meta_description ? ml(spec.meta_description, locale) :
     isIpDetected
       ? (locale === "bn" ? `আপনার সবচেয়ে কাছের অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists near you with chamber addresses, schedules and visit fees.`)
-      : (locale === "bn" ? `${districtName}র অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`);
+      : (locale === "bn" ? `${bnPossessive(districtName)} অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`);
 
   return buildMetadata({
     locale,
@@ -92,10 +93,10 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
 
   const pageTitle = isIpDetected
     ? (locale === "bn" ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors Near You`)
-    : (locale === "bn" ? `${districtName}র সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
+    : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
 
   const listTitle = locale === "bn"
-    ? `${districtName}র ${spec.name} ডাক্তারদের তালিকা`
+    ? `${bnPossessive(districtName)} ${spec.name} ডাক্তারদের তালিকা`
     : `List of ${spec.name} Doctors in ${districtName}`;
 
   return (

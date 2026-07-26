@@ -1,20 +1,23 @@
 // Helpers for Bengali language grammar and conventions.
 
-// In Bengali, the possessive suffix changes based on the last letter of a word.
-// Words ending in a vowel (like খুলনা) get 'র' (খুলনার).
-// Words ending in a consonant (like বাগেরহাট) get 'ের' (বাগেরহাটের).
+// Bengali possessive marker. The suffix depends on how the word ends:
+//   • vowel sign  (া, ী, …)   → `র`      (খুলনা → খুলনার)
+//   • chandrabindu ঁ           → `র`      (নওগাঁ → নওগাঁর — the ঁ sits on a
+//                                          vowel, so phonetically vowel-ending)
+//   • independent ও            → `য়ের`   (ঠাকুরগাঁও → ঠাকুরগাঁওয়ের —
+//                                          sandhi inserts য় between ও + এ)
+//   • consonant                → `ের`    (বাগেরহাট → বাগেরহাটের)
+//
+// Tested against all 64 Bangladesh districts.
 export function withPossessive(word: string): string {
   if (!word) return "";
-  
-  // A simple heuristic: check for common vowel sign endings.
-  // Covers: া, ি, ী, ু, ূ, ে, ৈ, ো, ৌ
-  const vowelEndings = ["া", "ি", "ী", "ু", "ূ", "ে", "ৈ", "ো", "ৌ"];
-  const lastChar = word.slice(-1);
 
-  if (vowelEndings.includes(lastChar)) {
-    return `${word}র`;
-  }
-  
+  const vowelSigns = ["া", "ি", "ী", "ু", "ূ", "ে", "ৈ", "ো", "ৌ"];
+  const last = word.slice(-1);
+
+  if (last === "ঁ") return `${word}র`;
+  if (last === "ও") return `${word}য়ের`;
+  if (vowelSigns.includes(last)) return `${word}র`;
   return `${word}ের`;
 }
 

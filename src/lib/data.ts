@@ -618,9 +618,14 @@ export async function searchDoctors(
     if (params.area && params.area.length > 0) {
       const ars = Array.isArray(params.area) ? params.area : [params.area];
       const list = sql.join(ars.map((s) => sql`${s}`), sql`, `);
-      conditions.push(sql`EXISTS (
-        SELECT 1 FROM chambers c3 JOIN areas a3 ON a3.id = c3.area_id
-        WHERE c3.doctor_id = d.id AND c3.visible AND a3.slug IN (${list})
+      // Include doctors linked to this thana either through a visible chamber
+      // OR through their profile hospital — mirror of the district filter so
+      // the "must have a chamber" rule doesn't hide hospital-only doctors.
+      conditions.push(sql`(
+        EXISTS (SELECT 1 FROM chambers c3 JOIN areas a3 ON a3.id = c3.area_id
+                WHERE c3.doctor_id = d.id AND c3.visible AND a3.slug IN (${list}))
+        OR EXISTS (SELECT 1 FROM hospitals ha JOIN areas aa ON aa.id = ha.area_id
+                   WHERE ha.id = d.hospital_id AND aa.slug IN (${list}))
       )`);
     }
     if (params.district && params.district.length > 0) {
@@ -1336,10 +1341,24 @@ export async function searchAreas(
   const perPage = Math.min(p.perPage || 50, 100);
   const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
 
+  // Count doctors "belonging" to this thana in either of two ways:
+  //   1. They run a visible chamber in this thana.
+  //   2. They have no chamber at all (or all hidden) but their profile-linked
+  //      hospital sits in this thana.
+  // DISTINCT so a doctor with BOTH still counts once.
   const doctorCountSubquery = sql`(
-    SELECT COUNT(DISTINCT c.doctor_id)::int FROM chambers c
-    JOIN doctors doc ON doc.id = c.doctor_id AND doc.active
-    WHERE c.area_id = a.id AND c.visible
+    SELECT COUNT(DISTINCT doc.id)::int
+    FROM doctors doc
+    WHERE doc.active AND (
+      EXISTS (
+        SELECT 1 FROM chambers c
+        WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
+      )
+      OR EXISTS (
+        SELECT 1 FROM hospitals h
+        WHERE h.id = doc.hospital_id AND h.area_id = a.id
+      )
+    )
   )`;
 
   const rowsQuery = db.execute<{
@@ -1440,12 +1459,26 @@ export async function searchDistricts(
     WHERE ${areasT.districtId} = districts.id AND ${areasT.active}
   )`;
 
+  // Count doctors "belonging" to this district in either of two ways:
+  //   1. They run a visible chamber in a thana of this district.
+  //   2. They have no chamber (or all hidden) but their profile-linked
+  //      hospital sits in a thana of this district.
+  // DISTINCT so a doctor with BOTH still counts once.
   const doctorCountSubquery = sql`(
     SELECT COUNT(DISTINCT doc.id)::int
     FROM ${doctorsT} doc
-    JOIN ${chambersT} c ON c.doctor_id = doc.id
-    JOIN ${areasT} a ON a.id = c.area_id
-    WHERE a.district_id = districts.id AND doc.active AND c.visible
+    WHERE doc.active AND (
+      EXISTS (
+        SELECT 1 FROM ${chambersT} c
+        JOIN ${areasT} a ON a.id = c.area_id
+        WHERE c.doctor_id = doc.id AND c.visible AND a.district_id = districts.id
+      )
+      OR EXISTS (
+        SELECT 1 FROM ${hospitalsT} h
+        JOIN ${areasT} a2 ON a2.id = h.area_id
+        WHERE h.id = doc.hospital_id AND a2.district_id = districts.id
+      )
+    )
   )`;
 
   const rowsQuery = db.execute<{

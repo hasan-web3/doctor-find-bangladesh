@@ -7,6 +7,7 @@ import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { DistrictListClient } from "@/components/public/district-list-client";
 import { detectArea } from "@/lib/geo";
+import { withPossessive as bnPossessive } from "@/lib/bn";
 
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
 
@@ -47,7 +48,7 @@ export default async function DistrictsPage({ params, searchParams }: Props) {
   
   const districtSub = geoDistrictName
     ? (locale === "bn"
-        ? `${geoDistrictName}র প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছাকাছি বিশেষজ্ঞ খুঁজুন।`
+        ? `${bnPossessive(geoDistrictName)} প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছাকাছি বিশেষজ্ঞ খুঁজুন।`
         : `List of verified doctors and chambers in each area of ${geoDistrictName}. Find specialists near you.`)
     : (d.sec_district_sub || "Find doctors by district");
 
