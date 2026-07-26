@@ -32,6 +32,8 @@ import type { ActionResult } from "./admin-doctors";
 const LOGO_KEYS = [
   { url: "logo_desktop_url", key: "logo_desktop_key", folder: "branding" },
   { url: "logo_mobile_url", key: "logo_mobile_key", folder: "branding" },
+  { url: "logo_desktop_footer_url", key: "logo_desktop_footer_key", folder: "branding" },
+  { url: "logo_mobile_footer_url", key: "logo_mobile_footer_key", folder: "branding" },
   { url: "favicon_url", key: "favicon_key", folder: "branding" },
 ] as const;
 

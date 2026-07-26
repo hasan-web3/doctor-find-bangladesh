@@ -24,6 +24,8 @@ export default async function AdminSettingsPage() {
           logo_url: settings.logo_url,
           logo_desktop_url: settings.logo_desktop_url,
           logo_mobile_url: settings.logo_mobile_url,
+          logo_desktop_footer_url: settings.logo_desktop_footer_url,
+          logo_mobile_footer_url: settings.logo_mobile_footer_url,
           favicon_url: settings.favicon_url,
           show_plans: settings.show_plans,
         }}

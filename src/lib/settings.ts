@@ -33,6 +33,8 @@ export type SiteSettings = {
   // falls back to rendering the localised `brand_name` as text.
   logo_desktop_url: string;
   logo_mobile_url: string;
+  logo_desktop_footer_url: string;
+  logo_mobile_footer_url: string;
   favicon_url: string;
   show_plans: boolean;
   seo_title_template: MLText;
@@ -56,6 +58,8 @@ const DEFAULTS: SiteSettings = {
   logo_url: "",
   logo_desktop_url: "",
   logo_mobile_url: "",
+  logo_desktop_footer_url: "",
+  logo_mobile_footer_url: "",
   favicon_url: "",
   show_plans: true,
   seo_title_template: { bn: "%s | ডক্টরস ফাইন্ড বাংলাদেশ", en: "%s | Doctors Find Bangladesh" },

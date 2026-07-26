@@ -347,10 +347,11 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
       .limit(1);
     if (ar?.name) areaName = ar.name as { bn: string; en: string };
   }
+  // Only auto-fill meta_title + meta_description. `description` stays
+  // admin-authored — no generic prose leaks onto the public hospital page.
   const filled = fillHospitalBlanks({
     name: h.name,
     area: areaName,
-    description: h.description,
     meta_title: h.meta_title,
     meta_description: h.meta_description,
   });
@@ -358,7 +359,7 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
   if (existing) {
     const patch: Partial<typeof hospitals.$inferInsert> = {
       slug, name: h.name, areaId: h.area_id || null, address: h.address, phone: h.phone || null,
-      lat: h.lat ?? null, lng: h.lng ?? null, description: filled.description, departments: h.departments,
+      lat: h.lat ?? null, lng: h.lng ?? null, description: h.description, departments: h.departments,
       mapUrl: h.map_url || null,
       metaTitle: filled.meta_title, metaDescription: filled.meta_description, active: h.active,
       gallery, updatedAt: new Date(),
@@ -369,7 +370,7 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
   } else {
     await db.insert(hospitals).values({
       slug, name: h.name, areaId: h.area_id || null, address: h.address, phone: h.phone || null,
-      lat: h.lat ?? null, lng: h.lng ?? null, description: filled.description, departments: h.departments,
+      lat: h.lat ?? null, lng: h.lng ?? null, description: h.description, departments: h.departments,
       mapUrl: h.map_url || null,
       metaTitle: filled.meta_title, metaDescription: filled.meta_description, active: h.active,
       imageKey: image_key, imageUrl: image_url, gallery,

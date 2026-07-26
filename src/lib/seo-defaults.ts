@@ -1,4 +1,5 @@
 import "server-only";
+import { withPossessive } from "./bn";
 
 // Generate boilerplate intro / meta-title / meta-description for taxonomy
 // entities (specialty, district, area, hospital) from just the bilingual
@@ -97,6 +98,11 @@ export function districtDefaults(name: ML): {
 // ---------------------------------------------------------------------------
 // areas — "থানা / উপজেলা"
 // ---------------------------------------------------------------------------
+// Style locked to the exact phrasing used for the first seeded thanas
+// (Khalishpur / Daulatpur / Sonadanga in the Khulna district). Bangla uses
+// the possessive form of the thana name (খালিশপুর → খালিশপুরের) so the
+// sentence reads naturally regardless of whether the base name ends in a
+// vowel or consonant — see src/lib/bn.ts::withPossessive.
 
 export function areaDefaults(name: ML, district?: ML | null): {
   intro: ML;
@@ -106,44 +112,52 @@ export function areaDefaults(name: ML, district?: ML | null): {
   const { bn, en } = resolveNames(name);
   const dBn = (district?.bn || district?.en || "").trim();
   const dEn = (district?.en || district?.bn || "").trim();
-  const suffixBn = dBn ? `, ${dBn} জেলা` : "";
-  const suffixEn = dEn ? `, ${dEn} district` : "";
+  const bnPoss = withPossessive(bn); // e.g. খালিশপুর → খালিশপুরের
   const intro: ML = {
-    bn: `${bn}${suffixBn} এলাকার যাচাইকৃত ডাক্তার ও চেম্বার একসাথে দেখুন। চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি জানুন এবং সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
-    en: `See verified doctors and chambers in ${en}${suffixEn}. View chamber addresses, schedules and visit fees, then book an appointment easily with ${BRAND_EN}.`,
+    bn: `${bnPoss} এলাকার সকল বিশেষজ্ঞ ডাক্তারের তালিকা দেখুন। চেম্বারের ঠিকানা দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
+    en: `Find verified specialist doctors in ${en} area. See chamber details and book appointments easily with ${BRAND_EN}.`,
   };
   const meta_title: ML = {
-    bn: `${bn}${suffixBn} এলাকার ডাক্তার ও চেম্বার | ${BRAND_SHORT}`,
-    en: `Doctors & Chambers in ${en}${suffixEn} | ${BRAND_SHORT}`,
+    bn: dBn
+      ? `${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা ও অ্যাপয়েন্টমেন্ট | ${dBn}`
+      : `${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা ও অ্যাপয়েন্টমেন্ট`,
+    en: dEn
+      ? `Specialist Doctors List in ${en}, ${dEn} | Book Appointment`
+      : `Specialist Doctors List in ${en} | Book Appointment`,
   };
-  const meta_description: ML = { bn: clip(intro.bn), en: clip(intro.en) };
+  // meta_description mirrors intro verbatim — matches the seeded rows and
+  // Google prefers the same lead sentence in both places anyway.
+  const meta_description: ML = { bn: intro.bn, en: intro.en };
   return { intro, meta_title, meta_description };
 }
 
 // ---------------------------------------------------------------------------
 // hospitals — "হাসপাতাল"
 // ---------------------------------------------------------------------------
+// Only meta_title / meta_description auto-fill. The `description` field is
+// admin-authored rich HTML (about the hospital, its departments, history)
+// and is intentionally left blank by default so nothing generic ships to
+// the public page. Admin fills it manually or leaves it empty.
 
 export function hospitalDefaults(name: ML, area?: ML | null): {
-  description: ML;
   meta_title: ML;
   meta_description: ML;
 } {
   const { bn, en } = resolveNames(name);
   const aBn = (area?.bn || area?.en || "").trim();
   const aEn = (area?.en || area?.bn || "").trim();
-  const suffixBn = aBn ? `${aBn}, ` : "";
-  const suffixEn = aEn ? `${aEn}, ` : "";
-  const description: ML = {
-    bn: `${bn} — ${suffixBn}বাংলাদেশের একটি পরিচিত হাসপাতাল। এখানকার কর্মরত বিশেষজ্ঞ ডাক্তার, চেম্বারের সময়সূচি ও ভিজিট ফি দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
-    en: `${bn} is a well-known hospital in ${suffixEn}Bangladesh. Browse its resident specialist doctors, chamber schedules and visit fees, then book an appointment through ${BRAND_EN}.`,
-  };
+  const metaBn = aBn
+    ? `${bn} — ${aBn}-এর একটি পরিচিত হাসপাতাল। কর্মরত বিশেষজ্ঞ ডাক্তার, সময়সূচি ও ভিজিট ফি দেখুন ${BRAND_BN}-এর মাধ্যমে।`
+    : `${bn} — একটি পরিচিত হাসপাতাল। কর্মরত বিশেষজ্ঞ ডাক্তার, সময়সূচি ও ভিজিট ফি দেখুন ${BRAND_BN}-এর মাধ্যমে।`;
+  const metaEn = aEn
+    ? `${en} in ${aEn} — browse resident specialist doctors, chamber schedules and visit fees, then book with ${BRAND_EN}.`
+    : `${en} — browse resident specialist doctors, chamber schedules and visit fees, then book with ${BRAND_EN}.`;
   const meta_title: ML = {
     bn: `${bn} — ডাক্তার ও চেম্বার তথ্য | ${BRAND_SHORT}`,
     en: `${en} — Doctors, Chambers & Appointments | ${BRAND_SHORT}`,
   };
-  const meta_description: ML = { bn: clip(description.bn), en: clip(description.en) };
-  return { description, meta_title, meta_description };
+  const meta_description: ML = { bn: clip(metaBn), en: clip(metaEn) };
+  return { meta_title, meta_description };
 }
 
 // ---------------------------------------------------------------------------
@@ -196,13 +210,11 @@ export function fillAreaBlanks(input: {
 export function fillHospitalBlanks(input: {
   name: ML;
   area?: ML | null;
-  description?: ML;
   meta_title?: ML;
   meta_description?: ML;
-}): { description: ML; meta_title: ML; meta_description: ML } {
+}): { meta_title: ML; meta_description: ML } {
   const d = hospitalDefaults(input.name, input.area);
   return {
-    description: mergeML(input.description, d.description),
     meta_title: mergeML(input.meta_title, d.meta_title),
     meta_description: mergeML(input.meta_description, d.meta_description),
   };

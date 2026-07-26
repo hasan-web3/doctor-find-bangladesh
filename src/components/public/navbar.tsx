@@ -91,22 +91,22 @@ export function Navbar({
               <Image
                 src={logoDesktopUrl}
                 alt={brandName}
-                width={180}
-                height={44}
+                width={280}
+                height={64}
                 priority
-                sizes="(max-width: 640px) 0px, 180px"
-                className="hidden h-11 w-auto object-contain sm:block"
+                sizes="(max-width: 640px) 0px, 280px"
+                className="hidden h-16 w-auto object-contain sm:block"
               />
             ) : null}
             {logoMobileUrl ? (
               <Image
                 src={logoMobileUrl}
                 alt={brandName}
-                width={44}
+                width={180}
                 height={44}
                 priority
-                sizes="(min-width: 641px) 0px, 44px"
-                className="h-11 w-11 object-contain sm:hidden"
+                sizes="(min-width: 641px) 0px, 180px"
+                className="h-11 w-auto object-contain sm:hidden"
               />
             ) : null}
             {!logoDesktopUrl && !logoMobileUrl && (

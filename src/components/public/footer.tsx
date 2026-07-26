@@ -47,37 +47,46 @@ export async function Footer({ locale }: { locale: Locale }) {
       <div className="mx-auto grid max-w-site grid-cols-1 gap-[34px] px-5 pt-[52px] sm:grid-cols-2 min-[900px]:grid-cols-[1.6fr_1fr_1fr_1fr_1.2fr]">
         <div>
           <div className="mb-3.5 flex items-center gap-[9px]">
-            {settings.logo_desktop_url ? (
-              // Same desktop logo drives the footer; on mobile falls back to
-              // the square mark if uploaded, else to the SVG + text block.
-              <>
-                <Image
-                  src={settings.logo_desktop_url}
-                  alt={brand}
-                  width={180}
-                  height={44}
-                  sizes="(max-width: 640px) 0px, 180px"
-                  className="hidden h-11 w-auto object-contain sm:block"
-                />
-                {settings.logo_mobile_url ? (
-                  <Image
-                    src={settings.logo_mobile_url}
-                    alt={brand}
-                    width={44}
-                    height={44}
-                    sizes="(min-width: 641px) 0px, 44px"
-                    className="h-11 w-11 object-contain sm:hidden"
-                  />
-                ) : (
-                  <span className="font-heading text-[21px] font-bold text-white sm:hidden">{brand}</span>
-                )}
-              </>
-            ) : (
-              <>
-                <Logo light />
-                <span className="font-heading text-[21px] font-bold text-white">{brand}</span>
-              </>
-            )}
+            {(() => {
+              // Footer-specific uploads take priority; fall back to header
+              // logos, then to the SVG + brand-name text block.
+              const desktopFooter = settings.logo_desktop_footer_url || settings.logo_desktop_url;
+              const mobileFooter = settings.logo_mobile_footer_url || settings.logo_mobile_url;
+              if (!desktopFooter && !mobileFooter) {
+                return (
+                  <>
+                    <Logo light />
+                    <span className="font-heading text-[21px] font-bold text-white">{brand}</span>
+                  </>
+                );
+              }
+              return (
+                <>
+                  {desktopFooter ? (
+                    <Image
+                      src={desktopFooter}
+                      alt={brand}
+                      width={280}
+                      height={64}
+                      sizes="(max-width: 640px) 0px, 280px"
+                      className="hidden h-16 w-auto object-contain sm:block"
+                    />
+                  ) : null}
+                  {mobileFooter ? (
+                    <Image
+                      src={mobileFooter}
+                      alt={brand}
+                      width={180}
+                      height={44}
+                      sizes="(min-width: 641px) 0px, 180px"
+                      className="h-11 w-auto object-contain sm:hidden"
+                    />
+                  ) : (
+                    <span className="font-heading text-[21px] font-bold text-white sm:hidden">{brand}</span>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <p className="mb-4 max-w-[300px] text-sm leading-relaxed">{dynamicTagline}</p>
           <div className="flex flex-col gap-2">

@@ -15,6 +15,8 @@ type Basic = {
   // falls back to rendering the `brand_name` text.
   logo_desktop_url: string;
   logo_mobile_url: string;
+  logo_desktop_footer_url: string;
+  logo_mobile_footer_url: string;
   favicon_url: string;
   // Controls whether the /for-doctors page renders the promotion plan cards.
   // When off, the page shows only the lead form (still lets doctors sign up).
@@ -88,28 +90,50 @@ export function SettingsManager({
           <p className="mb-4 text-[13px] text-ink-faint">
             আপলোড করলে হেডার/ফুটারে ছবি দেখাবে। খালি থাকলে উপরের <b>ব্র্যান্ড নাম</b>টাই টেক্সট হিসেবে দেখাবে।
           </p>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <div className="mb-2 text-[13px] font-semibold text-ink-mute">ডেস্কটপ হেডার / ফুটার লোগো</div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">ডেস্কটপ হেডার লোগো</div>
               <ImageUpload
                 currentUrl={form.logo_desktop_url || null}
-                label="ডেস্কটপ লোগো"
+                label="ডেস্কটপ হেডার লোগো"
                 aspect="aspect-[4/1]"
                 onChange={(dataUrl) => setForm({ ...form, logo_desktop_url: dataUrl })}
                 onRemove={() => setForm({ ...form, logo_desktop_url: "" })}
               />
-              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ২০০×৫০ px, PNG/SVG</div>
+              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ২৮০×৭০ px, PNG/SVG</div>
             </div>
             <div>
-              <div className="mb-2 text-[13px] font-semibold text-ink-mute">মোবাইল লোগো</div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">ডেস্কটপ ফুটার লোগো</div>
+              <ImageUpload
+                currentUrl={form.logo_desktop_footer_url || null}
+                label="ডেস্কটপ ফুটার লোগো"
+                aspect="aspect-[4/1]"
+                onChange={(dataUrl) => setForm({ ...form, logo_desktop_footer_url: dataUrl })}
+                onRemove={() => setForm({ ...form, logo_desktop_footer_url: "" })}
+              />
+              <div className="mt-1 text-xs text-ink-ghost">খালি থাকলে হেডার লোগোই ব্যবহৃত হবে</div>
+            </div>
+            <div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">মোবাইল হেডার লোগো</div>
               <ImageUpload
                 currentUrl={form.logo_mobile_url || null}
-                label="মোবাইল লোগো"
-                aspect="aspect-square"
+                label="মোবাইল হেডার লোগো"
+                aspect="aspect-[4/1]"
                 onChange={(dataUrl) => setForm({ ...form, logo_mobile_url: dataUrl })}
                 onRemove={() => setForm({ ...form, logo_mobile_url: "" })}
               />
-              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ৯৬×৯৬ px, বর্গাকার আইকন</div>
+              <div className="mt-1 text-xs text-ink-ghost">প্রস্তাবিত: ২০০×৫০ px, PNG/SVG</div>
+            </div>
+            <div>
+              <div className="mb-2 text-[13px] font-semibold text-ink-mute">মোবাইল ফুটার লোগো</div>
+              <ImageUpload
+                currentUrl={form.logo_mobile_footer_url || null}
+                label="মোবাইল ফুটার লোগো"
+                aspect="aspect-[4/1]"
+                onChange={(dataUrl) => setForm({ ...form, logo_mobile_footer_url: dataUrl })}
+                onRemove={() => setForm({ ...form, logo_mobile_footer_url: "" })}
+              />
+              <div className="mt-1 text-xs text-ink-ghost">খালি থাকলে মোবাইল হেডার লোগোই ব্যবহৃত হবে</div>
             </div>
             <div>
               <div className="mb-2 text-[13px] font-semibold text-ink-mute">Favicon</div>
