@@ -129,7 +129,12 @@ export async function Footer({ locale }: { locale: Locale }) {
         <div>
           <div className="mb-3.5 font-heading text-[15px] font-bold text-white">{d.footer_popular_specs}</div>
           <div className="flex flex-col gap-[9px]">
-            {specialties.slice(0, 6).map((s) => (
+            {[...specialties]
+              // Specialties that actually have doctors listed first — no point
+              // pointing the footer at empty landing pages.
+              .sort((a, b) => Number(b.doctor_count > 0) - Number(a.doctor_count > 0))
+              .slice(0, 6)
+              .map((s) => (
               <Link key={s.id} href={L(`/specialties/${s.slug}`)} className="text-sm text-ink-ghost transition-colors hover:text-brand-300">
                 {s.name}
               </Link>

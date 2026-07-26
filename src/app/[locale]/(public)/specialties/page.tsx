@@ -31,7 +31,15 @@ export default async function SpecialtiesPage({ params }: Props) {
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const specialties = await getSpecialties(locale, true) as Specialty[];
+  const all = await getSpecialties(locale, true) as Specialty[];
+  // Specialties that actually have doctors listed come first — otherwise the
+  // grid opens on empty tiles which looks like a dead site to first visitors.
+  // Admin sort/id order is preserved within each group so the layout stays
+  // predictable page-to-page (no random shuffling on this listing page).
+  const specialties = [
+    ...all.filter((s) => s.doctor_count > 0),
+    ...all.filter((s) => s.doctor_count <= 0),
+  ];
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">

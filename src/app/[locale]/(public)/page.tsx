@@ -29,7 +29,7 @@ const AreaMap = dynamic(() =>
 import {
   getSpecialties, getAreas, getFeaturedDoctors, searchHospitals,
   getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
-  getDistrictsForSearch, getThanasForSearch, type Area,
+  getDistrictsForSearch, getThanasForSearch, type Area, type Specialty,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea, haversineKm } from "@/lib/geo";
@@ -156,8 +156,17 @@ export default async function HomePage({ params }: Props) {
       : areas
   ).slice(0, 6);
 
-  const shuffledSpecialties = [...specialties].sort(() => Math.random() - 0.5);
-  const shuffledHeroSpecialties = [...specialties].sort(() => Math.random() - 0.5);
+  // Specialties with at least one active doctor come first (randomised inside
+  // that group so the featured tiles stay lively), followed by the empty ones.
+  // Same pool used for the hero chips and the grid, but shuffled independently
+  // so the two rows show different picks.
+  const shuffleByDoctors = (list: Specialty[]) => {
+    const withDocs = list.filter((s) => s.doctor_count > 0).sort(() => Math.random() - 0.5);
+    const empty   = list.filter((s) => s.doctor_count <= 0).sort(() => Math.random() - 0.5);
+    return [...withDocs, ...empty];
+  };
+  const shuffledSpecialties = shuffleByDoctors(specialties);
+  const shuffledHeroSpecialties = shuffleByDoctors(specialties);
 
   const hospitalSectionTitle = geoDistrictName
     ? (locale === "bn"
