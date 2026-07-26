@@ -1,11 +1,33 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { chooseArea } from "@/actions/public";
 import type { Dict } from "@/lib/dict";
 
 type AreaOpt = { slug: string; name: string };
+
+// Persist geo-banner dismissal for a week so it doesn't reappear on every
+// page navigation once the user has chosen an area or closed the strip.
+const DISMISS_KEY = "geo_banner_dismissed_until";
+const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isDismissedNow(): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = window.localStorage.getItem(DISMISS_KEY);
+  if (!raw) return false;
+  const until = Number(raw);
+  if (!Number.isFinite(until) || until <= Date.now()) {
+    window.localStorage.removeItem(DISMISS_KEY);
+    return false;
+  }
+  return true;
+}
+
+function markDismissed() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DISMISS_KEY, String(Date.now() + DISMISS_MS));
+}
 
 export function GeoBanner({
   areaName,
@@ -17,16 +39,30 @@ export function GeoBanner({
   d: Pick<Dict, "geo_viewing_from" | "geo_viewing_suffix" | "geo_change" | "geo_pick_area">;
 }) {
   const [editing, setEditing] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  // Start hidden so SSR + first paint don't flash the strip for users who
+  // already dismissed it; useEffect flips it on when the stored expiry
+  // has passed (or was never set).
+  const [visible, setVisible] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
-  if (!areaName || dismissed) return null;
+  useEffect(() => {
+    setVisible(!isDismissedNow());
+  }, []);
+
+  if (!areaName || !visible) return null;
+
+  const dismiss = () => {
+    markDismissed();
+    setVisible(false);
+  };
 
   const pick = (slug: string) => {
     startTransition(async () => {
       await chooseArea(slug);
+      markDismissed();
       setEditing(false);
+      setVisible(false);
       router.refresh();
     });
   };
@@ -57,7 +93,7 @@ export function GeoBanner({
             {d.geo_change}
           </button>
         )}
-        <button onClick={() => setDismissed(true)} aria-label="✕" className="text-brand-600">✕</button>
+        <button onClick={dismiss} aria-label="✕" className="text-brand-600">✕</button>
       </div>
     </div>
   );

@@ -76,3 +76,134 @@ body {
 .flex-full {
   flex: 0 0 100%;
 }
+
+/* Rich-text output styling — applied wherever admin-authored HTML (from the
+   rich-text editor) is rendered on the public site: doctor bio, hospital
+   description, blog content, and the admin editor's own preview area.
+   Tailwind's preflight strips default margins / list bullets / heading
+   sizes, so without these rules the formatted output collapses to a flat
+   wall of text on the frontend. Keep selectors scoped to `.prose-bn` so
+   surrounding UI is unaffected. */
+.prose-bn {
+  color: theme('colors.ink.soft');
+  line-height: 1.85;
+  font-size: 15.5px;
+}
+.prose-bn > :first-child { margin-top: 0; }
+.prose-bn > :last-child { margin-bottom: 0; }
+
+.prose-bn h1,
+.prose-bn h2,
+.prose-bn h3,
+.prose-bn h4,
+.prose-bn h5,
+.prose-bn h6 {
+  color: theme('colors.ink.DEFAULT');
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 1.6em 0 0.6em;
+}
+.prose-bn h1 { font-size: 1.8em; }
+.prose-bn h2 { font-size: 1.45em; }
+.prose-bn h3 { font-size: 1.2em; }
+.prose-bn h4 { font-size: 1.05em; }
+.prose-bn h5,
+.prose-bn h6 { font-size: 1em; }
+
+.prose-bn p {
+  margin: 0.8em 0;
+}
+.prose-bn strong,
+.prose-bn b { color: theme('colors.ink.DEFAULT'); font-weight: 700; }
+.prose-bn em,
+.prose-bn i { font-style: italic; }
+.prose-bn u { text-decoration: underline; }
+.prose-bn s,
+.prose-bn del,
+.prose-bn strike { text-decoration: line-through; }
+.prose-bn sub { vertical-align: sub; font-size: 0.78em; }
+.prose-bn sup { vertical-align: super; font-size: 0.78em; }
+
+.prose-bn a {
+  color: theme('colors.brand.700');
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-bn a:hover { color: theme('colors.brand.900'); }
+
+.prose-bn ul,
+.prose-bn ol {
+  margin: 0.9em 0;
+  padding-left: 1.6em;
+}
+.prose-bn ul { list-style: disc; }
+.prose-bn ol { list-style: decimal; }
+.prose-bn li { margin: 0.35em 0; }
+.prose-bn li > ul,
+.prose-bn li > ol { margin: 0.35em 0; }
+
+.prose-bn blockquote {
+  margin: 1.1em 0;
+  padding: 0.6em 1em;
+  border-left: 3px solid theme('colors.brand.300');
+  background: theme('colors.brand.50');
+  color: theme('colors.ink.mute');
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+}
+.prose-bn blockquote p { margin: 0.3em 0; }
+
+.prose-bn hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid theme('colors.line');
+}
+
+.prose-bn code {
+  background: theme('colors.brand.50');
+  color: theme('colors.brand.900');
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-inter), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.prose-bn pre {
+  background: theme('colors.ink.DEFAULT');
+  color: #f8fafc;
+  padding: 1em;
+  border-radius: 10px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.prose-bn pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
+
+.prose-bn img,
+.prose-bn video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 1em 0;
+}
+
+.prose-bn table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.95em;
+}
+.prose-bn th,
+.prose-bn td {
+  border: 1px solid theme('colors.line');
+  padding: 0.55em 0.8em;
+  text-align: left;
+}
+.prose-bn th {
+  background: theme('colors.brand.50');
+  font-weight: 700;
+  color: theme('colors.ink.DEFAULT');
+}

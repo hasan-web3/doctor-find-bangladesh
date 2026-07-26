@@ -211,13 +211,17 @@ export default async function HomePage({ params }: Props) {
     <>
       {faqs.length > 0 && <JsonLd data={ldFaq(faqs)} />}
 
-      {/* ===== HERO ===== */}
+      {/* ===== HERO =====
+          Mobile stacks in DOM order: title-block → slider → search → chips.
+          Desktop reconstructs the classic two-column layout via explicit
+          grid placement so the slider spans the full right column while the
+          left column stacks title, search, and chips as before. */}
       <div className="[background:linear-gradient(180deg,#F0FDFA_0%,#F8FAFC_100%)]">
-        <div className="mx-auto grid max-w-site grid-cols-1 items-center gap-10 px-5 pb-16 pt-14 min-[900px]:grid-cols-[1.1fr_.9fr]">
-          {/* No opacity animation here: this column holds the LCP <h1> and
+        <div className="mx-auto flex max-w-site flex-col gap-6 px-5 pb-16 pt-14 min-[900px]:grid min-[900px]:grid-cols-[1.1fr_.9fr] min-[900px]:items-center min-[900px]:gap-10">
+          {/* No opacity animation here: this block holds the LCP <h1> and
               wrapping it in animate-fadeup delays paint of the largest
               contentful element until the animation starts. */}
-          <div className="relative z-20">
+          <div className="relative z-20 min-[900px]:col-start-1 min-[900px]:row-start-1">
             <div className="mb-[18px] inline-flex items-center gap-2 rounded-full border border-brand-100 bg-white px-3.5 py-1.5 text-[13px] font-semibold text-brand-700 shadow-[0_2px_8px_rgba(13,148,136,0.08)]">
               <span className="inline-block h-2 w-2 rounded-full bg-accent" />
               {heroBadgeText}
@@ -225,7 +229,12 @@ export default async function HomePage({ params }: Props) {
             <h1 className="mb-3.5 font-heading text-[clamp(30px,5vw,46px)] font-bold leading-[1.25] text-ink">
               {d.hero_title_1} <span className="text-brand-600">{d.hero_title_2}</span>
             </h1>
-            <p className="mb-[26px] max-w-[520px] text-[17px] text-ink-mute">{heroSub}</p>
+            <p className="max-w-[520px] text-[17px] text-ink-mute min-[900px]:mb-[26px]">{heroSub}</p>
+          </div>
+          <div className="min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:row-span-3">
+            <HeroSlider slides={slides} verifiedLabel={d.verified_doctor} />
+          </div>
+          <div className="relative z-20 min-[900px]:col-start-1 min-[900px]:row-start-2">
             <SearchBar
               districts={searchDistricts.map((x) => ({ slug: x.slug, name: locale === "bn" ? x.name_bn : (x.name_en || x.name_bn), name_en: x.name_en }))}
               thanas={searchThanas.map((t) => ({ slug: t.slug, name: locale === "bn" ? t.name_bn : (t.name_en || t.name_bn), name_en: t.name_en, district_slug: t.district_slug }))}
@@ -234,19 +243,18 @@ export default async function HomePage({ params }: Props) {
               preselectDistrictSlug={geo.districtSlug}
               preselectThanaSlug={geo.areaSlug}
             />
-            <div className="mt-[18px] flex flex-wrap items-center gap-2">
-              {shuffledHeroSpecialties.slice(0, 6).map((s) => (
-                <Link
-                  key={s.id}
-                  href={L(`/specialties/${s.slug}`)}
-                  className="rounded-full border border-brand-100 bg-white px-[13px] py-1.5 text-[13.5px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
-                >
-                  {s.name.split(" (")[0]}
-                </Link>
-              ))}
-            </div>
           </div>
-          <HeroSlider slides={slides} verifiedLabel={d.verified_doctor} />
+          <div className="flex flex-wrap items-center gap-2 min-[900px]:col-start-1 min-[900px]:row-start-3 min-[900px]:mt-[18px]">
+            {shuffledHeroSpecialties.slice(0, 6).map((s) => (
+              <Link
+                key={s.id}
+                href={L(`/specialties/${s.slug}`)}
+                className="rounded-full border border-brand-100 bg-white px-[13px] py-1.5 text-[13.5px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+              >
+                {s.name.split(" (")[0]}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 

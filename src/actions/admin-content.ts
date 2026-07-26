@@ -335,23 +335,31 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
     }
   }
 
-  // Look up the linked area name so the hospital template can drop it into
-  // the description ("… in Sonadanga, Bangladesh"). Falls back to unset when
-  // no area is selected — template gracefully omits the location suffix.
+  // Look up the linked area (and its district) so the hospital template can
+  // drop the locality into the title/description. The template prefers the
+  // district for the title tail (higher-volume search term like "hospitals
+  // in Khulna") and gracefully omits the locality if nothing is linked.
   let areaName: { bn: string; en: string } | null = null;
+  let districtName: { bn: string; en: string } | null = null;
   if (h.area_id) {
     const [ar] = await db
-      .select({ name: areas.name })
+      .select({
+        name: areas.name,
+        districtName: districts.name,
+      })
       .from(areas)
+      .leftJoin(districts, eq(districts.id, areas.districtId))
       .where(eq(areas.id, h.area_id))
       .limit(1);
     if (ar?.name) areaName = ar.name as { bn: string; en: string };
+    if (ar?.districtName) districtName = ar.districtName as { bn: string; en: string };
   }
   // Only auto-fill meta_title + meta_description. `description` stays
   // admin-authored — no generic prose leaks onto the public hospital page.
   const filled = fillHospitalBlanks({
     name: h.name,
     area: areaName,
+    district: districtName,
     meta_title: h.meta_title,
     meta_description: h.meta_description,
   });

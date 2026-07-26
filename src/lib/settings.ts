@@ -62,13 +62,19 @@ const DEFAULTS: SiteSettings = {
   logo_mobile_footer_url: "",
   favicon_url: "",
   show_plans: true,
-  seo_title_template: { bn: "%s | ডক্টরস ফাইন্ড বাংলাদেশ", en: "%s | Doctors Find Bangladesh" },
+  // Bilingual keyword embedding: the Bangla defaults carry English brand +
+  // location terms ("Doctors in Khulna", "Khulna Doctors Directory") so the
+  // Bangla page ranks natively for English queries from Bangladeshi users
+  // ("doctors in khulna", "khulna doctor list") without any hreflang tricks.
+  // This is Google-recommended — bilingual pages legitimately match both
+  // language queries when the tokens actually appear in the page's meta.
+  seo_title_template: { bn: "%s | ডক্টরস ফাইন্ড বাংলাদেশ - Doctors Find Bangladesh", en: "%s | Doctors Find Bangladesh" },
   seo_default_title: {
-    bn: "খুলনার সেরা ডাক্তার খুঁজুন | ডক্টরস ফাইন্ড বাংলাদেশ",
+    bn: "খুলনার সেরা ডাক্তার খুঁজুন - Best Doctors in Khulna | ডক্টরস ফাইন্ড বাংলাদেশ",
     en: "Find the Best Doctors in Khulna | Doctors Find Bangladesh",
   },
   seo_default_description: {
-    bn: "খুলনার যাচাইকৃত বিশেষজ্ঞ ডাক্তার এলাকা ও বিভাগ অনুযায়ী খুঁজুন এবং সহজে অ্যাপয়েন্টমেন্ট নিন।",
+    bn: "খুলনার যাচাইকৃত বিশেষজ্ঞ ডাক্তার এলাকা ও বিভাগ অনুযায়ী খুঁজুন এবং সহজে অ্যাপয়েন্টমেন্ট নিন। Find verified specialist doctors in Khulna by area and specialty — book appointments online with Bangladesh's trusted doctor directory.",
     en: "Find verified specialist doctors in Khulna by area and specialty, and book appointments easily.",
   },
   seo_default_og_image: "",

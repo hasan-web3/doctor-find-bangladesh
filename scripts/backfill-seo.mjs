@@ -38,66 +38,94 @@ function specialtyDefaults(nameJson) {
   return {
     intro,
     meta_title: {
-      bn: `${bn} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${BRAND_SHORT}`,
-      en: `Best ${en} Specialist Doctors | ${BRAND_SHORT}`,
+      bn: `${bn} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${en} Specialist Doctors | ${BRAND_SHORT}`,
+      en: `${en} Specialist Doctors | ${bn} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${BRAND_SHORT}`,
     },
-    meta_description: { bn: clip(intro.bn), en: clip(intro.en) },
+    meta_description: {
+      bn: `${bn} সংক্রান্ত সমস্যায় অভিজ্ঞ Specialist Doctors খুঁজুন। Chamber Address, Schedule ও Visiting Fee জেনে সহজেই Doctor Appointment নিন ${BRAND_BN}-এর মাধ্যমে।`,
+      en: `Find experienced, verified ${en} specialists. Review each doctor's chamber address, schedule and visit fee, then book an appointment or call directly with ${BRAND_EN}.`,
+    },
   };
+}
+
+// Mirrors withPossessive() from src/lib/bn.ts — this script runs standalone
+// under node so it re-implements the tiny helper instead of pulling the .ts.
+function withPossessive(word) {
+  if (!word) return "";
+  const vowelEndings = ["া", "ি", "ী", "ু", "ূ", "ে", "ৈ", "ো", "ৌ"];
+  return vowelEndings.includes(word.slice(-1)) ? `${word}র` : `${word}ের`;
 }
 
 function districtDefaults(nameJson) {
   const { bn, en } = names(nameJson);
+  const bnPoss = withPossessive(bn);
   const intro = {
-    bn: `${bn} জেলার প্রতিটি এলাকার যাচাইকৃত বিশেষজ্ঞ ডাক্তার ও চেম্বার একসাথে খুঁজুন। বিভাগ ও লোকেশন অনুযায়ী ডাক্তার বাছাই করে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
-    en: `Explore verified specialist doctors and chambers across every area of ${en} district. Filter by specialty or location and book easily with ${BRAND_EN}.`,
+    bn: `${bn} জেলার সকল বিশেষজ্ঞ ডাক্তারের তালিকা দেখুন। চেম্বারের ঠিকানা, সময়সূচী ও ফোন নম্বর দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
+    en: `Find top-rated doctors from all specialties in ${en} district. See chamber details, schedules, and book appointments easily with ${BRAND_EN}.`,
   };
   return {
     intro,
     meta_title: {
-      bn: `${bn} জেলার সেরা ডাক্তার ও চেম্বার | ${BRAND_SHORT}`,
-      en: `Best Doctors & Chambers in ${en} District | ${BRAND_SHORT}`,
+      bn: `${bnPoss} সেরা ডাক্তারদের তালিকা | Best Doctors in ${en} | সকল বিভাগ`,
+      en: `Best Doctors in ${en} | ${bnPoss} সেরা ডাক্তারদের তালিকা | All Specialties`,
     },
-    meta_description: { bn: clip(intro.bn), en: clip(intro.en) },
+    meta_description: {
+      bn: `${bnPoss} সকল বিশেষজ্ঞ ডাক্তারের Chamber Address, Schedule ও Phone Number দেখে সহজেই Doctor Appointment নিন ${BRAND_BN}-এর মাধ্যমে।`,
+      en: `Find top-rated doctors from all specialties in ${en} district. See chamber details, schedules, and book appointments easily with ${BRAND_EN}.`,
+    },
   };
 }
 
 function areaDefaults(nameJson, districtJson) {
   const { bn, en } = names(nameJson);
-  const dBn = (districtJson?.bn || districtJson?.en || "").trim();
   const dEn = (districtJson?.en || districtJson?.bn || "").trim();
-  const suffixBn = dBn ? `, ${dBn} জেলা` : "";
-  const suffixEn = dEn ? `, ${dEn} district` : "";
+  const bnPoss = withPossessive(bn);
   const intro = {
-    bn: `${bn}${suffixBn} এলাকার যাচাইকৃত ডাক্তার ও চেম্বার একসাথে দেখুন। চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি জানুন এবং সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
-    en: `See verified doctors and chambers in ${en}${suffixEn}. View chamber addresses, schedules and visit fees, then book an appointment easily with ${BRAND_EN}.`,
+    bn: `${bnPoss} এলাকার সকল বিশেষজ্ঞ ডাক্তারের তালিকা দেখুন। চেম্বারের ঠিকানা দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
+    en: `Find verified specialist doctors in ${en} area. See chamber details and book appointments easily with ${BRAND_EN}.`,
   };
   return {
     intro,
     meta_title: {
-      bn: `${bn}${suffixBn} এলাকার ডাক্তার ও চেম্বার | ${BRAND_SHORT}`,
-      en: `Doctors & Chambers in ${en}${suffixEn} | ${BRAND_SHORT}`,
+      bn: dEn
+        ? `${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা | Doctors in ${en} | ${dEn}`
+        : `${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা | Doctors in ${en}`,
+      en: dEn
+        ? `Doctors List in ${en} | ${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${dEn}`
+        : `Doctors List in ${en} | ${bnPoss} বিশেষজ্ঞ ডাক্তারদের তালিকা`,
     },
-    meta_description: { bn: clip(intro.bn), en: clip(intro.en) },
+    meta_description: {
+      bn: `${bn} এলাকার সেরা Specialist Doctors-এর তালিকা (Doctor List) দেখুন। Doctor Chamber Address, Phone Number ও সময়সূচী দেখে সহজেই Doctor Appointment নিন ${BRAND_BN}-এর মাধ্যমে।`,
+      en: `Find verified specialist doctors in ${en} area. See chamber details, Phone Number, and book appointments easily with ${BRAND_EN}.`,
+    },
   };
 }
 
-function hospitalDefaults(nameJson, areaJson) {
+function hospitalDefaults(nameJson, areaJson, districtJson) {
   const { bn, en } = names(nameJson);
-  const aBn = (areaJson?.bn || areaJson?.en || "").trim();
-  const aEn = (areaJson?.en || areaJson?.bn || "").trim();
-  const suffixBn = aBn ? `${aBn}, ` : "";
-  const suffixEn = aEn ? `${aEn}, ` : "";
+  const locBn = (districtJson?.bn || districtJson?.en || areaJson?.bn || areaJson?.en || "").trim();
+  const locEn = (districtJson?.en || districtJson?.bn || areaJson?.en || areaJson?.bn || "").trim();
+  // `description` (rich-text on-page prose) is kept short + factual so
+  // nothing dishonest ships to the public page. Admin usually replaces this
+  // manually; backfill only writes it when the field is empty.
   const description = {
-    bn: `${bn} — ${suffixBn}বাংলাদেশের একটি পরিচিত হাসপাতাল। এখানকার কর্মরত বিশেষজ্ঞ ডাক্তার, চেম্বারের সময়সূচি ও ভিজিট ফি দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
-    en: `${bn} is a well-known hospital in ${suffixEn}Bangladesh. Browse its resident specialist doctors, chamber schedules and visit fees, then book an appointment through ${BRAND_EN}.`,
+    bn: `${bn} — ${locBn ? locBn + '-এ অবস্থিত ' : ''}একটি পরিচিত হাসপাতাল। এখানকার কর্মরত বিশেষজ্ঞ ডাক্তার, চেম্বারের সময়সূচি ও ভিজিট ফি দেখুন।`,
+    en: `${en} — a well-known hospital${locEn ? ' in ' + locEn : ''}. Browse resident specialist doctors, chamber schedules and visit fees.`,
   };
   return {
     description,
     meta_title: {
-      bn: `${bn} — ডাক্তার ও চেম্বার তথ্য | ${BRAND_SHORT}`,
-      en: `${en} — Doctors, Chambers & Appointments | ${BRAND_SHORT}`,
+      bn: locEn
+        ? `${bn} - Doctor List & Services | ${locEn}`
+        : `${bn} - Doctor List & Services`,
+      en: locEn
+        ? `${en} - Doctor List & Services | ${locEn}`
+        : `${en} - Doctor List & Services`,
     },
-    meta_description: { bn: clip(description.bn), en: clip(description.en) },
+    meta_description: {
+      bn: `${bn}-এর বিশেষজ্ঞ ডাক্তারদের তালিকা, দেখার সময়সূচি, জরুরি সেবা এবং Chamber Address ও Phone Number দেখে সহজেই Doctor Appointment নিন ${BRAND_BN}-এর মাধ্যমে।`,
+      en: `Find Specialist Doctors (Doctor List), Doctor Visiting Schedule, Emergency Services, Chamber Address and Phone Number at ${en}. Book appointments easily with ${BRAND_EN}.`,
+    },
   };
 }
 
@@ -130,91 +158,113 @@ const pool = new pg.Pool({
 const client = await pool.connect();
 
 async function backfillSpecialties() {
+  const force = process.env.FORCE_SPECIALTIES === "1";
   const { rows } = await client.query(`
     SELECT id, name, intro, meta_title, meta_description FROM specialties
   `);
   let n = 0;
   for (const r of rows) {
-    if (!anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
+    if (!force && !anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
     const d = specialtyDefaults(r.name);
-    const intro = mergeML(r.intro, d.intro);
-    const meta_title = mergeML(r.meta_title, d.meta_title);
-    const meta_description = mergeML(r.meta_description, d.meta_description);
     await client.query(
       `UPDATE specialties SET intro=$2, meta_title=$3, meta_description=$4, updated_at=now() WHERE id=$1`,
-      [r.id, intro, meta_title, meta_description]
+      [
+        r.id,
+        force ? d.intro : mergeML(r.intro, d.intro),
+        force ? d.meta_title : mergeML(r.meta_title, d.meta_title),
+        force ? d.meta_description : mergeML(r.meta_description, d.meta_description),
+      ]
     );
     n++;
   }
-  console.log(`specialties: ${n} row(s) filled`);
+  console.log(`specialties: ${n} row(s) ${force ? "OVERWRITTEN (FORCE_SPECIALTIES=1)" : "filled"}`);
 }
 
 async function backfillDistricts() {
+  // FORCE_DISTRICTS=1 → overwrite intro / meta_title / meta_description on
+  // EVERY district (even ones already filled) with the current template.
+  // Use this when the template changes and you want existing districts to
+  // adopt the new copy. Default (unset) keeps the non-destructive fill —
+  // only blank locales get filled. Existing admin edits are preserved.
+  const force = process.env.FORCE_DISTRICTS === "1";
   const { rows } = await client.query(`
     SELECT id, name, intro, meta_title, meta_description FROM districts
   `);
   let n = 0;
   for (const r of rows) {
-    if (!anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
+    if (!force && !anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
     const d = districtDefaults(r.name);
     await client.query(
       `UPDATE districts SET intro=$2, meta_title=$3, meta_description=$4, updated_at=now() WHERE id=$1`,
       [
         r.id,
-        mergeML(r.intro, d.intro),
-        mergeML(r.meta_title, d.meta_title),
-        mergeML(r.meta_description, d.meta_description),
+        force ? d.intro : mergeML(r.intro, d.intro),
+        force ? d.meta_title : mergeML(r.meta_title, d.meta_title),
+        force ? d.meta_description : mergeML(r.meta_description, d.meta_description),
       ]
     );
     n++;
   }
-  console.log(`districts: ${n} row(s) filled`);
+  console.log(`districts: ${n} row(s) ${force ? "OVERWRITTEN (FORCE_DISTRICTS=1)" : "filled"}`);
 }
 
 async function backfillAreas() {
+  // FORCE_AREAS=1 → overwrite intro / meta_title / meta_description on every
+  // area (even ones already filled) with the current template. Use after a
+  // template change; default (unset) preserves admin edits.
+  const force = process.env.FORCE_AREAS === "1";
   const { rows } = await client.query(`
     SELECT a.id, a.name, a.intro, a.meta_title, a.meta_description, d.name AS district_name
     FROM areas a LEFT JOIN districts d ON d.id = a.district_id
   `);
   let n = 0;
   for (const r of rows) {
-    if (!anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
+    if (!force && !anyBlank(r, ["intro", "meta_title", "meta_description"])) continue;
     const d = areaDefaults(r.name, r.district_name);
     await client.query(
       `UPDATE areas SET intro=$2, meta_title=$3, meta_description=$4, updated_at=now() WHERE id=$1`,
       [
         r.id,
-        mergeML(r.intro, d.intro),
-        mergeML(r.meta_title, d.meta_title),
-        mergeML(r.meta_description, d.meta_description),
+        force ? d.intro : mergeML(r.intro, d.intro),
+        force ? d.meta_title : mergeML(r.meta_title, d.meta_title),
+        force ? d.meta_description : mergeML(r.meta_description, d.meta_description),
       ]
     );
     n++;
   }
-  console.log(`areas: ${n} row(s) filled`);
+  console.log(`areas: ${n} row(s) ${force ? "OVERWRITTEN (FORCE_AREAS=1)" : "filled"}`);
 }
 
 async function backfillHospitals() {
+  // FORCE_HOSPITALS=1 → overwrite meta_title + meta_description on every
+  // hospital. `description` (the rich-text on-page prose) is ALWAYS left
+  // alone in force mode — that field is admin-authored and blowing it away
+  // would erase real content. Blank descriptions still get the boilerplate
+  // fill regardless of the flag.
+  const force = process.env.FORCE_HOSPITALS === "1";
   const { rows } = await client.query(`
-    SELECT h.id, h.name, h.description, h.meta_title, h.meta_description, a.name AS area_name
-    FROM hospitals h LEFT JOIN areas a ON a.id = h.area_id
+    SELECT h.id, h.name, h.description, h.meta_title, h.meta_description,
+           a.name AS area_name, d.name AS district_name
+    FROM hospitals h
+    LEFT JOIN areas a ON a.id = h.area_id
+    LEFT JOIN districts d ON d.id = a.district_id
   `);
   let n = 0;
   for (const r of rows) {
-    if (!anyBlank(r, ["description", "meta_title", "meta_description"])) continue;
-    const d = hospitalDefaults(r.name, r.area_name);
+    if (!force && !anyBlank(r, ["description", "meta_title", "meta_description"])) continue;
+    const dflt = hospitalDefaults(r.name, r.area_name, r.district_name);
     await client.query(
       `UPDATE hospitals SET description=$2, meta_title=$3, meta_description=$4, updated_at=now() WHERE id=$1`,
       [
         r.id,
-        mergeML(r.description, d.description),
-        mergeML(r.meta_title, d.meta_title),
-        mergeML(r.meta_description, d.meta_description),
+        mergeML(r.description, dflt.description), // never force description
+        force ? dflt.meta_title : mergeML(r.meta_title, dflt.meta_title),
+        force ? dflt.meta_description : mergeML(r.meta_description, dflt.meta_description),
       ]
     );
     n++;
   }
-  console.log(`hospitals: ${n} row(s) filled`);
+  console.log(`hospitals: ${n} row(s) ${force ? "OVERWRITTEN meta (FORCE_HOSPITALS=1)" : "filled"}`);
 }
 
 try {
