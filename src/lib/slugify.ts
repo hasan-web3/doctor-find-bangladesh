@@ -9,3 +9,17 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || `item-${Date.now()}`;
 }
+
+// When `base` collides, walk `-2`, `-3`, … until one is free. Keeps URLs
+// readable — only bumps a numeric suffix on real duplicates, never sprinkles
+// a random timestamp. `isTaken` MUST already exclude the current row's id.
+export async function nextAvailableSlug(
+  base: string,
+  isTaken: (candidate: string) => Promise<boolean>,
+): Promise<string> {
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}-${i}`;
+    if (!(await isTaken(candidate))) return candidate;
+  }
+  return `${base}-${Date.now().toString().slice(-4)}`;
+}

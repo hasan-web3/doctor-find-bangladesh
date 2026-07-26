@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { icons, type LucideProps } from "lucide-react";
+import { MEDICAL_ICONS } from "./medical-icons";
 
 interface IconPickerProps {
   value: string;
@@ -10,19 +11,21 @@ interface IconPickerProps {
 }
 
 const iconNames = Object.keys(icons);
+// Guard against a typo in the curated list: silently drop names lucide no
+// longer ships so the picker never renders a blank square.
+const CURATED = MEDICAL_ICONS.filter((m) => m.name in icons);
 
 const LucideIcon = ({ name, ...props }: { name: string } & LucideProps) => {
   const Icon = icons[name as keyof typeof icons];
-  if (!Icon) {
-    return null; // Or a fallback icon
-  }
+  if (!Icon) return null;
   return <Icon {...props} />;
 };
 
 export function IconPicker({ value, onChange, className }: IconPickerProps) {
   const [search, setSearch] = useState("");
 
-  // Normalize case (e.g. legacy 'brain' -> 'Brain') so that we can find it in Lucide-react
+  // Normalize legacy lowercase values (e.g. "brain" -> "Brain") so old rows
+  // still highlight and re-save cleanly.
   const normalizedValue = useMemo(() => {
     if (!value) return "";
     if (icons[value as keyof typeof icons]) return value;
@@ -31,32 +34,29 @@ export function IconPicker({ value, onChange, className }: IconPickerProps) {
   }, [value]);
 
   const filteredIcons = useMemo(() => {
-    if (!search) {
-      // Display a curated list of 30+ highly relevant medical and general icons by default on first load
-      const curated = [
-        "Activity", "Heart", "Brain", "Baby", "Eye", "Stethoscope", "Syringe", "Thermometer", 
-        "Pill", "BriefcaseMedical", "Plus", "Shield", "Ear", "Bone", "Clock", "Home", 
-        "Phone", "MapPin", "Mail", "User", "Smile", "Star", "Check", "X", 
-        "Search", "Settings", "Calendar", "Sparkles", "ClipboardList", "FileText", 
-        "Building", "Users", "AlertCircle", "HelpCircle", "LogOut", "Info"
-      ];
-      
-      // If there is an active selected icon, prepend it to the front of the curated list, removing duplicates
+    const q = search.trim().toLowerCase();
+    if (!q) {
+      const list = CURATED.map((m) => m.name);
       if (normalizedValue && icons[normalizedValue as keyof typeof icons]) {
-        return [
-          normalizedValue,
-          ...curated.filter((icon) => icon.toLowerCase() !== normalizedValue.toLowerCase())
-        ];
+        return [normalizedValue, ...list.filter((n) => n.toLowerCase() !== normalizedValue.toLowerCase())];
       }
-      
-      return curated;
+      return list;
     }
-    return iconNames
-      .filter((key) => key.toLowerCase().includes(search.toLowerCase()))
-      .slice(0, 50); // Limit results for performance
+    // Rank by best match: name-startsWith beats name-contains beats tag-match.
+    const scored: { name: string; score: number }[] = [];
+    for (const m of CURATED) {
+      const nameLower = m.name.toLowerCase();
+      let score = 0;
+      if (nameLower === q) score = 100;
+      else if (nameLower.startsWith(q)) score = 60;
+      else if (nameLower.includes(q)) score = 40;
+      else if (m.tags.some((t) => t.toLowerCase().includes(q))) score = 20;
+      if (score > 0) scored.push({ name: m.name, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s) => s.name);
   }, [search, normalizedValue]);
 
-  // When selected icon matches in rendering list, make sure to pass normalized value to onChange on render
   const activeValue = normalizedValue && icons[normalizedValue as keyof typeof icons] ? normalizedValue : value;
 
   return (
@@ -65,7 +65,7 @@ export function IconPicker({ value, onChange, className }: IconPickerProps) {
         type="text"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search for icons..."
+        placeholder="আইকন খুঁজুন — heart, kidney, dental, চোখ..."
         className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
       />
 
@@ -76,6 +76,7 @@ export function IconPicker({ value, onChange, className }: IconPickerProps) {
               key={key}
               type="button"
               onClick={() => onChange(key)}
+              title={key}
               className={`flex items-center justify-center rounded-lg border-2 p-2 transition-colors ${
                 activeValue === key
                   ? "border-brand-600 bg-brand-50 text-brand-700"
@@ -88,7 +89,7 @@ export function IconPicker({ value, onChange, className }: IconPickerProps) {
           ))}
           {search && filteredIcons.length === 0 && (
             <div className="col-span-8 py-4 text-center text-sm text-slate-500">
-              No icons found for &quot;{search}&quot;.
+              &quot;{search}&quot; এর জন্য কোনো আইকন নেই।
             </div>
           )}
         </div>

@@ -20,7 +20,7 @@ import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { revalidatePublic } from "@/lib/revalidate";
 import { uploadImage, destroyImage } from "@/lib/storage";
-import { slugify } from "@/lib/slugify";
+import { slugify, nextAvailableSlug } from "@/lib/slugify";
 import { recordSlugChange } from "@/lib/seo";
 import {
   fillSpecialtyBlanks,
@@ -69,7 +69,13 @@ export async function saveSpecialty(payload: unknown): Promise<ActionResult> {
     .from(specialties)
     .where(and(eq(specialties.slug, slug), idNe(specialties.id, s.id)))
     .limit(1);
-  if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
+  if (clash) {
+    slug = await nextAvailableSlug(slug, async (c) => {
+      const [r] = await db.select({ id: specialties.id }).from(specialties)
+        .where(and(eq(specialties.slug, c), idNe(specialties.id, s.id))).limit(1);
+      return !!r;
+    });
+  }
 
   // Fill any blank intro / meta title / meta description from the bilingual
   // template — admin-typed text is preserved untouched.
@@ -135,7 +141,13 @@ export async function saveDistrict(payload: unknown): Promise<ActionResult> {
     : null;
   let slug = d.slug?.trim() ? slugify(d.slug) : existing?.slug || slugify(d.name.en || d.name.bn);
   const [clash] = await db.select({ id: districts.id }).from(districts).where(and(eq(districts.slug, slug), idNe(districts.id, d.id))).limit(1);
-  if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
+  if (clash) {
+    slug = await nextAvailableSlug(slug, async (c) => {
+      const [r] = await db.select({ id: districts.id }).from(districts)
+        .where(and(eq(districts.slug, c), idNe(districts.id, d.id))).limit(1);
+      return !!r;
+    });
+  }
 
   const filled = fillDistrictBlanks({
     name: d.name,
@@ -211,7 +223,13 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
     : null;
   let slug = a.slug?.trim() ? slugify(a.slug) : existing?.slug || slugify(a.name.en || a.name.bn);
   const [clash] = await db.select({ id: areas.id }).from(areas).where(and(eq(areas.slug, slug), idNe(areas.id, a.id))).limit(1);
-  if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
+  if (clash) {
+    slug = await nextAvailableSlug(slug, async (c) => {
+      const [r] = await db.select({ id: areas.id }).from(areas)
+        .where(and(eq(areas.slug, c), idNe(areas.id, a.id))).limit(1);
+      return !!r;
+    });
+  }
 
   const filled = fillAreaBlanks({
     name: a.name,
@@ -307,7 +325,13 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
     : null;
   let slug = h.slug?.trim() ? slugify(h.slug) : existing?.slug || slugify(h.name.en || h.name.bn);
   const [clash] = await db.select({ id: hospitals.id }).from(hospitals).where(and(eq(hospitals.slug, slug), idNe(hospitals.id, h.id))).limit(1);
-  if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
+  if (clash) {
+    slug = await nextAvailableSlug(slug, async (c) => {
+      const [r] = await db.select({ id: hospitals.id }).from(hospitals)
+        .where(and(eq(hospitals.slug, c), idNe(hospitals.id, h.id))).limit(1);
+      return !!r;
+    });
+  }
 
   let image_key = existing?.imageKey ?? null;
   let image_url: string | null = null;
@@ -428,7 +452,13 @@ export async function saveBlogPost(payload: unknown): Promise<ActionResult> {
     : null;
   let slug = p.slug?.trim() ? slugify(p.slug) : existing?.slug || slugify(p.title.en || p.title.bn);
   const [clash] = await db.select({ id: blogPosts.id }).from(blogPosts).where(and(eq(blogPosts.slug, slug), idNe(blogPosts.id, p.id))).limit(1);
-  if (clash) slug = `${slug}-${Date.now().toString().slice(-4)}`;
+  if (clash) {
+    slug = await nextAvailableSlug(slug, async (c) => {
+      const [r] = await db.select({ id: blogPosts.id }).from(blogPosts)
+        .where(and(eq(blogPosts.slug, c), idNe(blogPosts.id, p.id))).limit(1);
+      return !!r;
+    });
+  }
 
   let cover_key = existing?.coverKey ?? null;
   let cover_url: string | null = null;

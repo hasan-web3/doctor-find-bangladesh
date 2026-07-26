@@ -6,7 +6,7 @@ import { db, areas, districts, hospitals, specialties } from "@/db";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { revalidatePublic } from "@/lib/revalidate";
-import { slugify } from "@/lib/slugify";
+import { slugify, nextAvailableSlug } from "@/lib/slugify";
 
 // "Quick create" endpoints for the inline modals on the doctor form.
 // Each takes the minimum bilingual name and returns the new row so the caller
@@ -28,11 +28,11 @@ const mlSchema = z.object({
 export type QuickCreated = { id: number; slug: string; name_bn: string; name_en: string };
 export type QuickCreateResult = { ok: true; row: QuickCreated } | { ok: false; message: string };
 
+// `checker(slug)` returns true when the slug is FREE; invert for
+// nextAvailableSlug which expects an `isTaken` predicate.
 async function uniqueSlug(base: string, checker: (slug: string) => Promise<boolean>) {
-  let candidate = base;
-  if (!(await checker(candidate))) return candidate;
-  candidate = `${base}-${Date.now().toString().slice(-4)}`;
-  return candidate;
+  if (await checker(base)) return base;
+  return nextAvailableSlug(base, async (c) => !(await checker(c)));
 }
 
 export async function quickCreateHospital(payload: unknown): Promise<QuickCreateResult> {
