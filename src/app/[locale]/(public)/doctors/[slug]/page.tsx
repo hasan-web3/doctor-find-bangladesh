@@ -12,6 +12,7 @@ import { JsonLd } from "@/components/json-ld";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorSlider } from "@/components/public/doctor-slider";
 import { DoctorPhoto } from "@/components/public/doctor-photo";
+import { LazyMap } from "@/components/public/lazy-map";
 import {
   Facebook,
   GraduationCap,
@@ -284,7 +285,7 @@ export default async function DoctorDetailPage({ params }: Props) {
                         ))}
                       </div>
                     )}
-                    <ChamberMap mapUrl={c.map_url} lat={c.lat} lng={c.lng} name={c.name} />
+                    <ChamberMap mapUrl={c.map_url} lat={c.lat} lng={c.lng} name={c.name} loadLabel={d.view_map} />
                     {/* Per-chamber CTA — pre-selects this chamber in the appointment form. */}
                     <div className="mt-4 flex justify-center md:justify-start">
                       <Link
@@ -374,11 +375,13 @@ async function ChamberMap({
   lat,
   lng,
   name,
+  loadLabel,
 }: {
   mapUrl: string | null;
   lat: number | null;
   lng: number | null;
   name: string;
+  loadLabel: string;
 }) {
   // Case 1: admin pasted a URL. Only treat it as a map if it actually looks
   // like Google Maps — arbitrary strings would just produce the world-view
@@ -397,13 +400,7 @@ async function ChamberMap({
       : `https://www.google.com/maps?output=embed&q=${encodeURIComponent(trimmed)}`;
     return (
       <div className="mt-3.5 overflow-hidden rounded-xl border border-line">
-        <iframe
-          title={name}
-          src={src}
-          className="h-[260px] w-full border-0"
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-        />
+        <LazyMap src={src} title={name} loadLabel={loadLabel} heightClass="h-[260px]" />
       </div>
     );
   }
@@ -414,12 +411,11 @@ async function ChamberMap({
     if (maps?.api_key) {
       return (
         <div className="mt-3.5 overflow-hidden rounded-xl border border-line">
-          <iframe
-            title={name}
+          <LazyMap
             src={`https://www.google.com/maps/embed/v1/place?key=${maps.api_key}&q=${lat},${lng}`}
-            className="h-[220px] w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
+            title={name}
+            loadLabel={loadLabel}
+            heightClass="h-[220px]"
           />
         </div>
       );

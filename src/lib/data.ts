@@ -680,26 +680,27 @@ export async function searchDoctors(
         WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
       )`;
 
+      // Priority ladder matches the product spec:
+      //   1. Featured  ≤ 100 km
+      //   2. Verified  ≤ 100 km
+      //   3. Normal    ≤ 100 km
+      //   4. Featured  > 100 km (or unknown distance)
+      //   5. Verified  > 100 km
+      //   6. Normal    > 100 km
+      // Within each tier, ORDER BY distance ASC so the physically closest
+      // doctor bubbles to the top. `NULLS LAST` keeps doctors with no usable
+      // coord out of the way. The user's IP-derived coords come from the
+      // geo cookie / Vercel edge headers, so this executes without any extra
+      // IP-API fetch per request.
       orderSql = sql`
         CASE
-          -- 1. Featured doctor within 100km
           WHEN d.featured AND (${minDistanceSql}) <= 100 THEN 1
-          -- 2. Verified doctor in user's specific area (thana)
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 2
-          -- 3. Verified doctor in user's broader district
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 3
-          -- 4. Normal public doctor in user's specific area
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 4
-          -- 5. Normal public doctor in user's broader district
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 5
-          -- 6. Other featured doctors (any distance)
-          WHEN d.featured THEN 6
-          -- 7. Other verified doctors (any distance)
-          WHEN d.verified THEN 7
-          -- 8. Anything else
-          ELSE 8
+          WHEN d.verified AND (${minDistanceSql}) <= 100 THEN 2
+          WHEN (${minDistanceSql}) <= 100 THEN 3
+          WHEN d.featured THEN 4
+          WHEN d.verified THEN 5
+          ELSE 6
         END ASC,
-        -- Within the same priority group, sort by distance.
         (${minDistanceSql}) ASC NULLS LAST,
         d.updated_at DESC,
         d.id DESC

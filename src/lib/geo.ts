@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { headers, cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
 import { getAreasForGeo } from "./data";
@@ -92,6 +93,25 @@ function nearestAreaWithDoctors(
 
 export type IpLocation = { city: string | null; country_code: string | null; lat: number | null; lng: number | null };
 
+// Vercel's edge network sets these headers on every request for free (no
+// external HTTP call, no key). Prefer them whenever they're present so
+// detectArea() never has to reach ip-api / ipinfo on Vercel deployments.
+function readVercelGeo(h: Headers): IpLocation | null {
+  const city = h.get("x-vercel-ip-city");
+  const country = h.get("x-vercel-ip-country");
+  const latS = h.get("x-vercel-ip-latitude");
+  const lngS = h.get("x-vercel-ip-longitude");
+  if (!city && !country && !latS && !lngS) return null;
+  const lat = latS ? Number(latS) : NaN;
+  const lng = lngS ? Number(lngS) : NaN;
+  return {
+    city: city ? decodeURIComponent(city) : null,
+    country_code: country || null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+  };
+}
+
 export async function lookupIp(ip: string): Promise<IpLocation> {
   const empty: IpLocation = { city: null, country_code: null, lat: null, lng: null };
   const cfg = await getEnabledConfig("ip_geo");
@@ -127,58 +147,86 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
   }
 }
 
-// Non-cached IP lookup helper used by the middleware.
-export async function detectAreaByIp(ip: string): Promise<GeoResult> {
-  if (!ip || ip === "::1" || ip.startsWith("127.") || ip.startsWith("192.168.")) {
-    return EMPTY;
-  }
-
-  const loc = await lookupIp(ip);
-  const areas = (await getAreasForGeo()) as GeoArea[];
-
-  // Prefer exact-name match — visitor is inside a known area.
+// Resolve a raw IpLocation to a GeoResult against our known areas.
+function resolveLocation(loc: IpLocation, areas: GeoArea[]): GeoResult {
   if (loc.city) {
     const named = matchByName(areas, loc.city);
     if (named) return withArea(named, "ip-name", loc.lat, loc.lng);
   }
-
-  // Fallback: nearest area with active doctors (Bagerhat → Khulna, not Dhaka).
   if (loc.lat !== null && loc.lng !== null) {
     const near = nearestAreaWithDoctors(areas, loc.lat, loc.lng);
     if (near) return withArea(near, "ip-nearest", loc.lat, loc.lng);
   }
-
   return { ...EMPTY, lat: loc.lat, lng: loc.lng };
 }
 
-// Visitor's served area: explicit cookie choice wins, then a fast geo-cache
-// cookie set by a prior request, and finally IP-based lookup (done here rather
-// than in middleware because unstable_cache-backed helpers are illegal there).
-export async function detectArea(): Promise<GeoResult> {
+// Non-cached IP lookup helper (kept for callers that only have a raw IP).
+export async function detectAreaByIp(ip: string): Promise<GeoResult> {
+  if (!ip || ip === "::1" || ip.startsWith("127.") || ip.startsWith("192.168.")) {
+    return EMPTY;
+  }
+  const loc = await lookupIp(ip);
+  const areas = (await getAreasForGeo()) as GeoArea[];
+  return resolveLocation(loc, areas);
+}
+
+// Visitor's served area. Preference order:
+//   1. Explicit cookie (`db_area`) — user manually picked an area
+//   2. Cached prior lookup (`geo-location-cache`)
+//   3. Vercel edge headers (`x-vercel-ip-*`) — free, no fetch on Vercel
+//   4. External IP-geo fetch — only when Vercel headers are absent
+//
+// Wrapped in React `cache` so multiple calls inside the same request (e.g.
+// generateMetadata + page component) share one result. IP-geo can't run in
+// middleware — unstable_cache-backed helpers throw there — so it stays here.
+export const detectArea = cache(async (): Promise<GeoResult> => {
   const jar = await cookies();
   const areas = (await getAreasForGeo()) as GeoArea[];
 
-  // 1. Explicit cookie choice wins (user manually picked an area).
   const chosen = jar.get("db_area")?.value;
   if (chosen) {
     const area = areas.find((a) => a.slug === chosen);
     if (area) return withArea(area, "cookie", area.lat, area.lng);
   }
 
-  // 2. Fast path: cached IP result from a previous visit.
+  // 30-min geo cookie — populated by middleware from Vercel edge headers so
+  // subsequent requests skip both header parsing and IP-API fetches.
   const cached = jar.get("geo-location-cache")?.value;
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
+      // Legacy shape: `{areaSlug, lat, lng}` written by earlier code paths.
       if (parsed?.areaSlug) {
         const area = areas.find((a) => a.slug === parsed.areaSlug);
         if (area) return withArea(area, "cookie", parsed.lat ?? null, parsed.lng ?? null);
       }
+      // New shape: raw `{lat, lng, city}` from middleware — resolve on the fly.
+      if (parsed?.lat != null || parsed?.city) {
+        const resolved = resolveLocation({
+          city: parsed.city ?? null,
+          country_code: null,
+          lat: parsed.lat ?? null,
+          lng: parsed.lng ?? null,
+        }, areas);
+        if (resolved.areaSlug) return { ...resolved, source: "cookie" };
+        if (parsed.lat != null) return { ...EMPTY, lat: parsed.lat, lng: parsed.lng, source: "cookie" };
+      }
     } catch { /* ignore */ }
   }
 
-  // 3. IP-based lookup using the client IP forwarded by middleware.
   const h = await headers();
+
+  // Fast path — Vercel edge already told us where the visitor is.
+  const vercelLoc = readVercelGeo(h);
+  if (vercelLoc) {
+    const resolved = resolveLocation(vercelLoc, areas);
+    if (resolved.areaSlug) return resolved;
+    // If Vercel gave us coords but no area match, we still return what we know
+    // — no external fetch will improve it.
+    if (vercelLoc.lat !== null || vercelLoc.city) return resolved;
+  }
+
+  // Local dev / non-Vercel host — fall back to the paid/free IP-geo provider.
   const ip = h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
   if (ip) {
     const geo = await detectAreaByIp(ip);
@@ -186,4 +234,4 @@ export async function detectArea(): Promise<GeoResult> {
   }
 
   return EMPTY;
-}
+});

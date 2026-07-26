@@ -3,15 +3,16 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { Icon } from "@/components/icons";
-import { getHospitalBySlug, getFaqs, getSpecialties, searchDoctors, type EnrichedDoctor } from "@/lib/data";
+import { getHospitalBySlug, getFaqs, searchDoctors } from "@/lib/data";
 import { db } from "@/db";
 import { doctorSpecialties, specialties as specialtiesT } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { getSettings } from "@/lib/settings";
 import { getEnabledConfig } from "@/lib/integrations";
 import { detectArea } from "@/lib/geo";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { HospitalGallery } from "@/components/public/hospital-gallery";
+import { LazyMap } from "@/components/public/lazy-map";
 import { HospitalDoctorList } from "@/components/public/hospital-doctor-list";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldMedicalClinic, ldFaq } from "@/lib/seo-utils";
@@ -61,7 +62,7 @@ export default async function HospitalPage({ params }: Props) {
   }
 
   const geo = await detectArea();
-  const [settings, faqs, initialDoctorData, maps, allSpecialties] = await Promise.all([
+  const [settings, faqs, initialDoctorData, maps, departmentSpecs] = await Promise.all([
     getSettings(),
     getFaqs("hospital", h.id, locale),
     searchDoctors({
@@ -74,13 +75,31 @@ export default async function HospitalPage({ params }: Props) {
       preferDistrictId: geo.districtId,
     }, locale),
     getEnabledConfig("google_maps"),
-    getSpecialties(locale, true),
+    // Only look up the specialties this hospital actually lists — matching on
+    // either Bangla or English name. Was `getSpecialties(locale, true)` which
+    // fetched every row in the table.
+    h.departments.length > 0
+      ? db.select({ slug: specialtiesT.slug, name: specialtiesT.name })
+          .from(specialtiesT)
+          .where(
+            or(
+              ...h.departments.flatMap((n) => [
+                sql`${specialtiesT.name}->>'bn' = ${n}`,
+                sql`${specialtiesT.name}->>'en' = ${n}`,
+              ]),
+            ),
+          )
+      : Promise.resolve([] as { slug: string; name: { bn?: string; en?: string } }[]),
   ]);
 
   const departmentDetails = h.departments
-    .map(deptName => {
-      const spec = allSpecialties.find(s => s.name === deptName);
-      return spec ? { name: spec.name, slug: spec.slug } : null;
+    .map((deptName) => {
+      const spec = departmentSpecs.find(
+        (s) => s.name?.bn === deptName || s.name?.en === deptName,
+      );
+      if (!spec) return null;
+      const label = ml(spec.name, locale) || deptName;
+      return { name: label, slug: spec.slug };
     })
     .filter((d): d is { name: string; slug: string } => d !== null);
 
@@ -138,13 +157,7 @@ export default async function HospitalPage({ params }: Props) {
         if (!src) return null;
         return (
           <div className="mb-6 overflow-hidden rounded-2xl border border-line">
-            <iframe
-              title={h.name}
-              src={src}
-              className="h-[260px] w-full border-0 sm:h-[340px] min-[900px]:h-[380px]"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
+            <LazyMap src={src} title={h.name} loadLabel={d.view_map} />
           </div>
         );
       })()}
