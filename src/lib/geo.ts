@@ -112,12 +112,23 @@ function readVercelGeo(h: Headers): IpLocation | null {
   };
 }
 
-export async function lookupIp(ip: string): Promise<IpLocation> {
+// How long an external IP-geo answer stays good for. Only the paid/free
+// provider path is cached — Vercel's own headers are free to read, so caching
+// those would buy nothing and would serve a stale city after the visitor
+// switches network, VPN, or town.
+const IP_GEO_TTL_SECONDS = 60 * 30;
+
+// The raw provider call. No DB reads and no caching in here so it is safe to
+// wrap in unstable_cache (which forbids cookies()/headers() inside).
+async function fetchIpLocation(
+  ip: string,
+  provider: string | null,
+  apiKey: string | null,
+): Promise<IpLocation> {
   const empty: IpLocation = { city: null, country_code: null, lat: null, lng: null };
-  const cfg = await getEnabledConfig("ip_geo");
   try {
-    if (cfg?.provider === "ipinfo" && cfg.api_key) {
-      const res = await fetch(`https://ipinfo.io/${ip}?token=${cfg.api_key}`);
+    if (provider === "ipinfo" && apiKey) {
+      const res = await fetch(`https://ipinfo.io/${ip}?token=${apiKey}`);
       if (!res.ok) return empty;
       const data = await res.json();
       // ipinfo returns "loc": "22.8098,89.5551".
@@ -147,6 +158,24 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
   }
 }
 
+// 30-minute server-side cache of the external lookup, keyed by IP (+ provider).
+// This is what the old `geo-location-cache` cookie used to do, moved server
+// side: no Set-Cookie / Cookie bytes on every request, it still works for
+// visitors who block cookies, and one lookup is shared by every request from
+// the same IP instead of once per browser.
+export async function lookupIp(ip: string): Promise<IpLocation> {
+  // getEnabledConfig reads the DB, so it must run OUTSIDE unstable_cache.
+  const cfg = await getEnabledConfig("ip_geo");
+  const provider = cfg?.provider ?? null;
+  const apiKey = cfg?.api_key ?? null;
+
+  return unstable_cache(
+    () => fetchIpLocation(ip, provider, apiKey),
+    ["ip-geo", provider ?? "default", ip],
+    { revalidate: IP_GEO_TTL_SECONDS, tags: ["ip-geo"] },
+  )();
+}
+
 // Resolve a raw IpLocation to a GeoResult against our known areas.
 function resolveLocation(loc: IpLocation, areas: GeoArea[]): GeoResult {
   if (loc.city) {
@@ -171,10 +200,14 @@ export async function detectAreaByIp(ip: string): Promise<GeoResult> {
 }
 
 // Visitor's served area. Preference order:
-//   1. Explicit cookie (`db_area`) — user manually picked an area
-//   2. Cached prior lookup (`geo-location-cache`)
-//   3. Vercel edge headers (`x-vercel-ip-*`) — free, no fetch on Vercel
-//   4. External IP-geo fetch — only when Vercel headers are absent
+//   1. `db_area` cookie — the visitor manually picked an area, always wins
+//   2. Vercel edge headers (`x-vercel-ip-*`) — free and sub-millisecond, so
+//      they are read fresh on every request. Deliberately NOT cached in a
+//      cookie: that only bought stale coordinates once the visitor changed
+//      network, VPN or city, and cost Cookie/Set-Cookie bytes on every hit.
+//   3. External IP-geo provider — only reachable when the Vercel headers are
+//      absent (local dev / self-hosted). That call IS cached for 30 minutes
+//      per IP inside lookupIp(), since it is the expensive one.
 //
 // Wrapped in React `cache` so multiple calls inside the same request (e.g.
 // generateMetadata + page component) share one result. IP-geo can't run in
@@ -187,31 +220,6 @@ export const detectArea = cache(async (): Promise<GeoResult> => {
   if (chosen) {
     const area = areas.find((a) => a.slug === chosen);
     if (area) return withArea(area, "cookie", area.lat, area.lng);
-  }
-
-  // 30-min geo cookie — populated by middleware from Vercel edge headers so
-  // subsequent requests skip both header parsing and IP-API fetches.
-  const cached = jar.get("geo-location-cache")?.value;
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      // Legacy shape: `{areaSlug, lat, lng}` written by earlier code paths.
-      if (parsed?.areaSlug) {
-        const area = areas.find((a) => a.slug === parsed.areaSlug);
-        if (area) return withArea(area, "cookie", parsed.lat ?? null, parsed.lng ?? null);
-      }
-      // New shape: raw `{lat, lng, city}` from middleware — resolve on the fly.
-      if (parsed?.lat != null || parsed?.city) {
-        const resolved = resolveLocation({
-          city: parsed.city ?? null,
-          country_code: null,
-          lat: parsed.lat ?? null,
-          lng: parsed.lng ?? null,
-        }, areas);
-        if (resolved.areaSlug) return { ...resolved, source: "cookie" };
-        if (parsed.lat != null) return { ...EMPTY, lat: parsed.lat, lng: parsed.lng, source: "cookie" };
-      }
-    } catch { /* ignore */ }
   }
 
   const h = await headers();

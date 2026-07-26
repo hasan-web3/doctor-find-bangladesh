@@ -16,7 +16,6 @@ export const runtime = 'nodejs';
 
 const LOCALE_COOKIE = "NEXT_LOCALE";
 const AREA_COOKIE = "db_area";
-const GEO_COOKIE = "geo-location-cache";
 
 // Paths that are locale-neutral and must never be rewritten.
 // `sitemap` (no extension anchor) covers both /sitemap.xml (legacy) and
@@ -142,32 +141,11 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
     response = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
   }
 
-  // Persist Vercel's edge-supplied geo into a 30-min cookie the first time we
-  // see it. Every downstream request reads the cookie instead of re-parsing
-  // headers and re-resolving the area — the same doctor/hospital/area SQL
-  // filter runs but on data we already know, so the DB isn't queried extra
-  // times for identity. On non-Vercel hosts these headers are absent; the
-  // server-side `detectArea` fallback still runs (and does one IP-API fetch).
-  if (!req.cookies.get(GEO_COOKIE) && !NO_GEO.test(pathname)) {
-    const rawLat = req.headers.get("x-vercel-ip-latitude");
-    const rawLng = req.headers.get("x-vercel-ip-longitude");
-    const rawCity = req.headers.get("x-vercel-ip-city");
-    if (rawLat || rawLng || rawCity) {
-      const lat = rawLat ? Number(rawLat) : null;
-      const lng = rawLng ? Number(rawLng) : null;
-      const payload = JSON.stringify({
-        lat: Number.isFinite(lat) ? lat : null,
-        lng: Number.isFinite(lng) ? lng : null,
-        city: rawCity ? decodeURIComponent(rawCity) : null,
-      });
-      response.cookies.set(GEO_COOKIE, payload, {
-        maxAge: 60 * 30,
-        sameSite: "lax",
-        path: "/",
-      });
-    }
-  }
-
+  // No geo cookie is written here. Vercel's `x-vercel-ip-*` headers arrive on
+  // every request for free, so `detectArea()` reads them fresh server-side —
+  // caching them in a cookie only served a stale city after the visitor moved
+  // or switched VPN. The one expensive path (external IP-geo, used when those
+  // headers are absent) is cached for 30 minutes per IP inside lookupIp().
   return response;
 }
 
