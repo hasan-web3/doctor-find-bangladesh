@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchDistricts, type DistrictSearchParams } from "@/lib/data";
+import { detectArea } from "@/lib/geo";
 import { isLocale, type Locale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +14,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid locale" }, { status: 400 });
   }
 
-  // Build search parameters from URL
+  // Same-basis ranking for page 2+ as the server-rendered first page.
+  const geo = await detectArea();
+
   const params: DistrictSearchParams = {
     q: searchParams.get("q") || undefined,
     page: searchParams.has("page") ? Number(searchParams.get("page")) : 1,
     perPage: searchParams.has("perPage") ? Number(searchParams.get("perPage")) : 24,
-    preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : null,
-    preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : null,
+    preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : geo.lat,
+    preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : geo.lng,
+    preferDistrictId: geo.districtId,
   };
 
   try {

@@ -368,7 +368,28 @@ export async function searchHospitals(
 
   const orderClauses = [asc(hospitalsT.sort), asc(hospitalsT.id)];
   if (geo?.lat != null && geo?.lng != null) {
-    const distanceSql = sql`6371 * acos(cos(radians(${geo.lat})) * cos(radians(${hospitalsT.lat})) * cos(radians(${hospitalsT.lng}) - radians(${geo.lng})) + sin(radians(${geo.lat})) * sin(radians(${hospitalsT.lat})))`;
+    // Same coordinate fallback idea as the doctor ranking: a hospital without
+    // its own lat/lng borrows its thana's, then its district's, so it still
+    // participates in nearest-first ordering instead of sinking to the bottom.
+    // acos() clamped to [-1, 1] — float rounding on an exact coordinate match
+    // otherwise makes Postgres raise "input is out of range".
+    const distanceSql = sql`(
+      SELECT 6371 * acos(LEAST(1, GREATEST(-1,
+          cos(radians(${geo.lat})) * cos(radians(hpt.lat))
+          * cos(radians(hpt.lng) - radians(${geo.lng}))
+          + sin(radians(${geo.lat})) * sin(radians(hpt.lat))
+      )))
+      FROM (
+        SELECT
+          COALESCE(hh.lat, ha.lat, hd.lat) AS lat,
+          COALESCE(hh.lng, ha.lng, hd.lng) AS lng
+        FROM hospitals hh
+        LEFT JOIN areas ha ON ha.id = hh.area_id
+        LEFT JOIN districts hd ON hd.id = ha.district_id
+        WHERE hh.id = "hospitals"."id"
+      ) hpt
+      WHERE hpt.lat IS NOT NULL AND hpt.lng IS NOT NULL
+    )`;
     orderClauses.unshift(sql`${distanceSql} ASC NULLS LAST`);
   }
   
@@ -649,35 +670,54 @@ export async function searchDoctors(
     }
     // If no explicit sort, use the location-aware ranking logic.
     else if (userLat != null && userLng != null) {
-      // Subquery to find the minimum distance from the user to any of a doctor's locations,
-      // using the specified coordinate fallback logic.
+      // Distance from the visitor to the doctor's ONE canonical location.
+      //
+      // Location = the doctor's FIRST visible chamber (lowest `sort`, then
+      // lowest id). A chamber with the public toggle off is invisible here, so
+      // a doctor whose only chamber is hidden is treated as having no chamber
+      // and falls through to their profile hospital.
+      //
+      // Coordinate fallback chain, in the product's priority order:
+      //   1. chamber's own lat/lng  (auto-extracted from the pasted Google Map)
+      //   2. chamber's thana / upazila
+      //   3. doctor's profile-linked hospital
+      //   4. chamber's district
+      //   5/6. that hospital's own thana / district (last resort)
+      //
+      // Deliberately NOT a MIN() across every chamber + the hospital: that let
+      // a doctor with a far-away chamber but a nearby linked hospital score as
+      // "nearby", which is how a Cumilla chamber was ranking top for Khulna
+      // visitors. One doctor resolves to exactly one point.
+      //
+      // acos() is clamped to [-1, 1] — float rounding on identical coordinates
+      // can push the dot product just past 1.0, which makes Postgres raise
+      // "input is out of range" and kill the whole query.
       const minDistanceSql = sql`(
-        SELECT MIN(
-          6371 * acos(
-            cos(radians(${userLat})) * cos(radians(loc.lat))
-            * cos(radians(loc.lng) - radians(${userLng}))
-            + sin(radians(${userLat})) * sin(radians(loc.lat))
-          )
-        )
+        SELECT 6371 * acos(LEAST(1, GREATEST(-1,
+            cos(radians(${userLat})) * cos(radians(pt.lat))
+            * cos(radians(pt.lng) - radians(${userLng}))
+            + sin(radians(${userLat})) * sin(radians(pt.lat))
+        )))
         FROM (
-          -- Coordinate fallback chain: Chamber -> Thana -> Hospital -> District
           SELECT
-            COALESCE(cp.lat, ap.lat, hp.lat, dp.lat) AS lat,
-            COALESCE(cp.lng, ap.lng, hp.lng, dp.lng) AS lng
-          FROM chambers cp
-          LEFT JOIN areas ap ON ap.id = cp.area_id
-          LEFT JOIN districts dp ON dp.id = ap.district_id
-          LEFT JOIN hospitals hp ON hp.id = d.hospital_id
-          WHERE cp.doctor_id = d.id AND cp.visible
-
-          UNION ALL
-
-          -- The doctor's primary hospital is also a potential location.
-          SELECT hp.lat, hp.lng
-          FROM hospitals hp
-          WHERE hp.id = d.hospital_id
-        ) loc
-        WHERE loc.lat IS NOT NULL AND loc.lng IS NOT NULL
+            COALESCE(fc.lat, fa.lat, dh.lat, fd.lat, dha.lat, dhd.lat) AS lat,
+            COALESCE(fc.lng, fa.lng, dh.lng, fd.lng, dha.lng, dhd.lng) AS lng
+          FROM doctors dd
+          LEFT JOIN LATERAL (
+            SELECT ch.lat, ch.lng, ch.area_id
+            FROM chambers ch
+            WHERE ch.doctor_id = dd.id AND ch.visible
+            ORDER BY ch.sort ASC, ch.id ASC
+            LIMIT 1
+          ) fc ON TRUE
+          LEFT JOIN areas     fa  ON fa.id  = fc.area_id
+          LEFT JOIN districts fd  ON fd.id  = fa.district_id
+          LEFT JOIN hospitals dh  ON dh.id  = dd.hospital_id
+          LEFT JOIN areas     dha ON dha.id = dh.area_id
+          LEFT JOIN districts dhd ON dhd.id = dha.district_id
+          WHERE dd.id = d.id
+        ) pt
+        WHERE pt.lat IS NOT NULL AND pt.lng IS NOT NULL
       )`;
 
       // Priority ladder matches the product spec:
@@ -1236,6 +1276,10 @@ export type AreaSearchParams = {
   perPage?: number;
   preferLat?: number | null;
   preferLng?: number | null;
+  // The visitor's own thana / district, from their IP. Used to float an exact
+  // match to the very top before falling back to raw distance.
+  preferAreaId?: number | null;
+  preferDistrictId?: number | null;
 };
 
 export async function searchAreas(
@@ -1260,14 +1304,29 @@ export async function searchAreas(
   const whereSql = sql.join(conditions, sql` AND `);
   const orderParts = [];
 
-  if (p.preferLat != null && p.preferLng != null) {
+  // Thana ranking uses ONLY thana geography — never a doctor's chamber or a
+  // hospital. Tier first (visitor's own thana, then own district, then the
+  // rest), distance second.
+  if (p.preferAreaId != null || p.preferDistrictId != null) {
     orderParts.push(sql`
-      6371 * acos(
-        cos(radians(${p.preferLat})) * cos(radians(a.lat))
-        * cos(radians(a.lng) - radians(${p.preferLng}))
-        + sin(radians(${p.preferLat})) * sin(radians(a.lat))
-      )
-    ASC NULLS LAST`);
+      CASE
+        WHEN a.id = ${p.preferAreaId ?? null} THEN 0
+        WHEN a.district_id = ${p.preferDistrictId ?? null} THEN 1
+        ELSE 2
+      END ASC`);
+  }
+  if (p.preferLat != null && p.preferLng != null) {
+    // A thana with no coordinates of its own borrows its district's, so it
+    // still ranks instead of sinking below every coordinate-bearing thana.
+    // acos() clamped to [-1, 1] — float rounding on an exact coordinate match
+    // otherwise makes Postgres raise "input is out of range" and fail the query.
+    orderParts.push(sql`
+      6371 * acos(LEAST(1, GREATEST(-1,
+        cos(radians(${p.preferLat})) * cos(radians(COALESCE(a.lat, d.lat)))
+        * cos(radians(COALESCE(a.lng, d.lng)) - radians(${p.preferLng}))
+        + sin(radians(${p.preferLat})) * sin(radians(COALESCE(a.lat, d.lat)))
+      ))
+    ) ASC NULLS LAST`);
   }
   orderParts.push(sql`a.sort ASC`);
   orderParts.push(sql`a.id ASC`);
@@ -1330,6 +1389,8 @@ export type DistrictSearchParams = {
   perPage?: number;
   preferLat?: number | null;
   preferLng?: number | null;
+  // The visitor's own district, from their IP — floated to the top.
+  preferDistrictId?: number | null;
 };
 
 export async function searchDistricts(
@@ -1351,14 +1412,20 @@ export async function searchDistricts(
   const whereSql = sql.join(conditions, sql` AND `);
   const orderParts = [];
 
+  // District ranking uses ONLY district coordinates — no chamber, no hospital.
+  // The visitor's own district pins to the top, then nearest-first.
+  if (p.preferDistrictId != null) {
+    orderParts.push(sql`CASE WHEN districts.id = ${p.preferDistrictId} THEN 0 ELSE 1 END ASC`);
+  }
   if (p.preferLat != null && p.preferLng != null) {
+    // acos() clamped to [-1, 1] — see the note in searchAreas.
     orderParts.push(sql`
-      6371 * acos(
+      6371 * acos(LEAST(1, GREATEST(-1,
         cos(radians(${p.preferLat})) * cos(radians(districts.lat))
         * cos(radians(districts.lng) - radians(${p.preferLng}))
         + sin(radians(${p.preferLat})) * sin(radians(districts.lat))
-      )
-    ASC NULLS LAST`);
+      ))
+    ) ASC NULLS LAST`);
   }
   orderParts.push(sql`districts.sort ASC`);
   orderParts.push(sql`districts.id ASC`);

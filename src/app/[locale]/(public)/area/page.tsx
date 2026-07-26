@@ -37,7 +37,9 @@ export default async function AreasPage({ params, searchParams }: Props) {
     page: Number(sp.page || '1'),
     perPage: Number(sp.perPage || '24'),
     preferLat: geo.lat,
-    preferLng: geo.lng
+    preferLng: geo.lng,
+    preferAreaId: geo.areaId,
+    preferDistrictId: geo.districtId,
   }, locale);
 
   const geoDistrictName = geo.districtName
