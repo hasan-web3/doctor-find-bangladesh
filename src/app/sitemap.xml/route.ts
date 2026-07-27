@@ -14,7 +14,10 @@ export async function GET() {
   return new NextResponse(body, {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
+      // Matches the shard route — see the note there. The index lists which
+      // shards exist, so a new section must not be pinned behind a stale edge
+      // entry either.
+      "Cache-Control": "public, max-age=0, s-maxage=60",
     },
   });
 }

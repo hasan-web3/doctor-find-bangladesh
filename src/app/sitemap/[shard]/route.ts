@@ -25,7 +25,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ shard: string 
   return new NextResponse(body, {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
+      // 60s, and deliberately NO stale-while-revalidate.
+      //
+      // This header is what Vercel's edge cache obeys, and revalidatePath() /
+      // revalidateTag() cannot evict an edge entry created by a manual
+      // s-maxage on a dynamic route handler. The previous value
+      // (s-maxage=3600, stale-while-revalidate=86400) therefore pinned the
+      // shard for up to 25 hours no matter what the admin did — a doctor
+      // added at 18:49 was still missing from doctors.xml the next day.
+      //
+      // SWR is the dangerous half: it lets the CDN keep serving the old body
+      // while it refreshes in the background, so the very crawl that matters
+      // still sees stale XML. Without it the edge must revalidate at 60s, so
+      // freshness is bounded and predictable. Sitemaps are fetched a handful
+      // of times a day, so the extra origin hits are irrelevant — and the
+      // 60s floor still absorbs any accidental hammering.
+      "Cache-Control": "public, max-age=0, s-maxage=60",
     },
   });
 }
