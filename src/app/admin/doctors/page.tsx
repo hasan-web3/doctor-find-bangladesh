@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { searchClause } from "@/lib/admin-search";
 import { DoctorsList } from "./list-client";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
   const perPage = Number(sp.perPage) || 30;
 
   const conds: SQL[] = [sql`TRUE`];
-  if (q) conds.push(sql`(d.name->>'bn' ILIKE ${`%${q}%`} OR d.name->>'en' ILIKE ${`%${q}%`})`);
+  if (q) conds.push(searchClause(q, [sql`d.name->>'bn'`, sql`d.name->>'en'`, sql`d.slug`]));
   if (sp.filter === "featured") conds.push(sql`d.featured`);
   if (sp.filter === "inactive") conds.push(sql`NOT d.active`);
   const where = sql.join(conds, sql` AND `);

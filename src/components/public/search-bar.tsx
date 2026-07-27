@@ -171,7 +171,7 @@ export function SearchBar({
                 value={thanaId}
                 onChange={setThanaId}
                 placeholder={d.select_area}
-                emptyLabel={locale === "bn" ? "কোনো থানা নেই" : "No thanas"}
+                emptyLabel={locale === "bn" ? "কোনো শহর / গ্রাম নেই" : "No towns / villages"}
               />
             </div>
           )}

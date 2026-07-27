@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveReview, toggleReview, deleteReview } from "@/actions/admin-content";
 import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
 import { bnDate } from "@/lib/bn";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 type Review = {
   id: number; doctor_id: number; doctor_bn: string; name: string; area_text: string | null;
@@ -15,7 +16,7 @@ type Draft = {
   id?: number; doctor_id: number | null; name: string; area_text: string; body: string; published: boolean;
 };
 
-export function ReviewsManager({ reviews, doctors }: { reviews: Review[]; doctors: { id: number; name_bn: string }[] }) {
+export function ReviewsManager({ reviews, doctors, q }: { reviews: Review[]; doctors: { id: number; name_bn: string }[]; q: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -33,10 +34,11 @@ export function ReviewsManager({ reviews, doctors }: { reviews: Review[]; doctor
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="ডাক্তার, রোগী বা রিভিউ" />
         <button
           onClick={() => setEditing({ doctor_id: null, name: "", area_text: "", body: "", published: true })}
-          className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+          className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + রিভিউ যোগ করুন
         </button>

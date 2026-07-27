@@ -9,6 +9,7 @@ import { bnNum } from "@/lib/bn";
 import { Pagination } from "@/components/admin/pagination";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { DistrictForm, EMPTY_DISTRICT } from "./form";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 export type DistrictRow = {
   id: number; slug: string; name: unknown;
@@ -27,12 +28,14 @@ export function DistrictsManager({
   page,
   perPage,
   totalCount,
+  q,
 }: {
   rows: DistrictRow[];
   totalPages: number;
   page: number;
   perPage: number;
   totalCount: number;
+  q: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -47,10 +50,11 @@ export function DistrictsManager({
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="জেলা খুঁজুন / Search districts" />
         <button
           onClick={() => setEditing({ ...EMPTY_DISTRICT, sort: totalCount })}
-          className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+          className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + নতুন জেলা
         </button>

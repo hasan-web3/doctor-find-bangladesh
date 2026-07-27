@@ -1,15 +1,20 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { searchClause } from "@/lib/admin-search";
 import { AreasManager, type AreaRow } from "./manager";
 
 export const dynamic = "force-dynamic";
 
-type SP = { page?: string; perPage?: string };
+type SP = { page?: string; perPage?: string; q?: string };
 
 export default async function AdminAreasPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const perPage = Number(sp.perPage) || 30;
+  const q = sp.q?.trim() || "";
+  const searchCond: SQL = q
+    ? searchClause(q, [sql`a.name->>'bn'`, sql`a.name->>'en'`, sql`a.slug`, sql`d.name->>'bn'`, sql`d.name->>'en'`])
+    : sql`TRUE`;
 
   const [areasRes, totalRes, districtsRes] = await Promise.all([
     db.execute<AreaRow>(sql`
@@ -20,10 +25,11 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
         (SELECT COUNT(DISTINCT c.doctor_id)::int FROM chambers c WHERE c.area_id=a.id) AS doctor_count
       FROM areas a
       LEFT JOIN districts d ON d.id = a.district_id
+      WHERE ${searchCond}
       ORDER BY a.sort, a.id
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
-    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM areas`),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM areas a LEFT JOIN districts d ON d.id=a.district_id WHERE ${searchCond}`),
     db.execute<{ id: number; name_bn: string; name_en: string | null }>(sql`
       SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM districts WHERE active ORDER BY sort, id
     `),
@@ -42,6 +48,7 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
         page={page}
         perPage={perPage}
         totalCount={totalCount}
+        q={q}
       />
     </div>
   );

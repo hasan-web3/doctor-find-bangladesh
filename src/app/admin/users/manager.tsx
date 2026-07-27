@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { saveUser, deleteUser } from "@/actions/admin-system";
 import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
 import { bnDate } from "@/lib/bn";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 type Row = { id: number; name: string; email: string; role: string; active: boolean; created_at: string };
 type Draft = { id?: number; name: string; email: string; password: string; role: string; active: boolean };
 
 const ROLE_LABEL: Record<string, string> = { super_admin: "সুপার অ্যাডমিন", admin: "অ্যাডমিন", editor: "এডিটর" };
 
-export function UsersManager({ rows, isSuperAdmin, selfId }: { rows: Row[]; isSuperAdmin: boolean; selfId: number }) {
+export function UsersManager({ rows, isSuperAdmin, selfId, q }: { rows: Row[]; isSuperAdmin: boolean; selfId: number; q: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -35,16 +36,17 @@ export function UsersManager({ rows, isSuperAdmin, selfId }: { rows: Row[]; isSu
         </div>
       )}
 
-      {isSuperAdmin && (
-        <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="নাম, ইমেইল বা রোল" />
+        {isSuperAdmin && (
           <button
             onClick={() => setEditing({ name: "", email: "", password: "", role: "admin", active: true })}
-            className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+            className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
           >
             + নতুন ইউজার
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {editing && (
         <div className="mb-5 rounded-2xl border border-brand-200 bg-white p-6">

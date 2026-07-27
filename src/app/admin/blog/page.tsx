@@ -1,16 +1,22 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { searchClause } from "@/lib/admin-search";
 import { CategoriesManager } from "./categories";
 import { BlogList } from "./list-client";
 
 export const dynamic = "force-dynamic";
 
-type SP = { page?: string; perPage?: string };
+type SP = { page?: string; perPage?: string; q?: string };
 
 export default async function AdminBlogPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const perPage = Number(sp.perPage) || 30;
+  const q = sp.q?.trim() || "";
+
+  const searchCond: SQL = q
+    ? searchClause(q, [sql`p.title->>'bn'`, sql`p.title->>'en'`, sql`p.slug`, sql`p.excerpt->>'bn'`, sql`p.excerpt->>'en'`])
+    : sql`TRUE`;
 
   const [postsRes, totalRes, catsRes] = await Promise.all([
     db.execute<{
@@ -20,10 +26,11 @@ export default async function AdminBlogPage({ searchParams }: { searchParams: Pr
       SELECT p.id, p.slug, p.title->>'bn' AS title, p.published, p.published_at::text,
         c.name->>'bn' AS category, 0 AS views
       FROM blog_posts p LEFT JOIN blog_categories c ON c.id = p.category_id
+      WHERE ${searchCond}
       ORDER BY p.updated_at DESC
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
-    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM blog_posts`),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM blog_posts p WHERE ${searchCond}`),
     db.execute<{ id: number; slug: string; name: unknown; post_count: number }>(sql`
       SELECT c.id, c.slug, c.name,
         (SELECT COUNT(*)::int FROM blog_posts p WHERE p.category_id=c.id) AS post_count
@@ -50,6 +57,7 @@ export default async function AdminBlogPage({ searchParams }: { searchParams: Pr
         page={page}
         perPage={perPage}
         totalPages={totalPages}
+        q={q}
       />
       <div className="mt-8">
         <CategoriesManager categories={categories} />

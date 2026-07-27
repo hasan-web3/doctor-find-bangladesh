@@ -1,25 +1,32 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { searchClause } from "@/lib/admin-search";
 import { HospitalsManager, type HospitalRow } from "./manager";
 
 export const dynamic = "force-dynamic";
 
-type SP = { page?: string; perPage?: string };
+type SP = { page?: string; perPage?: string; q?: string };
 
 export default async function AdminHospitalsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const perPage = Number(sp.perPage) || 30;
+  const q = sp.q?.trim() || "";
+  const searchCond: SQL = q
+    ? searchClause(q, [sql`h.name->>'bn'`, sql`h.name->>'en'`, sql`h.slug`, sql`h.address->>'bn'`, sql`h.address->>'en'`, sql`h.phone`])
+    : sql`TRUE`;
 
   const [hospitalsRes, totalRes, areasRes, specialtiesRes, districtsRes] = await Promise.all([
     db.execute<HospitalRow>(sql`
       SELECT h.id, h.slug, h.name, h.area_id, a.name->>'bn' AS area_bn, a.district_id AS area_district_id,
         h.address, h.phone, h.lat, h.lng, h.description, h.departments, h.map_url,
         h.image_url, h.gallery, h.meta_title, h.meta_description, h.active
-      FROM hospitals h LEFT JOIN areas a ON a.id=h.area_id ORDER BY h.sort, h.id
+      FROM hospitals h LEFT JOIN areas a ON a.id=h.area_id
+      WHERE ${searchCond}
+      ORDER BY h.sort, h.id
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
-    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM hospitals`),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM hospitals h WHERE ${searchCond}`),
     // Areas carry district_id + district labels so the client can filter thanas by chosen district.
     db.execute<{
       id: number; name_bn: string; name_en: string | null;
@@ -51,6 +58,7 @@ export default async function AdminHospitalsPage({ searchParams }: { searchParam
         totalPages={totalPages}
         page={page}
         perPage={perPage}
+        q={q}
       />
     </div>
   );

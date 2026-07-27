@@ -10,7 +10,7 @@ const NAV: { label: string; href: string; icon: string }[] = [
   { label: "ডাক্তার", href: "/admin/doctors", icon: "user" },
   { label: "বিভাগ", href: "/admin/specialties", icon: "activity" },
   { label: "জেলা", href: "/admin/districts", icon: "pin" },
-  { label: "থানা / উপজেলা", href: "/admin/areas", icon: "pin" },
+  { label: "শহর / গ্রাম", href: "/admin/areas", icon: "pin" },
   { label: "হাসপাতাল", href: "/admin/hospitals", icon: "building" },
   { label: "অ্যাপয়েন্টমেন্ট", href: "/admin/appointments", icon: "calendar" },
   { label: "প্রমোশন ও পেমেন্ট", href: "/admin/promotions", icon: "shield" },
@@ -35,8 +35,8 @@ export function AdminSidebar() {
     <aside className="flex flex-col bg-ink text-[#CBD5E1] md:sticky md:top-0 md:h-screen">
       <div className="flex items-center gap-[9px] border-b border-white/10 px-[18px] py-5">
         <Logo light size={30} />
-        <span className="font-heading text-[19px] font-bold text-white">
-          ডক্টর<span className="text-brand-300">বন্ধু</span>
+        <span className="font-heading text-[17px] font-bold leading-tight text-white">
+          ডক্টরস ফাইন্ড <span className="text-brand-300">বাংলাদেশ</span>
         </span>
         <span className="ml-auto rounded-md bg-brand-300/15 px-2 py-[3px] text-[10.5px] font-bold text-brand-300">অ্যাডমিন</span>
       </div>

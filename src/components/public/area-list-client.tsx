@@ -109,7 +109,7 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={d.search_area_placeholder || "Search by Thana or District name..."}
+            placeholder={d.search_area_placeholder || "Search by Town, Village or District name..."}
             className="w-full pl-12 pr-4 py-4 rounded-full border border-line bg-white shadow-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-shadow text-base"
           />
           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">

@@ -9,6 +9,7 @@ import { toML, type ML } from "@/lib/utils";
 import { num as bnNum } from "@/lib/i18n";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { AreaForm, EMPTY_AREA } from "./form";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 export type AreaRow = {
   id: number; slug: string; name: unknown;
@@ -31,6 +32,7 @@ export function AreasManager({
   page,
   perPage,
   totalCount,
+  q,
 }: {
   rows: AreaRow[];
   districts: { id: number; name_bn: string; name_en: string | null }[];
@@ -38,6 +40,7 @@ export function AreasManager({
   page: number;
   perPage: number;
   totalCount: number;
+  q: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -52,10 +55,11 @@ export function AreasManager({
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="থানা / উপজেলা বা জেলা খুঁজুন" />
         <button
           onClick={() => setEditing({ ...EMPTY_AREA, sort: totalCount })}
-          className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+          className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + নতুন থানা / উপজেলা
         </button>

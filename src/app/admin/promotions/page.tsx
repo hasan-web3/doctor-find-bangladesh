@@ -1,12 +1,13 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { expirePromotions } from "@/lib/data";
+import { searchClause } from "@/lib/admin-search";
 import { PromotionsManager } from "./manager";
 import { bnNum, bnMoney } from "@/lib/bn";
 
 export const dynamic = "force-dynamic";
 
-type SP = { page?: string; perPage?: string };
+type SP = { page?: string; perPage?: string; q?: string };
 
 export default async function AdminPromotionsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -14,6 +15,11 @@ export default async function AdminPromotionsPage({ searchParams }: { searchPara
   const perPage = Number(sp.perPage) || 30;
 
   await expirePromotions();
+
+  const q = sp.q?.trim() || "";
+  const searchCond: SQL = q
+    ? searchClause(q, [sql`d.name->>'bn'`, sql`d.name->>'en'`, sql`p.plan`, sql`p.notes`])
+    : sql`TRUE`;
 
   const [statsRes, rowsRes, totalRes, doctorsRes] = await Promise.all([
     db.execute<{ month_revenue: number; active: number; expiring: number; new_leads: number }>(sql`
@@ -30,10 +36,11 @@ export default async function AdminPromotionsPage({ searchParams }: { searchPara
       SELECT p.id, p.doctor_id, d.name->>'bn' AS doctor_bn, p.plan, p.amount,
         p.starts_on::text, p.ends_on::text, p.status, p.notes
       FROM promotions p JOIN doctors d ON d.id = p.doctor_id
+      WHERE ${searchCond}
       ORDER BY p.created_at DESC
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
-    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int as c FROM promotions`),
+    db.execute<{ c: number }>(sql`SELECT COUNT(*)::int as c FROM promotions p JOIN doctors d ON d.id=p.doctor_id WHERE ${searchCond}`),
     db.execute<{ id: number; name_bn: string }>(sql`SELECT id, name->>'bn' AS name_bn FROM doctors ORDER BY name->>'bn'`),
   ]);
   const stats = statsRes.rows[0];
@@ -67,6 +74,7 @@ export default async function AdminPromotionsPage({ searchParams }: { searchPara
         totalPages={totalPages}
         page={page}
         perPage={perPage}
+        q={q}
       />
     </div>
   );

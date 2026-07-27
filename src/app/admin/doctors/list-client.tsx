@@ -11,6 +11,7 @@ import { Pagination } from "@/components/admin/pagination";
 import { bnNum, bnDate } from "@/lib/bn";
 import { DeleteDoctorButton } from "./delete-button";
 import { EMPTY_SOCIAL_LINKS } from "@/lib/utils";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 const emptyML = { bn: "", en: "" };
 
@@ -145,15 +146,7 @@ export function DoctorsList({
       <h1 className="mb-5 mt-0 font-heading text-2xl font-bold text-ink">ডাক্তার ম্যানেজমেন্ট</h1>
 
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-3">
-        <form className="flex min-w-[220px] max-w-[340px] flex-1 items-center gap-2 rounded-[10px] border border-line bg-white px-3">
-          <span className="text-ink-ghost">⌕</span>
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="ডাক্তার খুঁজুন"
-            className="flex-1 border-none bg-transparent py-2.5 text-sm outline-none"
-          />
-        </form>
+        <DebouncedSearch initial={q} placeholder="ডাক্তার খুঁজুন / Search doctors" />
         <div className="flex gap-2">
           {[["", "সব"], ["featured", "ফিচার্ড"], ["inactive", "নিষ্ক্রিয়"]].map(([value, label]) => (
             <Link

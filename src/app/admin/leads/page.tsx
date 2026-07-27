@@ -3,12 +3,14 @@ import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { LeadRow } from "./row";
 import { Pagination } from "@/components/admin/pagination";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
+import { searchClause } from "@/lib/admin-search";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [["", "সব"], ["new", "নতুন"], ["in_progress", "চলমান"], ["resolved", "সমাধান"]] as const;
 
-type SP = { status?: string; type?: string; page?: string; perPage?: string };
+type SP = { status?: string; type?: string; q?: string; page?: string; perPage?: string };
 
 export default async function AdminLeadsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -18,6 +20,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`status = ${sp.status}::lead_status`);
   if (sp.type) conds.push(sql`type = ${sp.type}::lead_type`);
+  if (sp.q?.trim()) conds.push(searchClause(sp.q, [sql`name`, sql`phone`, sql`message`]));
   const where = sql.join(conds, sql` AND `);
 
   const [rowsRes, totalRes] = await Promise.all([
@@ -67,6 +70,9 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
         >
           ডাক্তার প্রমোশন
         </Link>
+        <div className="ml-auto flex flex-1 justify-end">
+          <DebouncedSearch initial={sp.q || ""} placeholder="নাম, ফোন বা বার্তা" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3.5">

@@ -25,8 +25,8 @@ export const INTEGRATION_FIELDS: Record<IntegrationKey, { label_bn: string; desc
       { name: "port", label_bn: "পোর্ট", placeholder: "587" },
       { name: "user", label_bn: "ইউজারনেম" },
       { name: "pass", label_bn: "পাসওয়ার্ড", secret: true },
-      { name: "from", label_bn: "প্রেরক ইমেইল", placeholder: "noreply@doctorbondhu.com" },
-      { name: "to", label_bn: "নোটিফিকেশন প্রাপক", placeholder: "admin@doctorbondhu.com" },
+      { name: "from", label_bn: "প্রেরক ইমেইল", placeholder: "noreply@doctorsfindbd.com" },
+      { name: "to", label_bn: "নোটিফিকেশন প্রাপক", placeholder: "admin@doctorsfindbd.com" },
     ],
   },
   sms: {

@@ -10,6 +10,7 @@ import { bnNum } from "@/lib/bn";
 import { Pagination } from "@/components/admin/pagination";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { SpecialtyForm, EMPTY_SPECIALTY } from "./form";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 export type SpecialtyRow = {
   id: number; slug: string; name: unknown; icon: string; tint: number;
@@ -28,12 +29,14 @@ export function SpecialtiesManager({
   page,
   perPage,
   totalCount,
+  q,
 }: {
   rows: SpecialtyRow[];
   totalPages: number;
   page: number;
   perPage: number;
   totalCount: number;
+  q: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -48,10 +51,11 @@ export function SpecialtiesManager({
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="বিভাগ খুঁজুন / Search specialties" />
         <button
           onClick={() => setEditing({ ...EMPTY_SPECIALTY, sort: totalCount })}
-          className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+          className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + নতুন বিভাগ
         </button>

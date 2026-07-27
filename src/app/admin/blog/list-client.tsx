@@ -11,6 +11,7 @@ import { Pagination } from "@/components/admin/pagination";
 import { bnDate, bnNum } from "@/lib/bn";
 import { DeletePostButton } from "./delete-button";
 import { emptyML } from "@/lib/utils";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 const NEW_POST: PostInitial = {
     slug: "", title: { ...emptyML }, excerpt: { ...emptyML }, content: { ...emptyML },
@@ -34,12 +35,14 @@ export function BlogList({
   page,
   perPage,
   totalPages,
+  q,
 }: {
   rows: Row[];
   categories: { id: number; name_bn: string }[];
   page: number;
   perPage: number;
   totalPages: number;
+  q: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -73,11 +76,12 @@ export function BlogList({
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+          <DebouncedSearch initial={q} placeholder="আর্টিকেল খুঁজুন / Search posts" />
           <button
             type="button"
             onClick={handleAddNew}
-            className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+            className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
           >
             + নতুন আর্টিকেল
           </button>

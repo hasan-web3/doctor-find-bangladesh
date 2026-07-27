@@ -12,8 +12,8 @@ export function LoginForm({ next }: { next: string }) {
       <div className="w-full max-w-[400px] rounded-[20px] border border-line bg-white p-8 shadow-[0_12px_34px_rgba(15,23,42,.07)]">
         <div className="mb-2 flex items-center justify-center gap-[9px]">
           <Logo />
-          <span className="font-heading text-[22px] font-bold text-ink">
-            ডক্টর<span className="text-brand-600">বন্ধু</span>
+          <span className="font-heading text-[20px] font-bold leading-tight text-ink">
+            ডক্টরস ফাইন্ড <span className="text-brand-600">বাংলাদেশ</span>
           </span>
         </div>
         <p className="mb-1.5 text-center text-sm text-ink-faint">অ্যাডমিন প্যানেলে লগইন করুন</p>

@@ -175,7 +175,7 @@ export function ListingFilters({
               value={currentThana ? thanaIdx.slugToId.get(currentThana) ?? null : null}
               onChange={(id) => setParams([["area", id ? thanaIdx.idToSlug.get(id) ?? null : null]])}
               placeholder={d.filter_area}
-              emptyLabel={locale === "bn" ? "কোনো থানা নেই" : "No thanas"}
+              emptyLabel={locale === "bn" ? "কোনো শহর / গ্রাম নেই" : "No towns / villages"}
             />
           </div>
         </>

@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { Pagination } from "@/components/admin/pagination";
 import { AppointmentRow } from "./row";
 import { num as bnNum } from "@/lib/i18n";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
+import { searchClause } from "@/lib/admin-search";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +23,10 @@ export default async function AdminAppointmentsPage({ searchParams }: { searchPa
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`a.status = ${sp.status}::appointment_status`);
   if (sp.q?.trim()) {
-    const like = `%${sp.q.trim()}%`;
-    conds.push(sql`(a.patient_name ILIKE ${like} OR a.phone ILIKE ${like} OR a.serial_no ILIKE ${like})`);
+    conds.push(searchClause(sp.q, [
+      sql`a.patient_name`, sql`a.phone`, sql`a.serial_no`,
+      sql`d.name->>'bn'`, sql`d.name->>'en'`,
+    ]));
   }
   const where = sql.join(conds, sql` AND `);
 
@@ -62,11 +66,9 @@ export default async function AdminAppointmentsPage({ searchParams }: { searchPa
             {label}
           </Link>
         ))}
-        <form className="mr-auto flex min-w-[200px] items-center gap-2 rounded-[10px] border border-line bg-white px-3">
-          {sp.status && <input type="hidden" name="status" value={sp.status} />}
-          <span className="text-ink-ghost">⌕</span>
-          <input name="q" defaultValue={sp.q || ""} placeholder="নাম, ফোন বা সিরিয়াল" className="flex-1 border-none bg-transparent py-2 text-sm outline-none" />
-        </form>
+        <div className="mr-auto flex flex-1">
+          <DebouncedSearch initial={sp.q || ""} placeholder="নাম, ফোন, সিরিয়াল বা ডাক্তার" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">

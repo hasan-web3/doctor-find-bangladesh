@@ -60,7 +60,7 @@ export async function GET(req: Request) {
             <path d="M16 7v9M11.5 11.5h9" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
           </svg>
           <div style={{ display: "flex", fontSize: 40, fontWeight: 600, color: "#0F172A" }}>
-            ডক্টর<span style={{ color: "#0D9488" }}>বন্ধু</span>
+            ডক্টরস ফাইন্ড <span style={{ color: "#0D9488" }}>বাংলাদেশ</span>
           </div>
         </div>
 

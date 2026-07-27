@@ -8,6 +8,7 @@ import { Pagination } from "@/components/admin/pagination";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { PromotionForm, EMPTY_PROMOTION, type PromotionDraft } from "./form";
 import { bnMoney, bnDate } from "@/lib/bn";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 type Row = {
   id: number; doctor_id: number; doctor_bn: string; plan: string; amount: number;
@@ -22,12 +23,14 @@ export function PromotionsManager({
   totalPages,
   page,
   perPage,
+  q,
 }: {
   rows: Row[];
   doctors: { id: number; name_bn: string }[];
   totalPages: number;
   page: number;
   perPage: number;
+  q: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -42,11 +45,12 @@ export function PromotionsManager({
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="font-heading text-[17px] font-bold text-ink">পেমেন্ট রেকর্ড</div>
+        <DebouncedSearch initial={q} placeholder="ডাক্তার, প্ল্যান বা নোট" />
         <button
           onClick={() => setEditing({ ...EMPTY_PROMOTION })}
-          className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+          className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700"
         >
           + পেমেন্ট যুক্ত করুন
         </button>

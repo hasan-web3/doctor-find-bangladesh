@@ -8,6 +8,7 @@ import { toML, type ML } from "@/lib/utils";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { HospitalForm, EMPTY_HOSPITAL } from "./form";
 import { Pagination } from "@/components/admin/pagination";
+import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 export type HospitalRow = {
   id: number; slug: string; name: unknown;
@@ -45,6 +46,7 @@ export function HospitalsManager({
   totalPages,
   page,
   perPage,
+  q,
 }: {
   rows: HospitalRow[];
   areas: AreaOpt[];
@@ -53,6 +55,7 @@ export function HospitalsManager({
   totalPages: number;
   page: number;
   perPage: number;
+  q: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -67,8 +70,9 @@ export function HospitalsManager({
   return (
     <div>
       <Toast result={result} />
-      <div className="mb-4 flex justify-end">
-        <button onClick={() => setEditing({ ...EMPTY_HOSPITAL })} className="rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <DebouncedSearch initial={q} placeholder="হাসপাতাল খুঁজুন / Search hospitals" />
+        <button onClick={() => setEditing({ ...EMPTY_HOSPITAL })} className="ml-auto rounded-[10px] bg-brand-600 px-[18px] py-2.5 text-sm font-bold text-white hover:bg-brand-700">
           + নতুন হাসপাতাল
         </button>
       </div>
