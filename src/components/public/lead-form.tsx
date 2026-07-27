@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { submitLead, type FormResult } from "@/actions/public";
 import type { Dict } from "@/lib/dict";
+import { usePersistedFormInputs } from "@/lib/use-locale-persistence";
 
 export function LeadForm({
   type,
@@ -22,6 +23,8 @@ export function LeadForm({
 }) {
   const [result, formAction, pending] = useActionState<FormResult | null, FormData>(submitLead, null);
   const [parent] = useAutoAnimate();
+  const formRef = useRef<HTMLFormElement>(null);
+  usePersistedFormInputs(formRef, `lead-${type}`, { clearOnSuccess: !!result?.ok });
 
   if (result?.ok) {
     return (
@@ -36,7 +39,7 @@ export function LeadForm({
 
   return (
     <div ref={parent}>
-      <form action={formAction} className="flex flex-col gap-3.5">
+      <form ref={formRef} action={formAction} className="flex flex-col gap-3.5">
       <input type="hidden" name="type" value={type} />
       <input
         name="name"

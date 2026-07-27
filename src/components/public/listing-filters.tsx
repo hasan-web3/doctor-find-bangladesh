@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { cn } from "@/lib/utils";
 import { num, type Locale } from "@/lib/i18n";
+import { readPersistedValue, writePersistedValue } from "@/lib/use-locale-persistence";
 import type { Dict } from "@/lib/dict";
 import {
   SearchableSelect,
@@ -59,7 +60,12 @@ export function ListingFilters({
   const pathname = usePathname();
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
-  const [maxFee, setMaxFee] = useState(params.get("maxFee") || "2000");
+  const [maxFee, setMaxFee] = useState(
+    () => params.get("maxFee") || readPersistedValue("filter", "maxFee", pathname) || "2000",
+  );
+  useEffect(() => {
+    writePersistedValue("filter", "maxFee", pathname, maxFee);
+  }, [maxFee, pathname]);
   const [parent] = useAutoAnimate();
 
   const setParams = useCallback(
@@ -323,8 +329,11 @@ export function ListingSearch({ d }: { d: FilterDict }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [q, setQ] = useState(params.get("q") || "");
+  const [q, setQ] = useState(() => params.get("q") || readPersistedValue("search", "q", pathname) || "");
   const debouncedQ = useDebounce(q, 400);
+  useEffect(() => {
+    writePersistedValue("search", "q", pathname, q);
+  }, [q, pathname]);
   const isInitialMount = useRef(true);
 
   useEffect(() => {

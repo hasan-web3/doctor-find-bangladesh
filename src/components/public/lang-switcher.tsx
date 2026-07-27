@@ -41,9 +41,16 @@ export function LangSwitcher({ locale }: { locale: Locale }) {
     const [, cleanPath] = splitLocalePath(pathname);
     const qs = search.toString();
     const href = localeHref(target, cleanPath) + (qs ? `?${qs}` : "");
+    // The [locale] URL segment forces App Router to remount the page tree,
+    // which also resets scroll even with scroll:false. Snapshot the scroll
+    // position so LocaleScrollRestore can put the user back where they were.
+    try {
+      sessionStorage.setItem(
+        "__langswitch_scroll",
+        JSON.stringify({ path: cleanPath, y: window.scrollY, at: Date.now() }),
+      );
+    } catch {}
     startTransition(() => {
-      // scroll: false keeps the user where they were; replace avoids piling
-      // language toggles onto the history stack.
       router.replace(href, { scroll: false });
     });
   };

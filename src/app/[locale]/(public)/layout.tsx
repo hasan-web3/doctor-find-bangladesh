@@ -16,6 +16,7 @@ import { ldOrganization, ldWebsite } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, type Locale } from "@/lib/i18n";
 import { BookingProvider } from "@/components/public/booking-context";
+import { LocaleScrollRestore } from "@/components/public/locale-scroll-restore";
 
 export default async function PublicLayout({
   children,
@@ -41,6 +42,7 @@ export default async function PublicLayout({
 
   return (
     <BookingProvider>
+      <LocaleScrollRestore />
       <div className="min-h-screen bg-page">
         <JsonLd
           data={[
