@@ -63,32 +63,53 @@ export default async function ArticlePage({ params }: Props) {
         items={[{ name: d.breadcrumb_home, path: "/" }, { name: d.nav_blog, path: "/blog" }, { name: post.title }]}
       />
 
-      <div className="mb-2.5 text-[13.5px] font-bold text-brand-600">
-        {post.category ? `${post.category} · ` : ""}
-        {post.published_at ? fmtDate(post.published_at, locale) : ""}
-      </div>
-      <h1 className="mb-5 font-heading text-[clamp(26px,4vw,34px)] font-bold leading-[1.3] text-ink">{post.title}</h1>
-
-      {post.cover_url && (
-        <div className="relative mb-[26px] h-[320px] sm:h-[400px] md:h-[480px] overflow-hidden rounded-[18px] bg-brand-50">
-          <Image src={post.cover_url} alt={post.title} fill priority sizes="(max-width:1400px) 100vw, 1400px" className="object-cover" />
+      {/* Article body: on md+ the cover is floated so the meta/title/excerpt
+          AND the first paragraphs of content wrap around it; once the text
+          runs past the image height, it reclaims the full column width — no
+          empty column, no ragged gap between the hero and the first heading.
+          On mobile the float doesn't kick in, so the image simply stacks
+          after the title at a tighter 16:10 aspect ratio. */}
+      <article>
+        <div className="mb-2.5 text-[13.5px] font-bold text-brand-600">
+          {post.category ? `${post.category} · ` : ""}
+          {post.published_at ? fmtDate(post.published_at, locale) : ""}
         </div>
-      )}
+        <h1 className="mb-3 font-heading text-[clamp(24px,3.4vw,32px)] font-bold leading-[1.25] text-ink">{post.title}</h1>
+        {post.excerpt && (
+          <p className="mb-5 text-[15.5px] leading-relaxed text-ink-mute">{post.excerpt}</p>
+        )}
+        {post.cover_url && (
+          <div className="mb-5 md:float-right md:ml-6 md:mb-3 md:mt-1 md:w-[44%] md:max-w-[520px]">
+            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl bg-brand-50 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] ring-1 ring-line">
+              <Image
+                src={post.cover_url}
+                alt={post.title}
+                fill
+                priority
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 45vw, 520px"
+                className="object-cover"
+              />
+            </div>
+          </div>
+        )}
+        <div className="prose-bn max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content_html) }} />
+        {/* Clear the float so anything after the article sits below the
+            image on short posts where the copy doesn't already exceed it. */}
+        <div className="clear-both" />
+      </article>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        <div className="lg:col-span-8">
-          <div className="prose-bn max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content_html) }} />
+      {/* Sidebar cards moved BELOW the article on every viewport — the
+          desktop column was creating a visible width mismatch with the
+          hero image and left a lot of dead space in short posts. */}
+      <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-warm-border bg-warm-soft p-5 text-[15px] text-warm-heavy leading-relaxed">
+          {d.article_disclaimer}
         </div>
-        <div className="space-y-6 lg:col-span-4">
-          <div className="rounded-2xl border border-warm-border bg-warm-soft p-5 text-[15px] text-warm-heavy leading-relaxed">
-            {d.article_disclaimer}
-          </div>
-          <div className="flex flex-col gap-4 rounded-2xl bg-brand-50 p-5 border border-brand-100">
-            <div className="text-base font-bold text-brand-900">{d.article_cta}</div>
-            <Link href={L("/doctors")} className="block text-center rounded-[11px] bg-brand-600 px-5 py-[11px] text-[14.5px] font-bold text-white transition-colors hover:bg-brand-700">
-              {d.find_doctor}
-            </Link>
-          </div>
+        <div className="flex flex-col gap-4 rounded-2xl bg-brand-50 p-5 border border-brand-100">
+          <div className="text-base font-bold text-brand-900">{d.article_cta}</div>
+          <Link href={L("/doctors")} className="block text-center rounded-[11px] bg-brand-600 px-5 py-[11px] text-[14.5px] font-bold text-white transition-colors hover:bg-brand-700">
+            {d.find_doctor}
+          </Link>
         </div>
       </div>
     </div>

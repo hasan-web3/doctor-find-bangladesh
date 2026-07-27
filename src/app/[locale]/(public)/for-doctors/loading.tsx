@@ -24,9 +24,10 @@ function FormShimmer() {
     <div className="rounded-[20px] border border-line bg-white p-7">
       <Shimmer className="mx-auto mb-5 h-6 w-56" />
       <div className="space-y-4">
-        <Shimmer className="h-10 w-full rounded-lg" />
-        <Shimmer className="h-10 w-full rounded-lg" />
-        <Shimmer className="h-24 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-28 w-full rounded-lg" />
         <Shimmer className="h-12 w-full rounded-lg" />
       </div>
     </div>
@@ -36,13 +37,14 @@ function FormShimmer() {
 export default function ForDoctorsLoading() {
   return (
     <div>
-      {/* Hero */}
-      <div className="bg-page">
+      {/* Hero (dark gradient bg) */}
+      <div className="[background:linear-gradient(120deg,#0F172A,#134E4A)]">
         <div className="mx-auto max-w-[900px] px-5 py-14 text-center">
-          <Shimmer className="mx-auto mb-4 h-8 w-24 rounded-full" />
-          <Shimmer className="mx-auto mb-3.5 h-9 w-4/5" />
+          <Shimmer className="mx-auto mb-4 h-8 w-40 rounded-full" />
+          <Shimmer className="mx-auto mb-3 h-10 w-4/5" />
+          <Shimmer className="mx-auto mb-3 h-10 w-3/5" />
           <Shimmer className="mx-auto mb-6 h-5 w-3/5" />
-          <Shimmer className="mx-auto h-14 w-52 rounded-xl" />
+          <Shimmer className="mx-auto h-14 w-64 rounded-xl" />
         </div>
       </div>
 

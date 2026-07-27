@@ -1,6 +1,6 @@
 import { Shimmer } from "@/components/shimmer";
 
-export default function PrivacyLoading() {
+export default function TermsLoading() {
   return (
     <div className="mx-auto max-w-site px-5 pb-[80px] pt-[26px]">
       {/* Header card (gradient) */}

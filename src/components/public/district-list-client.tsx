@@ -123,7 +123,7 @@ export function DistrictListClient({ userLat, userLng, locale, initialDistricts,
           {districts.map((district, i) => (
             <Reveal key={district.id} delay={Math.min(i * 30, 300)}>
               <Link
-                href={L(`/districts/${district.slug}`)}
+                href={L(`/districts/${district.slug}/doctors`)}
                 className="flex h-full items-center gap-4 rounded-2xl border border-line bg-white p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-cardhover"
               >
                 <div className="relative flex h-[48px] w-[48px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-brand-50 text-brand-500">

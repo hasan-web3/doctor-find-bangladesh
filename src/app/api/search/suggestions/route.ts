@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       name: doc.name,
       slug: doc.slug,
       specialty: doc.specialty,
+      photo_url: doc.photo_url ?? null,
     }));
 
     return NextResponse.json(suggestions);

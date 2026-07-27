@@ -102,8 +102,17 @@ export default async function ForDoctorsPage({ params }: Props) {
         </div>
       )}
 
-      {/* lead form */}
-      <div id="doctor-lead-form" className="mx-auto max-w-[640px] px-5 pb-16">
+      {/* lead form — when the plans grid is hidden the form would otherwise
+          butt directly against the dark hero, so add top padding that only
+          kicks in in that mode; when plans are shown they already provide
+          the vertical rhythm. */}
+      <div
+        id="doctor-lead-form"
+        className={cn(
+          "mx-auto max-w-[640px] px-5 pb-16",
+          !(settings.show_plans && settings.plans.length > 0) && "pt-12 sm:pt-16"
+        )}
+      >
         <div className="rounded-[20px] border border-line bg-white p-7">
           <h3 className="mb-[18px] mt-0 text-center font-heading text-xl font-bold text-ink">{d.fordoc_form_title}</h3>
           <LeadForm

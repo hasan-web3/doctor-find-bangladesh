@@ -21,15 +21,13 @@ function HospitalCardShimmer() {
 export default function HospitalsLoading() {
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
-      {/* Breadcrumbs */}
-      <Shimmer className="mb-4 h-3.5 w-40" />
       {/* Title & Subtitle */}
       <Shimmer className="mb-1.5 h-8 w-72 max-w-full" />
       <Shimmer className="mb-[26px] h-4 w-96 max-w-full" />
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 12 }).map((_, i) => (
           <HospitalCardShimmer key={i} />
         ))}
       </div>

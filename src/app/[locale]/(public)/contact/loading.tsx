@@ -16,8 +16,10 @@ function FormShimmer() {
     <div className="rounded-[18px] border border-line bg-white p-[26px]">
       <Shimmer className="mb-6 h-6 w-48" />
       <div className="space-y-4">
-        <Shimmer className="h-10 w-full rounded-lg" />
-        <Shimmer className="h-24 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-11 w-full rounded-lg" />
+        <Shimmer className="h-28 w-full rounded-lg" />
         <Shimmer className="h-12 w-full rounded-lg" />
       </div>
     </div>

@@ -80,6 +80,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={htmlLang(locale)} className={`${baloo.variable} ${hind.variable} ${inter.variable} ${notoBengali.variable}`}>
       <body suppressHydrationWarning={true}>
+        {/* Guard against the React #11538 crash when the user's browser runs
+            Google Translate (or a similar translator) on the page: those
+            extensions swap out text nodes, so when React later tries to
+            removeChild/insertBefore against its cached node it explodes with
+            "NotFoundError". No-op instead of throwing when the parent no
+            longer matches — same patch React's own docs recommend. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof Node!=='function'||!Node.prototype)return;var r=Node.prototype.removeChild;Node.prototype.removeChild=function(c){if(c&&c.parentNode!==this){if(c.parentNode){try{return c.parentNode.removeChild(c);}catch(e){return c;}}return c;}return r.apply(this,arguments);};var i=Node.prototype.insertBefore;Node.prototype.insertBefore=function(n,ref){if(ref&&ref.parentNode!==this){return this.appendChild(n);}return i.apply(this,arguments);};})();`,
+          }}
+        />
         {/* React 19 automatically hoists <link rel="preconnect"> and
             rel="dns-prefetch" into <head>. Rendering them inside <body>
             avoids clashing with Next's automatic CSS injection into a

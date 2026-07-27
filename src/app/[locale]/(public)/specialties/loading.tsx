@@ -21,9 +21,14 @@ export default function SpecialtiesLoading() {
       <Shimmer className="mb-1.5 h-8 w-64 max-w-full" />
       <Shimmer className="mb-[26px] h-4 w-80 max-w-full" />
 
+      {/* Search bar */}
+      <div className="mb-8 max-w-lg">
+        <Shimmer className="h-12 w-full rounded-full" />
+      </div>
+
       {/* Grid */}
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 min-[900px]:grid-cols-4">
-        {Array.from({ length: 12 }).map((_, i) => (
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 min-[900px]:grid-cols-4">
+        {Array.from({ length: 16 }).map((_, i) => (
           <SpecialtyCardShimmer key={i} />
         ))}
       </div>

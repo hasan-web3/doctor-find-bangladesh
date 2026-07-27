@@ -32,9 +32,19 @@ export default function BlogLoading() {
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 min-[900px]:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 9 }).map((_, i) => (
           <PostCardShimmer key={i} />
         ))}
+      </div>
+
+      {/* Pagination */}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <Shimmer className="h-9 w-40" />
+        <div className="flex gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Shimmer key={i} className="h-9 w-9 rounded-lg" />
+          ))}
+        </div>
       </div>
     </div>
   );

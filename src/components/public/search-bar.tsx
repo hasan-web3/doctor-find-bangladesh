@@ -8,6 +8,7 @@ import { localeHref, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/dict";
 import { Shimmer } from "@/components/shimmer";
 import Link from "next/link";
+import Image from "next/image";
 import { Icon } from "@/components/icons";
 
 // A simple debounce hook
@@ -30,7 +31,19 @@ type Suggestion = {
   name: string;
   slug: string;
   specialty: string;
+  photo_url: string | null;
 };
+
+function initials(name: string) {
+  return name
+    .replace(/^(ডাঃ|ডা\.|Dr\.?)\s*/i, "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
 
 export function SearchBar({
   districts,
@@ -172,9 +185,11 @@ export function SearchBar({
         </button>
       </div>
 
-      {/* Suggestions Dropdown */}
+      {/* Suggestions Dropdown — on mobile it opens ABOVE the search bar so
+          the on-screen keyboard doesn't cover the results; on ≥900px it
+          drops down like a normal desktop autocomplete. */}
       {isSuggestionsOpen && (
-        <div className="absolute top-full mt-2 w-full rounded-xl border border-line bg-white shadow-lg overflow-hidden z-50">
+        <div className="absolute bottom-full mb-2 w-full rounded-xl border border-line bg-white shadow-lg overflow-hidden z-50 min-[900px]:bottom-auto min-[900px]:top-full min-[900px]:mb-0 min-[900px]:mt-2">
           {isSuggestionsLoading ? (
             <div className="p-4 space-y-3">
               <Shimmer className="h-6 w-3/4" />
@@ -185,20 +200,37 @@ export function SearchBar({
             <ul className="py-2">
               {suggestions.map((doc) => (
                 <li key={doc.slug}>
-                  <Link 
+                  <Link
                     href={localeHref(locale, `/doctors/${doc.slug}`)}
-                    className="flex flex-col px-4 py-2.5 text-left hover:bg-page transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 text-left hover:bg-page transition-colors"
                     onClick={() => setIsSuggestionsOpen(false)}
                   >
-                    <span className="font-semibold text-ink">{doc.name}</span>
-                    <span className="text-sm text-ink-mute">{doc.specialty}</span>
+                    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-page ring-1 ring-line">
+                      {doc.photo_url ? (
+                        <Image
+                          src={doc.photo_url}
+                          alt={doc.name}
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-semibold text-ink-mute">
+                          {initials(doc.name)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-semibold text-ink">{doc.name}</span>
+                      <span className="truncate text-sm text-ink-mute">{doc.specialty}</span>
+                    </span>
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
             <div className="p-4 text-center text-ink-mute">
-              {debouncedQ.length > 1 && !isSuggestionsLoading ? "No doctors found." : null}
+              {debouncedQ.length > 1 && !isSuggestionsLoading ? (locale === "bn" ? "কোনো ডাক্তার পাওয়া যায়নি।" : "No doctors found.") : null}
             </div>
           )}
         </div>
