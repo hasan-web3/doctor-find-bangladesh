@@ -4,9 +4,25 @@ import { revalidatePath, revalidateTag } from "next/cache";
 // Every dashboard mutation calls this so public pages update instantly.
 // Tags cover cached data readers; layout-level path revalidation refreshes
 // all rendered routes that consumed them.
+// Purge the sitemap index AND every shard. The shards are one dynamic route
+// (/sitemap/[shard]), so a single "page"-scoped call covers all of them —
+// doctors.xml, hospitals.xml, specialty-area.xml, overflow shards, the lot.
+//
+// This has to run on EVERY content mutation, not just doctor edits. The
+// coverage chain in sitemap-core.ts means one new doctor can create URLs in
+// five different sections at once: their profile, their hospital, their
+// specialty hub, their thana, their district, and every specialty×thana combo
+// they complete. Revalidating a hand-picked subset of shards would leave the
+// rest stale for up to the 1-hour ISR window.
+export function revalidateSitemaps() {
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/sitemap/[shard]", "page");
+}
+
 export function revalidatePublic(tags: string[] = []) {
   for (const tag of tags) revalidateTag(tag);
   revalidateTag("sitemap");
+  revalidateSitemaps();
   revalidatePath("/", "layout");
 }
 
@@ -59,8 +75,6 @@ export function revalidateDoctor(opts: {
     for (const url of bothLocales(`/hospitals/${opts.hospitalSlug}`)) revalidatePath(url);
   }
 
-  // Sitemap index + doctors shard so search engines re-crawl fresh URLs.
-  revalidatePath("/sitemap.xml");
-  revalidatePath("/sitemap/doctors.xml");
-  revalidatePath("/sitemap/core.xml");
+  // Sitemaps are already purged wholesale by revalidatePublic() above — a
+  // doctor change can ripple into any section, so no per-shard list here.
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { and, asc, desc, eq, exists, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { haversineKm } from "./geo";
@@ -799,6 +800,28 @@ export async function searchDoctors(
   const total = (countRes.rows[0] as { c: number } | undefined)?.c ?? rows.length;
   return { rows, total };
 }
+
+// "Does this landing page have anything to show?" — the noindex probe.
+//
+// Location and specialty landing pages exist for every row in the DB, but only
+// some have doctors. An empty one is thin content: Google crawls it, indexes
+// nothing, and it lands in "Discovered/Crawled – currently not indexed". The
+// sitemap already withholds them, but /areas links to all 619 thanas, so
+// Googlebot still finds them by following internal links. Marking the empty
+// ones noindex is what actually stops them accumulating.
+//
+// perPage 1 keeps the row fetch trivial — only `total` is used. React cache()
+// dedupes repeat calls with identical args inside one request; the page body's
+// own searchDoctors() call passes different args (perPage, geo prefs), so this
+// does cost one extra COUNT per render of these routes. Cheap, and it buys the
+// noindex decision at metadata time, before any HTML is flushed.
+//
+// Self-healing: assign a doctor and total flips above 0, so the noindex lifts
+// on the next revalidation — the same trigger that adds the URL to the sitemap.
+export const countDoctorsFor = cache(
+  async (p: Pick<DoctorSearchParams, "specialty" | "area" | "district">): Promise<number> =>
+    (await searchDoctors({ ...p, page: 1, perPage: 1 }, "bn")).total,
+);
 
 export const getDoctorBySlug = unstable_cache(
   async (slug: string, locale: Locale): Promise<DoctorFull | null> => {

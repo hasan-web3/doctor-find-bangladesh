@@ -5,7 +5,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -37,6 +37,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       ? (locale === "bn" ? `আপনার সবচেয়ে কাছের অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists near you with chamber addresses, schedules and visit fees.`)
       : (locale === "bn" ? `${bnPossessive(districtName)} অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`);
 
+  // Specialty hub with no doctors yet — thin. Matches the sitemap's rule.
+  const doctorCount = await countDoctorsFor({ specialty: spec.slug });
+
   return buildMetadata({
     locale,
     path: `/specialties/${spec.slug}`,
@@ -44,6 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     ogTitle: title,
     noTemplate: Boolean(spec.meta_title),
+    noindex: doctorCount === 0,
   });
 }
 

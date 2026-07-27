@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorCard } from "@/components/public/doctor-card";
-import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, type Area } from "@/lib/data";
+import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, countDoctorsFor, type Area } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { Pagination } from "@/components/public/pagination";
@@ -18,10 +18,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(locale)) return {};
   const [spec, areaRow] = await Promise.all([getSpecialtyBySlug(slug, locale), getAreaBySlug(area, locale)]);
   if (!spec || !areaRow) return {};
+
+  // The long-tail combo pages: specialties × thanas is tens of thousands of
+  // URLs and most have no doctors. noindex until this exact pairing does.
+  const doctorCount = await countDoctorsFor({ specialty: spec.slug, area: areaRow.slug });
+
   const short = spec.name.split(" (")[0];
   return buildMetadata({
     locale,
     path: `/specialties/${spec.slug}/${areaRow.slug}`,
+    noindex: doctorCount === 0,
     title: locale === "bn"
       ? `${areaRow.name} এলাকার ${short} ডাক্তার`
       : `${short} Doctors in ${areaRow.name}, Khulna`,

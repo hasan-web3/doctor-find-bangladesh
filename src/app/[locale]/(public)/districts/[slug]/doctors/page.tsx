@@ -9,7 +9,7 @@ import { AnimatedGrid } from "@/components/animated-grid";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch,
-  getDistrictBySlug,
+  getDistrictBySlug, countDoctorsFor,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -33,11 +33,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? `${district.name} জেলার বিশেষজ্ঞ ডাক্তারদের সম্পূর্ণ তালিকা খুঁজুন। আপনার প্রয়োজন অনুযায়ী ফিল্টার করে সেরা ডাক্তার বেছে নিন।`
     : `Find a complete list of specialist doctors in ${district.name} District. Filter by your needs to choose the best doctor.`;
 
+  // A district with no doctors in any of its thanas lists nothing — thin.
+  const doctorCount = await countDoctorsFor({ district: slug });
+
   return buildMetadata({
     locale,
     path: `/districts/${slug}/doctors`,
     title: district.meta_title || title,
     description: district.meta_description || description,
+    noindex: doctorCount === 0,
   });
 }
 

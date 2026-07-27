@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
-import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors } from "@/lib/data";
+import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -19,10 +19,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const area = await getAreaBySlugs(district, areaSlug, locale);
   if (!area) return {};
 
+  // A thana with no doctors renders an empty list — thin content. Keep it
+  // reachable for visitors, but tell Google not to index it until it has
+  // something to show. Lifts automatically when a doctor is assigned here.
+  const doctorCount = await countDoctorsFor({ area: area.slug });
+
   const path = `/area/doctors/${district}/${areaSlug}`;
   return buildMetadata({
     locale,
     path,
+    noindex: doctorCount === 0,
     title: area.meta_title || (locale === "bn" ? `${area.name} এর ডাক্তার তালিকা` : `Doctors in ${area.name}`),
     description:
       area.meta_description ||

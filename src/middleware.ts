@@ -94,6 +94,27 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
     }
   }
 
+  // ---- static canonicalisations (real 308s) ----
+  // A `permanentRedirect()` inside a streamed server component does NOT emit a
+  // 308 — Next flushes the shell first and falls back to
+  // `<meta http-equiv="refresh">` with a 200. Google treats that as a soft
+  // redirect and may index the redirecting URL as its own page. These two
+  // rewrites need no DB lookup, so middleware can answer them properly.
+  if (req.method === "GET") {
+    const p = pathname.startsWith("/en/") || pathname === "/en" ? pathname.slice(3) || "/" : pathname;
+    // /area (the bare index only — /area/doctors/... is a real route) -> /areas
+    // The two rendered identical pages with different canonical tags.
+    let target: string | null = p === "/area" ? "/areas" : null;
+    // /districts/<slug> -> /districts/<slug>/doctors (the canonical listing)
+    const dm = p.match(/^\/districts\/([^/]+)$/);
+    if (dm) target = `/districts/${dm[1]}/doctors`;
+    if (target) {
+      const url = req.nextUrl.clone();
+      url.pathname = pathname.startsWith("/en") ? `/en${target}` : target;
+      return NextResponse.redirect(url, 308);
+    }
+  }
+
   // ---- /bn/* must not exist publicly: canonicalize to root ----
   // Root Bangla URLs are internally rewritten to /bn/* below. Next runs the
   // middleware again for that rewritten request, so identify that internal

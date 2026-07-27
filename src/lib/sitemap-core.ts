@@ -1,16 +1,9 @@
 import "server-only";
-import { eq } from "drizzle-orm";
-import {
-  db,
-  areas as areasT,
-  districts,
-  blogPosts,
-  doctors as doctorsT,
-  hospitals as hospitalsT,
-  specialties as specialtiesT,
-} from "@/db";
+import { asc, desc, eq, sql } from "drizzle-orm";
+import { db, blogPosts, doctors as doctorsT, redirects } from "@/db";
 import { siteUrl } from "./seo-utils";
 import { localeHref } from "./i18n";
+import { getSpecialties, getAreas, type Area } from "./data";
 
 // Google accepts up to 50 000 URLs OR 50 MB per sub-sitemap — whichever hits
 // first. Each <url> block with the hreflang cluster is ~600 bytes; chunking
@@ -25,10 +18,54 @@ export type Section =
   | "core"
   | "doctors"
   | "specialties"
+  | "districts"
   | "areas"
   | "hospitals"
   | "blog"
   | "specialty-area";
+
+// ---------------------------------------------------------------------------
+// CRAWL ORDER. Googlebot walks a sitemap index top-down and spends its budget
+// in the order it finds URLs, so this array IS the crawl priority:
+//
+//   core        entry points — tiny, must be seen first
+//   doctors     priority 1: the pages the whole site exists to rank
+//   hospitals   priority 2
+//   specialties then the hubs, then geo, then the long-tail combos
+//
+// Changing this array changes what Google reaches first on a partial crawl.
+// ---------------------------------------------------------------------------
+const SECTION_ORDER: Section[] = [
+  "core",
+  "doctors",
+  "hospitals",
+  "specialties",
+  "districts",
+  "areas",
+  "specialty-area",
+  "blog",
+];
+
+// Base <priority> per section, before the coverage bonus below. Relative
+// values are what matter to Google, not the absolute numbers.
+const BASE_PRIORITY: Record<Section, number> = {
+  core: 0.8,
+  doctors: 0.9,
+  hospitals: 0.8,
+  specialties: 0.7,
+  districts: 0.6,
+  areas: 0.6,
+  "specialty-area": 0.5,
+  blog: 0.5,
+};
+
+// A landing page listing 40 doctors deserves more crawl attention than one
+// listing 1. Nudge <priority> by how much the page actually has to show.
+function coveragePriority(section: Section, doctorCount: number): number {
+  const base = BASE_PRIORITY[section];
+  const bonus = doctorCount >= 10 ? 0.1 : doctorCount >= 3 ? 0.05 : 0;
+  return Math.min(1, Math.round((base + bonus) * 10) / 10);
+}
 
 export type ShardId = { section: Section; page: number };
 
@@ -50,8 +87,13 @@ function entry(
   changefreq: "daily" | "weekly" | "monthly",
   priority: number,
 ): SitemapEntry[] {
-  const bnUrl = siteUrl(localeHref("bn", path));
-  const enUrl = siteUrl(localeHref("en", path));
+  // Next normalises `alternates.canonical` and drops the root's trailing
+  // slash, so `/` renders as `https://site` while siteUrl("/") yields
+  // `https://site/`. Google folds the two together, but an exact match keeps
+  // the sitemap loc and the canonical tag byte-identical — no ambiguity about
+  // which form is the canonical one. No other path ends in "/".
+  const bnUrl = siteUrl(localeHref("bn", path)).replace(/\/$/, "");
+  const enUrl = siteUrl(localeHref("en", path)).replace(/\/$/, "");
   const alternates = [
     { hreflang: "bn-BD", href: bnUrl },
     { hreflang: "en", href: enUrl },
@@ -91,35 +133,225 @@ function shardSlice<T>(rows: T[], page: number): T[] {
 }
 
 // ---------------------------------------------------------------------------
+// THE COVERAGE CHAIN
+//
+// A URL earns a place in the sitemap only when the whole chain behind it
+// resolves. Bagerhat has a Mongla thana row, so /area/doctors/bagerhat/mongla
+// renders — but if no doctor practises there the page is empty. Google crawls
+// it, indexes nothing, and the URL sits in "Discovered – currently not
+// indexed" forever while burning budget the doctor pages needed.
+//
+// `doctor_area` is the root of the chain: it resolves a doctor to a thana the
+// same two ways searchDoctors() does for ?area= —
+//
+//     doctor -> visible chamber -> thana
+//     doctor -> profile hospital -> thana
+//
+// Every query below then extends that link by link, and each JOIN is a link
+// that must hold:
+//
+//     thana  -> district        (a.district_id -> districts, both active)
+//     doctor -> specialty       (doctor_specialties -> specialties, active)
+//     doctor -> hospital        (d.hospital_id, for the hospitals section)
+//
+// Break any link and the row drops out — so a URL exists if and only if its
+// page has something to show. Add a doctor and complete a chain, and every
+// URL along it appears on the next revalidation. Nothing to maintain by hand.
+// ---------------------------------------------------------------------------
+
+const DOCTOR_AREA = sql`
+  doctor_area AS (
+    SELECT DISTINCT c.doctor_id, c.area_id
+      FROM chambers c
+     WHERE c.visible AND c.area_id IS NOT NULL
+    UNION
+    SELECT DISTINCT d.id AS doctor_id, h.area_id
+      FROM doctors d
+      JOIN hospitals h ON h.id = d.hospital_id
+     WHERE h.area_id IS NOT NULL
+  )`;
+
+// Every coverage query returns the same shape: the slugs that build the URL,
+// how many doctors back it (drives <priority>) and when those doctors last
+// changed (drives <lastmod>, so Google re-crawls on real change only).
+type Covered = { doctor_count: number; updated_at: string | null };
+
+type PairRow = Covered & { specialty_slug: string; area_slug: string };
+
+// doctor -> thana -> district, AND doctor -> specialty. Both must hold.
+async function fetchSpecialtyAreaPairs(): Promise<PairRow[]> {
+  const res = await db.execute<PairRow>(sql`
+    WITH ${DOCTOR_AREA}
+    SELECT s.slug AS specialty_slug,
+           a.slug AS area_slug,
+           COUNT(DISTINCT d.id)::int AS doctor_count,
+           GREATEST(MAX(d.updated_at), MAX(a.updated_at)) AS updated_at
+      FROM doctor_area da
+      JOIN doctors d ON d.id = da.doctor_id AND d.active
+      JOIN doctor_specialties ds ON ds.doctor_id = d.id
+      JOIN specialties s ON s.id = ds.specialty_id AND s.active
+      JOIN areas a ON a.id = da.area_id AND a.active
+      JOIN districts dist ON dist.id = a.district_id AND dist.active
+     GROUP BY s.slug, a.slug
+     ORDER BY doctor_count DESC, s.slug, a.slug
+  `);
+  return res.rows;
+}
+
+type AreaRow = Covered & { area_slug: string; district_slug: string };
+
+// doctor -> thana -> district.
+async function fetchCoveredAreas(): Promise<AreaRow[]> {
+  const res = await db.execute<AreaRow>(sql`
+    WITH ${DOCTOR_AREA}
+    SELECT a.slug AS area_slug,
+           dist.slug AS district_slug,
+           COUNT(DISTINCT d.id)::int AS doctor_count,
+           GREATEST(MAX(d.updated_at), MAX(a.updated_at)) AS updated_at
+      FROM doctor_area da
+      JOIN doctors d ON d.id = da.doctor_id AND d.active
+      JOIN areas a ON a.id = da.area_id AND a.active
+      JOIN districts dist ON dist.id = a.district_id AND dist.active
+     GROUP BY a.slug, dist.slug
+     ORDER BY doctor_count DESC, dist.slug, a.slug
+  `);
+  return res.rows;
+}
+
+type DistrictRow = Covered & { district_slug: string };
+
+// A district qualifies through its thanas: at least one must have a doctor.
+async function fetchCoveredDistricts(): Promise<DistrictRow[]> {
+  const res = await db.execute<DistrictRow>(sql`
+    WITH ${DOCTOR_AREA}
+    SELECT dist.slug AS district_slug,
+           COUNT(DISTINCT d.id)::int AS doctor_count,
+           GREATEST(MAX(d.updated_at), MAX(dist.updated_at)) AS updated_at
+      FROM doctor_area da
+      JOIN doctors d ON d.id = da.doctor_id AND d.active
+      JOIN areas a ON a.id = da.area_id AND a.active
+      JOIN districts dist ON dist.id = a.district_id AND dist.active
+     GROUP BY dist.slug
+     ORDER BY doctor_count DESC, dist.slug
+  `);
+  return res.rows;
+}
+
+type SpecialtyRow = Covered & { specialty_slug: string };
+
+// A specialty hub qualifies once any active doctor holds it.
+async function fetchCoveredSpecialties(): Promise<SpecialtyRow[]> {
+  const res = await db.execute<SpecialtyRow>(sql`
+    SELECT s.slug AS specialty_slug,
+           COUNT(DISTINCT d.id)::int AS doctor_count,
+           GREATEST(MAX(d.updated_at), MAX(s.updated_at)) AS updated_at
+      FROM specialties s
+      JOIN doctor_specialties ds ON ds.specialty_id = s.id
+      JOIN doctors d ON d.id = ds.doctor_id AND d.active
+     WHERE s.active
+     GROUP BY s.slug
+     ORDER BY doctor_count DESC, s.slug
+  `);
+  return res.rows;
+}
+
+type HospitalRow = Covered & { hospital_slug: string };
+
+// hospital -> thana -> district, AND hospital -> doctor. Priority 2 after
+// doctors, so this chain is enforced just as strictly.
+async function fetchCoveredHospitals(): Promise<HospitalRow[]> {
+  const res = await db.execute<HospitalRow>(sql`
+    SELECT h.slug AS hospital_slug,
+           COUNT(DISTINCT d.id)::int AS doctor_count,
+           GREATEST(MAX(d.updated_at), MAX(h.updated_at)) AS updated_at
+      FROM hospitals h
+      JOIN doctors d ON d.hospital_id = h.id AND d.active
+      JOIN areas a ON a.id = h.area_id AND a.active
+      JOIN districts dist ON dist.id = a.district_id AND dist.active
+     WHERE h.active
+     GROUP BY h.slug
+     ORDER BY doctor_count DESC, h.slug
+  `);
+  return res.rows;
+}
+
+// ---------------------------------------------------------------------------
 // listSitemaps — the master list used by the index route AND robots.ts.
 // Uses live DB counts to decide how many shards a section needs.
 // ---------------------------------------------------------------------------
 
 export async function listSitemaps(): Promise<ShardId[]> {
-  const ids: ShardId[] = [{ section: "core", page: 0 }];
+  const ids: ShardId[] = [];
 
   try {
-    const [doctorCount, specialtyCount, areaCount, hospitalCount, blogCount] =
-      await Promise.all([
-        db.select({ id: doctorsT.id }).from(doctorsT).where(eq(doctorsT.active, true)).then((r) => r.length),
-        db.select({ id: specialtiesT.id }).from(specialtiesT).where(eq(specialtiesT.active, true)).then((r) => r.length),
-        db.select({ id: areasT.id }).from(areasT).where(eq(areasT.active, true)).then((r) => r.length),
-        db.select({ id: hospitalsT.id }).from(hospitalsT).where(eq(hospitalsT.active, true)).then((r) => r.length),
-        db.select({ id: blogPosts.id }).from(blogPosts).where(eq(blogPosts.published, true)).then((r) => r.length),
-      ]);
-
-    for (let p = 0; p < shardCount(doctorCount * 2); p++) ids.push({ section: "doctors", page: p });
-    for (let p = 0; p < shardCount(specialtyCount * 2); p++) ids.push({ section: "specialties", page: p });
-    for (let p = 0; p < shardCount(areaCount * 2); p++) ids.push({ section: "areas", page: p });
-    for (let p = 0; p < shardCount(hospitalCount * 2); p++) ids.push({ section: "hospitals", page: p });
-    for (let p = 0; p < shardCount(blogCount * 2); p++) ids.push({ section: "blog", page: p });
-    for (let p = 0; p < shardCount(specialtyCount * areaCount * 2); p++) ids.push({ section: "specialty-area", page: p });
+    // Shard counts come from sectionEntries() — the exact same function the
+    // shard route serialises. Counting any other way (e.g. specialties ×
+    // areas) over-reports, the index then advertises shards that resolve to
+    // an empty urlset, and the shard route 404s every one of them.
+    //
+    // Emitted in SECTION_ORDER, so the index itself carries the crawl
+    // priority: doctors before hospitals before everything else.
+    const sizes = await Promise.all(SECTION_ORDER.map((s) => sectionEntries(s).then((e) => e.length)));
+    SECTION_ORDER.forEach((section, i) => {
+      for (let p = 0; p < shardCount(sizes[i]); p++) ids.push({ section, page: p });
+    });
   } catch {
     // DB unreachable during first build: fall back to only the core shard so
     // the site still boots and Google gets at least the static routes.
+    return [{ section: "core", page: 0 }];
   }
 
-  return ids;
+  return ids.length > 0 ? ids : [{ section: "core", page: 0 }];
+}
+
+// ---------------------------------------------------------------------------
+// sectionEntries — every URL a section owns, already stripped of paths that
+// would redirect. buildShard() just pages this; listSitemaps() just counts it.
+// ---------------------------------------------------------------------------
+
+// Live redirect sources. A slug that was renamed and later renamed BACK leaves
+// a stale `redirects` row behind: the entity is active and its page renders,
+// but middleware 308s the URL away. Advertising such a URL costs crawl budget
+// and lands it in GSC's "Page with redirect" bucket instead of the index — so
+// every candidate path is checked against this set before it ships.
+async function redirectSources(): Promise<Set<string>> {
+  try {
+    const rows = await db.select({ from: redirects.fromPath }).from(redirects);
+    return new Set(rows.map((r) => r.from));
+  } catch {
+    return new Set();
+  }
+}
+
+// bn URLs are unprefixed and en URLs carry /en — reduce either back to the
+// locale-neutral path the redirect map is keyed on (mirrors middleware.ts).
+function neutralPath(url: string): string {
+  const { pathname } = new URL(url);
+  if (pathname === "/en") return "/";
+  return pathname.startsWith("/en/") ? pathname.slice(3) : pathname;
+}
+
+// Slugs the PAGES can actually resolve. getSpecialties/getAreas are
+// unstable_cache-backed; the sitemap queries the DB directly. When rows are
+// inserted outside a server action — a seed script, a manual SQL insert — no
+// revalidateTag() fires, so the cache keeps serving the old list while the DB
+// has more. The sitemap then advertises a slug whose page renders a soft 404.
+// Intersecting with the cached readers keeps the two in lockstep: a new row
+// enters the sitemap on the same revalidation that makes its page work.
+async function resolvableSlugs(): Promise<{ specialties: Set<string>; areas: Set<string> }> {
+  const [specs, areas] = await Promise.all([getSpecialties("bn"), getAreas("bn") as Promise<Area[]>]);
+  return {
+    specialties: new Set(specs.map((s) => s.slug)),
+    areas: new Set(areas.map((a) => a.slug)),
+  };
+}
+
+export async function sectionEntries(section: Section): Promise<SitemapEntry[]> {
+  const raw = await collectSection(section);
+  if (raw.length === 0) return raw;
+
+  const sources = await redirectSources();
+  return raw.filter((e) => !sources.has(neutralPath(e.url)));
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +359,10 @@ export async function listSitemaps(): Promise<ShardId[]> {
 // ---------------------------------------------------------------------------
 
 export async function buildShard({ section, page }: ShardId): Promise<SitemapEntry[]> {
+  return shardSlice(await sectionEntries(section), page);
+}
+
+async function collectSection(section: Section): Promise<SitemapEntry[]> {
   const now = new Date();
 
   if (section === "core") {
@@ -134,84 +370,114 @@ export async function buildShard({ section, page }: ShardId): Promise<SitemapEnt
       ...entry("/", now, "daily", 1.0),
       ...entry("/doctors", now, "daily", 0.9),
       ...entry("/specialties", now, "weekly", 0.8),
-      ...entry("/area", now, "weekly", 0.8),
+      // /areas and /districts (NOT /area) — these are the paths the navbar and
+      // bottom nav link to, so they are the URLs Google treats as canonical.
+      ...entry("/areas", now, "weekly", 0.8),
+      ...entry("/districts", now, "weekly", 0.8),
       ...entry("/hospitals", now, "weekly", 0.7),
       ...entry("/blog", now, "weekly", 0.7),
       ...entry("/for-doctors", now, "monthly", 0.6),
       ...entry("/contact", now, "monthly", 0.5),
       ...entry("/about", now, "monthly", 0.5),
+      ...entry("/privacy", now, "monthly", 0.3),
+      ...entry("/terms", now, "monthly", 0.3),
     ];
   }
 
   try {
+    // PRIORITY 1 — doctor profiles. The only section with no coverage chain:
+    // a doctor profile is the content, so every active doctor ships. Freshest
+    // first, so a partial crawl reaches new and just-edited doctors soonest.
     if (section === "doctors") {
       const rows = await db
         .select({ slug: doctorsT.slug, updated_at: doctorsT.updatedAt })
         .from(doctorsT)
-        .where(eq(doctorsT.active, true));
-      const expanded = rows.flatMap((d) => entry(`/doctors/${d.slug}`, d.updated_at, "weekly", 0.8));
-      return shardSlice(expanded, page);
+        .where(eq(doctorsT.active, true))
+        .orderBy(desc(doctorsT.updatedAt), asc(doctorsT.slug));
+      return rows.flatMap((d) =>
+        entry(`/doctors/${d.slug}`, d.updated_at, "weekly", BASE_PRIORITY.doctors),
+      );
+    }
+
+    // PRIORITY 2 — hospitals. Chain: hospital -> thana -> district, and
+    // hospital -> at least one active doctor.
+    if (section === "hospitals") {
+      const rows = await fetchCoveredHospitals();
+      return rows.flatMap((h) =>
+        entry(
+          `/hospitals/${h.hospital_slug}`,
+          h.updated_at ?? now,
+          "weekly",
+          coveragePriority("hospitals", h.doctor_count),
+        ),
+      );
     }
 
     if (section === "specialties") {
-      const rows = await db
-        .select({ slug: specialtiesT.slug, updated_at: specialtiesT.updatedAt })
-        .from(specialtiesT)
-        .where(eq(specialtiesT.active, true));
-      const expanded = rows.flatMap((s) => entry(`/specialties/${s.slug}`, s.updated_at, "weekly", 0.8));
-      return shardSlice(expanded, page);
+      const [rows, resolvable] = await Promise.all([fetchCoveredSpecialties(), resolvableSlugs()]);
+      return rows.flatMap((s) =>
+        resolvable.specialties.has(s.specialty_slug)
+          ? entry(
+              `/specialties/${s.specialty_slug}`,
+              s.updated_at ?? now,
+              "weekly",
+              coveragePriority("specialties", s.doctor_count),
+            )
+          : [],
+      );
+    }
+
+    if (section === "districts") {
+      // Canonical district listing is /districts/<slug>/doctors — bare
+      // /districts/<slug> is a 308 stub and must never be advertised.
+      const rows = await fetchCoveredDistricts();
+      return rows.flatMap((r) =>
+        entry(
+          `/districts/${r.district_slug}/doctors`,
+          r.updated_at ?? now,
+          "weekly",
+          coveragePriority("districts", r.doctor_count),
+        ),
+      );
     }
 
     if (section === "areas") {
-      const rows = await db
-        .select({ slug: areasT.slug, districtSlug: districts.slug, updated_at: areasT.updatedAt })
-        .from(areasT)
-        .leftJoin(districts, eq(areasT.districtId, districts.id))
-        .where(eq(areasT.active, true));
-      const expanded = rows.flatMap((a) =>
-        a.districtSlug && a.slug ? entry(`/area/doctors/${a.districtSlug}/${a.slug}`, a.updated_at, "weekly", 0.8) : [],
+      const [rows, resolvable] = await Promise.all([fetchCoveredAreas(), resolvableSlugs()]);
+      return rows.flatMap((a) =>
+        resolvable.areas.has(a.area_slug)
+          ? entry(
+              `/area/doctors/${a.district_slug}/${a.area_slug}`,
+              a.updated_at ?? now,
+              "weekly",
+              coveragePriority("areas", a.doctor_count),
+            )
+          : [],
       );
-      return shardSlice(expanded, page);
     }
 
-    if (section === "hospitals") {
-      const rows = await db
-        .select({ slug: hospitalsT.slug, updated_at: hospitalsT.updatedAt })
-        .from(hospitalsT)
-        .where(eq(hospitalsT.active, true));
-      const expanded = rows.flatMap((h) => entry(`/hospitals/${h.slug}`, h.updated_at, "monthly", 0.6));
-      return shardSlice(expanded, page);
+    if (section === "specialty-area") {
+      // Route is /specialties/[slug]/[area] — TWO segments. The district slug
+      // does NOT belong here; emitting it produced 128 confirmed 404s in GSC.
+      const [rows, resolvable] = await Promise.all([fetchSpecialtyAreaPairs(), resolvableSlugs()]);
+      return rows.flatMap((r) =>
+        resolvable.specialties.has(r.specialty_slug) && resolvable.areas.has(r.area_slug)
+          ? entry(
+              `/specialties/${r.specialty_slug}/${r.area_slug}`,
+              r.updated_at ?? now,
+              "weekly",
+              coveragePriority("specialty-area", r.doctor_count),
+            )
+          : [],
+      );
     }
 
     if (section === "blog") {
       const rows = await db
         .select({ slug: blogPosts.slug, updated_at: blogPosts.updatedAt })
         .from(blogPosts)
-        .where(eq(blogPosts.published, true));
-      const expanded = rows.flatMap((p) => entry(`/blog/${p.slug}`, p.updated_at, "monthly", 0.6));
-      return shardSlice(expanded, page);
-    }
-
-    if (section === "specialty-area") {
-      const [specialties, areas] = await Promise.all([
-        db.select({ slug: specialtiesT.slug }).from(specialtiesT).where(eq(specialtiesT.active, true)),
-        db
-          .select({ slug: areasT.slug, districtSlug: districts.slug, updated_at: areasT.updatedAt })
-          .from(areasT)
-          .leftJoin(districts, eq(areasT.districtId, districts.id))
-          .where(eq(areasT.active, true)),
-      ]);
-      const expanded: SitemapEntry[] = [];
-      for (const s of specialties) {
-        if (!s.slug) continue;
-        for (const a of areas) {
-          if (!a.districtSlug || !a.slug) continue;
-          expanded.push(
-            ...entry(`/specialties/${s.slug}/${a.districtSlug}/${a.slug}`, a.updated_at ?? now, "weekly", 0.7),
-          );
-        }
-      }
-      return shardSlice(expanded, page);
+        .where(eq(blogPosts.published, true))
+        .orderBy(desc(blogPosts.updatedAt), asc(blogPosts.slug));
+      return rows.flatMap((p) => entry(`/blog/${p.slug}`, p.updated_at, "monthly", BASE_PRIORITY.blog));
     }
   } catch {
     return [];
