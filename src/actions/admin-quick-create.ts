@@ -7,6 +7,12 @@ import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { revalidatePublic } from "@/lib/revalidate";
 import { slugify, nextAvailableSlug } from "@/lib/slugify";
+import {
+  fillSpecialtyBlanks,
+  fillDistrictBlanks,
+  fillAreaBlanks,
+  fillHospitalBlanks,
+} from "@/lib/seo-defaults";
 
 // "Quick create" endpoints for the inline modals on the doctor form.
 // Each takes the minimum bilingual name and returns the new row so the caller
@@ -47,9 +53,18 @@ export async function quickCreateHospital(payload: unknown): Promise<QuickCreate
     return !r;
   });
 
+  // Same SEO auto-fill the full hospital form uses, so inline-created rows
+  // ship with the bilingual meta_title / meta_description templates instead
+  // of empty strings. `description` is left blank (admin will author it).
+  const hospitalSeo = fillHospitalBlanks({ name });
   const [row] = await db
     .insert(hospitals)
-    .values({ slug, name })
+    .values({
+      slug,
+      name,
+      metaTitle: hospitalSeo.meta_title,
+      metaDescription: hospitalSeo.meta_description,
+    })
     .returning({ id: hospitals.id, slug: hospitals.slug });
 
   await audit("quick_create", "hospitals", row.id, { name: name.bn });
@@ -69,9 +84,18 @@ export async function quickCreateSpecialty(payload: unknown): Promise<QuickCreat
     return !r;
   });
 
+  // Same SEO auto-fill the full specialty form uses — no empty intro / meta
+  // fields when the row is created from the doctor-form inline modal.
+  const specialtySeo = fillSpecialtyBlanks({ name });
   const [row] = await db
     .insert(specialties)
-    .values({ slug, name })
+    .values({
+      slug,
+      name,
+      intro: specialtySeo.intro,
+      metaTitle: specialtySeo.meta_title,
+      metaDescription: specialtySeo.meta_description,
+    })
     .returning({ id: specialties.id, slug: specialties.slug });
 
   await audit("quick_create", "specialties", row.id, { name: name.bn });
@@ -91,9 +115,16 @@ export async function quickCreateDistrict(payload: unknown): Promise<QuickCreate
     return !r;
   });
 
+  const districtSeo = fillDistrictBlanks({ name });
   const [row] = await db
     .insert(districts)
-    .values({ slug, name })
+    .values({
+      slug,
+      name,
+      intro: districtSeo.intro,
+      metaTitle: districtSeo.meta_title,
+      metaDescription: districtSeo.meta_description,
+    })
     .returning({ id: districts.id, slug: districts.slug });
 
   await audit("quick_create", "districts", row.id, { name: name.bn });
@@ -124,9 +155,21 @@ export async function quickCreateArea(payload: unknown): Promise<QuickCreateResu
     return !r;
   });
 
+  const areaSeo = fillAreaBlanks({
+    name,
+    district: dist.name as { bn: string; en: string },
+  });
   const [row] = await db
     .insert(areas)
-    .values({ slug, name, districtId, district: dist.name })
+    .values({
+      slug,
+      name,
+      districtId,
+      district: dist.name,
+      intro: areaSeo.intro,
+      metaTitle: areaSeo.meta_title,
+      metaDescription: areaSeo.meta_description,
+    })
     .returning({ id: areas.id, slug: areas.slug });
 
   await audit("quick_create", "areas", row.id, { name: name.bn, district_id: districtId });
