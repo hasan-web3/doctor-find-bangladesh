@@ -33,7 +33,9 @@ const segmentOf = (href: string) => href.split("/")[2] ?? "";
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const { counts, markPanel } = useNotifications();
+  // Read-only here on purpose: clicking a menu item must NOT clear its badge.
+  // The badge stays until the admin opens the actual new row in the list.
+  const { counts } = useNotifications();
   const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
 
   return (
@@ -53,10 +55,6 @@ export function AdminSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              // Clicking is reading. Navigation already clears the badge via the
-              // provider, but this also covers re-clicking the panel you are
-              // already on (where the pathname never changes).
-              onClick={() => markPanel(segment)}
               className={cn(
                 "flex shrink-0 items-center gap-[11px] rounded-[9px] px-[13px] py-2.5 text-sm font-semibold transition-colors",
                 active ? "bg-brand-600 text-white" : "text-ink-ghost hover:bg-white/5 hover:text-white"

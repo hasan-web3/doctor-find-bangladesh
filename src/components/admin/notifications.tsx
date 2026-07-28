@@ -1,8 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icons";
 // Note: no bnNum here on purpose. Counts and timestamps in this feature are
 // rendered with ASCII digits ("12", not "১২") while the labels stay Bangla —
@@ -18,26 +17,37 @@ import {
 import {
   fetchNotificationState,
   markAllReadAction,
+  markEntityReadAction,
   markPanelReadAction,
 } from "@/actions/admin-notifications";
 
-// Admin notification state lives here, shared by the sidebar badges and the
-// topbar bell so both agree and only one poller runs.
+// Admin notification state lives here, shared by the sidebar badges, the topbar
+// bell, and every panel list that highlights its new rows — so all three agree
+// and only one poller runs.
 //
 // Why a client provider at all: the admin layout renders the initial state on
 // the server, but App Router keeps layouts out of soft navigations — moving
-// from /admin/leads to /admin/doctors never re-runs it. So the counts have to
-// be refreshable from the client, and clearing a badge has to feel instant
-// (optimistic zero first, server confirmation after).
+// from /admin/leads to /admin/doctors never re-runs it. So the state has to be
+// refreshable from the client, and clearing a badge has to feel instant
+// (optimistic update first, server confirmation after).
+//
+// Read semantics: opening a panel does NOT clear its badge. The badge is what
+// sends the admin looking, and the highlighted row is what they are looking
+// for — clearing on arrival would erase the answer along with the question.
+// A notification dies when its own row is opened (markEntity), or wholesale
+// from the bell's "mark all read".
 
 type Ctx = {
   counts: Record<string, number>;
   total: number;
   items: NotificationItem[];
-  /** Clear one panel's badge — optimistic, then persisted. */
+  unreadEntities: Record<string, string[]>;
+  /** The admin opened one new row — clear just that row's notification. */
+  markEntity: (panel: string, entityId: string | number) => void;
+  /** Clear a whole panel at once. Only the bell uses this. */
   markPanel: (panel: string) => void;
   markAll: () => void;
-  /** Pull counts now instead of waiting for the next poll. */
+  /** Pull state now instead of waiting for the next poll. */
   refresh: () => void;
 };
 
@@ -45,6 +55,7 @@ type Ctx = {
 // ends up outside the provider.
 const NotificationsCtx = createContext<Ctx>({
   ...EMPTY_NOTIFICATION_STATE,
+  markEntity: () => {},
   markPanel: () => {},
   markAll: () => {},
   refresh: () => {},
@@ -62,10 +73,45 @@ function locallyRead(state: NotificationState, panel: string): NotificationState
   if (!cleared) return state;
   const counts = { ...state.counts };
   delete counts[panel];
+  const unreadEntities = { ...state.unreadEntities };
+  delete unreadEntities[panel];
   return {
     counts,
     total: Math.max(0, state.total - cleared),
     items: state.items.map((i) => (i.panel === panel ? { ...i, read: true } : i)),
+    unreadEntities,
+  };
+}
+
+/**
+ * Drops one row from a panel's unread set. The count is derived from the ids
+ * so both move together — the badge and the row highlight must never disagree.
+ */
+function locallyReadEntity(state: NotificationState, panel: string, entityId: string): NotificationState {
+  const ids = state.unreadEntities[panel] ?? [];
+  if (!ids.includes(entityId)) return state;
+  const remaining = ids.filter((id) => id !== entityId);
+
+  const unreadEntities = { ...state.unreadEntities };
+  if (remaining.length) unreadEntities[panel] = remaining;
+  else delete unreadEntities[panel];
+
+  // One id can carry more than one notification (added, then edited elsewhere),
+  // so shrink the count by however many rows actually matched.
+  const hit = state.items.filter((i) => i.panel === panel && i.entityId === entityId && !i.read).length;
+  const dropped = Math.max(1, hit);
+  const counts = { ...state.counts };
+  const left = (counts[panel] ?? 0) - dropped;
+  if (left > 0) counts[panel] = left;
+  else delete counts[panel];
+
+  return {
+    counts,
+    total: Math.max(0, state.total - dropped),
+    items: state.items.map((i) =>
+      i.panel === panel && i.entityId === entityId ? { ...i, read: true } : i
+    ),
+    unreadEntities,
   };
 }
 
@@ -77,7 +123,6 @@ export function NotificationsProvider({
   children: React.ReactNode;
 }) {
   const [state, setState] = useState<NotificationState>(initial);
-  const pathname = usePathname();
 
   // Mirror of `state` for the callbacks below: they need to read the current
   // counts to decide whether a server round trip is even needed, and a state
@@ -121,31 +166,82 @@ export function NotificationsProvider({
       .catch(() => {});
   }, []);
 
+  const markEntity = useCallback((panel: string, entityId: string | number) => {
+    if (!isNotifyPanel(panel)) return;
+    const id = String(entityId);
+    // Not flagged as new — nothing to clear, so no request.
+    if (!(stateRef.current.unreadEntities[panel] ?? []).includes(id)) return;
+    setState((s) => locallyReadEntity(s, panel, id));
+    markEntityReadAction(panel, id)
+      .then(setState)
+      .catch(() => {});
+  }, []);
+
   const markAll = useCallback(() => {
     if (!stateRef.current.total) return;
-    setState((s) => ({ counts: {}, total: 0, items: s.items.map((i) => ({ ...i, read: true })) }));
+    setState((s) => ({
+      counts: {},
+      total: 0,
+      items: s.items.map((i) => ({ ...i, read: true })),
+      unreadEntities: {},
+    }));
     markAllReadAction()
       .then(setState)
       .catch(() => {});
   }, []);
 
-  // Opening a panel counts as reading it, however the admin got there —
-  // sidebar click, bell link, or a pasted URL. Keyed on pathname changes so a
-  // notification that lands while they're already sitting on the page keeps its
-  // badge until they click the nav item again (otherwise it would vanish before
-  // they noticed the list had grown).
-  const lastPath = useRef<string | null>(null);
-  useEffect(() => {
-    if (lastPath.current === pathname) return;
-    lastPath.current = pathname;
-    const segment = pathname.split("/")[2] ?? "";
-    if (segment) markPanel(segment);
-  }, [pathname, markPanel]);
+  // Note: there is deliberately no "mark read on navigation" effect. Opening
+  // /admin/specialties must leave the badge and the row highlight intact —
+  // they are the whole point of walking over there.
 
   return (
-    <NotificationsCtx.Provider value={{ ...state, markPanel, markAll, refresh }}>
+    <NotificationsCtx.Provider value={{ ...state, markEntity, markPanel, markAll, refresh }}>
       {children}
     </NotificationsCtx.Provider>
+  );
+}
+
+// ---------- what a panel's list needs ----------
+
+/**
+ * Everything a list page needs to surface its new rows: which ids are new, how
+ * to clear one, and an ordering that floats them to the top.
+ *
+ * The server already orders unread rows first (see the panel page queries) —
+ * `newFirst` re-applies it on the client so the order stays put after a
+ * router.refresh() and while an optimistic clear is in flight.
+ */
+export function useNewRows(panel: string) {
+  const { unreadEntities, markEntity } = useNotifications();
+  const ids = useMemo(() => new Set(unreadEntities[panel] ?? []), [unreadEntities, panel]);
+
+  return useMemo(
+    () => ({
+      count: ids.size,
+      isNew: (id: number | string) => ids.has(String(id)),
+      markRead: (id: number | string) => markEntity(panel, id),
+      newFirst: <T extends { id: number | string }>(rows: T[]): T[] =>
+        ids.size
+          ? // Array.sort is stable, so rows that are equally new/old keep the
+            // order the server gave them.
+            [...rows].sort(
+              (a, b) => Number(ids.has(String(b.id))) - Number(ids.has(String(a.id)))
+            )
+          : rows,
+    }),
+    [ids, markEntity, panel]
+  );
+}
+
+/** Row styling for a newly-arrived row. Brand teal so it reads as "ours". */
+export const NEW_ROW_CLASS = "bg-brand-100";
+
+/** Little "নতুন" flag rendered next to a new row's name. */
+export function NewFlag() {
+  return (
+    <span className="rounded-full bg-brand-600 px-2 py-[2px] text-[10.5px] font-bold text-white">
+      নতুন
+    </span>
   );
 }
 
@@ -194,7 +290,7 @@ function relativeBn(iso: string): string {
 }
 
 export function NotificationBell() {
-  const { total, items, markAll, markPanel } = useNotifications();
+  const { total, items, markAll } = useNotifications();
   const [open, setOpen] = useState(false);
 
   // Escape closes; the backdrop below handles outside clicks.
@@ -254,10 +350,10 @@ export function NotificationBell() {
                 <Link
                   key={n.id}
                   href={n.href || `/admin/${n.panel}`}
-                  onClick={() => {
-                    markPanel(n.panel);
-                    setOpen(false);
-                  }}
+                  // Jump to the panel but leave the notification unread, so the
+                  // row is still highlighted when the admin lands there. Only
+                  // "mark all read" above clears from the bell.
+                  onClick={() => setOpen(false)}
                   className={cn(
                     "block border-b border-line/70 px-4 py-3 last:border-b-0 hover:bg-page",
                     !n.read && "bg-[#F0FDFA]"

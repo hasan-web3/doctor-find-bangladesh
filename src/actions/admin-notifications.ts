@@ -1,7 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth";
-import { getNotificationState, markAllRead, markPanelRead } from "@/lib/notify";
+import { getNotificationState, markAllRead, markEntityRead, markPanelRead } from "@/lib/notify";
 import { EMPTY_NOTIFICATION_STATE, type NotificationState } from "@/lib/notify-types";
 
 // Client entry points for the notification bell / sidebar badges.
@@ -19,6 +19,13 @@ export async function fetchNotificationState(): Promise<NotificationState> {
     // throwing into the poll loop. The next navigation redirects to login.
     return EMPTY_NOTIFICATION_STATE;
   }
+  return getNotificationState();
+}
+
+/** The admin opened one specific new row — clear just that one. */
+export async function markEntityReadAction(panel: string, entityId: string): Promise<NotificationState> {
+  await requireSession();
+  await markEntityRead(panel, entityId);
   return getNotificationState();
 }
 

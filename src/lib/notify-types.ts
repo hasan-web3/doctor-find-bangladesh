@@ -28,6 +28,8 @@ export type NotificationItem = {
   id: number;
   panel: string;
   kind: string;
+  /** Id of the row this is about, as a string. Null for events with no row. */
+  entityId: string | null;
   title: ML;
   body: ML;
   href: string | null;
@@ -42,9 +44,20 @@ export type NotificationState = {
   total: number;
   /** Most recent notifications (read and unread) for the topbar bell. */
   items: NotificationItem[];
+  /**
+   * Unread entity ids keyed by panel, as strings. This is what lets a panel's
+   * list highlight exactly which rows are new and clear them one at a time —
+   * the count is a consequence of these, not the other way round.
+   */
+  unreadEntities: Record<string, string[]>;
 };
 
-export const EMPTY_NOTIFICATION_STATE: NotificationState = { counts: {}, total: 0, items: [] };
+export const EMPTY_NOTIFICATION_STATE: NotificationState = {
+  counts: {},
+  total: 0,
+  items: [],
+  unreadEntities: {},
+};
 
 // Bangla-first label for a notification's origin panel, used in the bell body
 // text ("ডাক্তার ফর্ম থেকে যোগ করা হয়েছে"). `public` covers the visitor-facing

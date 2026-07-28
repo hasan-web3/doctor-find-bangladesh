@@ -4,6 +4,8 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateLeadStatus } from "@/actions/admin-system";
 import { StatusBadge } from "@/components/admin/ui";
+import { NewFlag, useNewRows } from "@/components/admin/notifications";
+import { cn } from "@/lib/utils";
 import { bnNum, bnDateTime } from "@/lib/bn";
 
 type Lead = {
@@ -14,6 +16,8 @@ type Lead = {
 export function LeadRow({ lead }: { lead: Lead }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const newRows = useNewRows("leads");
+  const isNew = newRows.isNew(lead.id);
 
   const setStatus = (status: Lead["status"]) =>
     startTransition(async () => {
@@ -22,10 +26,19 @@ export function LeadRow({ lead }: { lead: Lead }) {
     });
 
   return (
-    <div className="flex flex-wrap items-start gap-3.5 rounded-[14px] border border-line bg-white p-[18px]">
+    <div
+      // Touching the card at all counts as seeing it — that includes the
+      // action buttons inside, whose clicks bubble up here.
+      onClick={() => newRows.markRead(lead.id)}
+      className={cn(
+        "flex flex-wrap items-start gap-3.5 rounded-[14px] border p-[18px]",
+        isNew ? "border-brand-500 bg-brand-100" : "border-line bg-white"
+      )}
+    >
       <div className="min-w-[200px] flex-1">
         <div className="mb-1.5 flex flex-wrap items-center gap-2.5">
           <span className="text-[15px] font-bold text-ink">{lead.name}</span>
+          {isNew && <NewFlag />}
           <StatusBadge tone={lead.type === "doctor" ? "amber" : "blue"}>
             {lead.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"}
           </StatusBadge>

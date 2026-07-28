@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
+import { getUnreadEntityIds, newFirstOrder } from "@/lib/notify";
 import { HospitalsManager, type HospitalRow } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ export default async function AdminHospitalsPage({ searchParams }: { searchParam
     ? searchClause(q, [sql`h.name->>'bn'`, sql`h.name->>'en'`, sql`h.slug`, sql`h.address->>'bn'`, sql`h.address->>'en'`, sql`h.phone`])
     : sql`TRUE`;
 
+  // Unopened new rows lead the list.
+  const newFirst = newFirstOrder("h.id", await getUnreadEntityIds("hospitals"));
+
   const [hospitalsRes, totalRes, areasRes, specialtiesRes, districtsRes] = await Promise.all([
     db.execute<HospitalRow>(sql`
       SELECT h.id, h.slug, h.name, h.area_id, a.name->>'bn' AS area_bn, a.district_id AS area_district_id,
@@ -23,7 +27,7 @@ export default async function AdminHospitalsPage({ searchParams }: { searchParam
         h.image_url, h.gallery, h.meta_title, h.meta_description, h.active
       FROM hospitals h LEFT JOIN areas a ON a.id=h.area_id
       WHERE ${searchCond}
-      ORDER BY h.sort, h.id
+      ORDER BY ${newFirst} h.sort, h.id
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM hospitals h WHERE ${searchCond}`),

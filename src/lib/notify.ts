@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db, notifications } from "@/db";
 import type { ML } from "@/lib/utils";
 import {
@@ -58,21 +58,31 @@ export async function notify(input: NotifyInput): Promise<void> {
 
 const FEED_LIMIT = 12;
 
-// One round trip per half of the state: the grouped unread counts that drive
-// the sidebar badges, and a short recent feed (read included) for the bell.
+// Three reads, in parallel:
+//   • grouped unread counts   → sidebar badges
+//   • unread entity ids       → which rows a panel's list must highlight
+//   • short recent feed       → topbar bell (read items included)
+//
+// The ids query is unbounded on purpose but self-limiting: a row leaves it the
+// moment the admin opens it, so the set only holds what nobody has looked at.
 export async function getNotificationState(limit = FEED_LIMIT): Promise<NotificationState> {
   try {
-    const [countRows, itemRows] = await Promise.all([
+    const [countRows, entityRows, itemRows] = await Promise.all([
       db
         .select({ panel: notifications.panel, n: sql<number>`count(*)::int` })
         .from(notifications)
         .where(isNull(notifications.readAt))
         .groupBy(notifications.panel),
       db
+        .select({ panel: notifications.panel, entityId: notifications.entityId })
+        .from(notifications)
+        .where(and(isNull(notifications.readAt), isNotNull(notifications.entityId))),
+      db
         .select({
           id: notifications.id,
           panel: notifications.panel,
           kind: notifications.kind,
+          entityId: notifications.entityId,
           title: notifications.title,
           body: notifications.body,
           href: notifications.href,
@@ -92,10 +102,17 @@ export async function getNotificationState(limit = FEED_LIMIT): Promise<Notifica
       total += row.n;
     }
 
+    const unreadEntities: Record<string, string[]> = {};
+    for (const row of entityRows) {
+      if (!row.entityId) continue;
+      (unreadEntities[row.panel] ??= []).push(row.entityId);
+    }
+
     const items: NotificationItem[] = itemRows.map((r) => ({
       id: r.id,
       panel: r.panel,
       kind: r.kind,
+      entityId: r.entityId,
       title: r.title,
       body: r.body,
       href: r.href,
@@ -104,14 +121,75 @@ export async function getNotificationState(limit = FEED_LIMIT): Promise<Notifica
       createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
     }));
 
-    return { counts, total, items };
+    return { counts, total, items, unreadEntities };
   } catch {
     // Table missing (pre-migration) or DB hiccup — the dashboard still renders.
     return EMPTY_NOTIFICATION_STATE;
   }
 }
 
-/** Clears one panel's badge. Called when the admin opens or clicks that panel. */
+/**
+ * Ids of the rows a panel still has to show as new. Server-side counterpart of
+ * `unreadEntities`, used by the list pages to sort unread rows to the top —
+ * client-side sorting cannot do that when the list is paginated and the new row
+ * sits on page 12.
+ *
+ * Returns numbers because every panel it serves keys on a bigserial id;
+ * anything unparseable is dropped rather than poisoning an `IN (...)`.
+ */
+export async function getUnreadEntityIds(panel: string): Promise<number[]> {
+  try {
+    if (!isNotifyPanel(panel)) return [];
+    const rows = await db
+      .select({ entityId: notifications.entityId })
+      .from(notifications)
+      .where(and(eq(notifications.panel, panel), isNull(notifications.readAt), isNotNull(notifications.entityId)));
+    const ids = rows.map((r) => Number(r.entityId)).filter((n) => Number.isSafeInteger(n) && n > 0);
+    return [...new Set(ids)];
+  } catch {
+    // Never let the badge machinery take a list page down.
+    return [];
+  }
+}
+
+/**
+ * ORDER BY fragment that floats a panel's unread rows to the top, for the raw
+ * `db.execute(sql\`...\`)` list queries. Returns an empty fragment when nothing
+ * is unread, so the normal ordering is untouched.
+ *
+ * `column` is interpolated raw, so pass a literal like "s.id" — never anything
+ * derived from a request. The ids are cast through Number.isSafeInteger in
+ * getUnreadEntityIds before they get here.
+ */
+export function newFirstOrder(column: string, unreadIds: number[]): SQL {
+  if (!unreadIds.length) return sql``;
+  return sql`(${sql.raw(column)} IN (${sql.raw(unreadIds.join(","))})) DESC,`;
+}
+
+/**
+ * Marks the notification(s) for ONE row read — the admin opened that row, so
+ * it is no longer news. This is the normal path now: opening the panel is not
+ * enough, since the whole point is to still see which row was added.
+ */
+export async function markEntityRead(panel: string, entityId: string | number): Promise<void> {
+  try {
+    if (!isNotifyPanel(panel)) return;
+    await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(notifications.panel, panel),
+          eq(notifications.entityId, String(entityId)),
+          isNull(notifications.readAt)
+        )
+      );
+  } catch {
+    // Non-fatal: the highlight simply returns on the next poll.
+  }
+}
+
+/** Clears a whole panel at once. Only the bell's "mark all read" uses this now. */
 export async function markPanelRead(panel: string): Promise<void> {
   try {
     if (!isNotifyPanel(panel)) return;

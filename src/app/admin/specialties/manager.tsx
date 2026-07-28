@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteSpecialty } from "@/actions/admin-content";
 import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
-import { toML, type ML } from "@/lib/utils";
+import { cn, toML, type ML } from "@/lib/utils";
+import { NEW_ROW_CLASS, NewFlag, useNewRows } from "@/components/admin/notifications";
 import { Icon } from "@/components/icons";
 import { bnNum } from "@/lib/bn";
 import { Pagination } from "@/components/admin/pagination";
@@ -42,6 +43,10 @@ export function SpecialtiesManager({
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null);
+  // Specialties added from somewhere else (e.g. the doctor form) arrive
+  // flagged. They lead the list and stay tinted until opened.
+  const newRows = useNewRows("specialties");
+  const ordered = newRows.newFirst(rows);
 
   const handleClose = () => {
     setEditing(null);
@@ -80,16 +85,18 @@ export function SpecialtiesManager({
             </tr>
           </thead>
           <tbody>
-            {rows.map((s) => {
+            {ordered.map((s) => {
               const name = toML(s.name);
+              const isNew = newRows.isNew(s.id);
               return (
-                <tr key={s.id}>
+                <tr key={s.id} className={cn(isNew && NEW_ROW_CLASS)}>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                     <div className="flex items-center gap-2.5 text-sm font-semibold text-ink">
                       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                         <Icon name={s.icon} size={17} />
                       </span>
                       {name.bn}
+                      {isNew && <NewFlag />}
                     </div>
                   </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-mute">{name.en || "..."}</td>
@@ -101,11 +108,16 @@ export function SpecialtiesManager({
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                     <div className="flex gap-1.5">
                       <button
-                        onClick={() => setEditing({
-                          id: s.id, slug: s.slug, name: toML(s.name), icon: s.icon, tint: s.tint,
-                          intro: toML(s.intro), meta_title: toML(s.meta_title), meta_description: toML(s.meta_description),
-                          active: s.active, sort: s.sort,
-                        })}
+                        onClick={() => {
+                          // Opening the row is what marks it read — the badge
+                          // and the tint both go on this click.
+                          newRows.markRead(s.id);
+                          setEditing({
+                            id: s.id, slug: s.slug, name: toML(s.name), icon: s.icon, tint: s.tint,
+                            intro: toML(s.intro), meta_title: toML(s.meta_title), meta_description: toML(s.meta_description),
+                            active: s.active, sort: s.sort,
+                          });
+                        }}
                         className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] font-semibold text-brand-600"
                       >
                         এডিট

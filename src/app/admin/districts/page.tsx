@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
+import { getUnreadEntityIds, newFirstOrder } from "@/lib/notify";
 import { DistrictsManager, type DistrictRow } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +17,16 @@ export default async function AdminDistrictsPage({ searchParams }: { searchParam
     ? searchClause(q, [sql`d.name->>'bn'`, sql`d.name->>'en'`, sql`d.slug`])
     : sql`TRUE`;
 
+  // Unopened new rows lead the list — otherwise a district added from another
+  // form sits wherever `sort` puts it, possibly pages away.
+  const newFirst = newFirstOrder("d.id", await getUnreadEntityIds("districts"));
+
   const [districtsRes, totalRes] = await Promise.all([
     db.execute<DistrictRow>(sql`
     SELECT d.id, d.slug, d.name, d.lat, d.lng, d.intro, d.meta_title, d.meta_description,
       d.active, d.sort,
       (SELECT COUNT(*)::int FROM areas ar WHERE ar.district_id = d.id) AS area_count
-    FROM districts d WHERE ${searchCond} ORDER BY d.sort, d.id
+    FROM districts d WHERE ${searchCond} ORDER BY ${newFirst} d.sort, d.id
     LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
   `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM districts d WHERE ${searchCond}`),

@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
+import { getUnreadEntityIds, newFirstOrder } from "@/lib/notify";
 import { SpecialtiesManager, type SpecialtyRow } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +17,16 @@ export default async function AdminSpecialtiesPage({ searchParams }: { searchPar
     ? searchClause(q, [sql`s.name->>'bn'`, sql`s.name->>'en'`, sql`s.slug`])
     : sql`TRUE`;
 
+  // Rows the admin hasn't opened yet lead the list, so a specialty added from
+  // the doctor form is on page 1 instead of buried by `sort`.
+  const newFirst = newFirstOrder("s.id", await getUnreadEntityIds("specialties"));
+
   const [specialtiesRes, totalRes] = await Promise.all([
     db.execute<SpecialtyRow>(sql`
     SELECT s.id, s.slug, s.name, s.icon, s.tint, s.intro, s.meta_title, s.meta_description,
       s.active, s.sort,
       (SELECT COUNT(*)::int FROM doctor_specialties ds WHERE ds.specialty_id=s.id) AS doctor_count
-    FROM specialties s WHERE ${searchCond} ORDER BY s.sort, s.id
+    FROM specialties s WHERE ${searchCond} ORDER BY ${newFirst} s.sort, s.id
     LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
   `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM specialties s WHERE ${searchCond}`),

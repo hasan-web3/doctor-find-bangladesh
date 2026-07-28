@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
+import { getUnreadEntityIds, newFirstOrder } from "@/lib/notify";
 import { AreasManager, type AreaRow } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,10 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
     ? searchClause(q, [sql`a.name->>'bn'`, sql`a.name->>'en'`, sql`a.slug`, sql`d.name->>'bn'`, sql`d.name->>'en'`])
     : sql`TRUE`;
 
+  // Matters most here: 600+ thanas, so a newly added one would otherwise be
+  // effectively invisible without knowing its name.
+  const newFirst = newFirstOrder("a.id", await getUnreadEntityIds("areas"));
+
   const [areasRes, totalRes, districtsRes] = await Promise.all([
     db.execute<AreaRow>(sql`
       SELECT a.id, a.slug, a.name, a.district_id,
@@ -26,7 +31,7 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
       FROM areas a
       LEFT JOIN districts d ON d.id = a.district_id
       WHERE ${searchCond}
-      ORDER BY a.sort, a.id
+      ORDER BY ${newFirst} a.sort, a.id
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM areas a LEFT JOIN districts d ON d.id=a.district_id WHERE ${searchCond}`),

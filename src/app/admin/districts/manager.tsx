@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteDistrict } from "@/actions/admin-content";
 import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
-import { toML, type ML } from "@/lib/utils";
+import { cn, toML, type ML } from "@/lib/utils";
+import { NEW_ROW_CLASS, NewFlag, useNewRows } from "@/components/admin/notifications";
 import { bnNum } from "@/lib/bn";
 import { Pagination } from "@/components/admin/pagination";
 import { FullPageModal } from "@/components/admin/full-page-modal";
@@ -41,6 +42,9 @@ export function DistrictsManager({
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null);
+  // Districts added from another panel's form lead the list, tinted, until opened.
+  const newRows = useNewRows("districts");
+  const ordered = newRows.newFirst(rows);
 
   const handleClose = () => {
     setEditing(null);
@@ -79,11 +83,14 @@ export function DistrictsManager({
             </tr>
           </thead>
           <tbody>
-            {rows.map((d) => {
+            {ordered.map((d) => {
               const name = toML(d.name);
+              const isNew = newRows.isNew(d.id);
               return (
-                <tr key={d.id}>
-                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">{name.bn}</td>
+                <tr key={d.id} className={cn(isNew && NEW_ROW_CLASS)}>
+                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">
+                    <span className="flex items-center gap-2">{name.bn}{isNew && <NewFlag />}</span>
+                  </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-mute">{name.en || "..."}</td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-faint">{d.slug}</td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{bnNum(d.area_count)}</td>
@@ -93,12 +100,15 @@ export function DistrictsManager({
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                     <div className="flex gap-1.5">
                       <button
-                        onClick={() => setEditing({
-                          id: d.id, slug: d.slug, name: toML(d.name),
-                          lat: d.lat != null ? String(d.lat) : "", lng: d.lng != null ? String(d.lng) : "",
-                          intro: toML(d.intro), meta_title: toML(d.meta_title), meta_description: toML(d.meta_description),
-                          active: d.active, sort: d.sort,
-                        })}
+                        onClick={() => {
+                          newRows.markRead(d.id);
+                          setEditing({
+                            id: d.id, slug: d.slug, name: toML(d.name),
+                            lat: d.lat != null ? String(d.lat) : "", lng: d.lng != null ? String(d.lng) : "",
+                            intro: toML(d.intro), meta_title: toML(d.meta_title), meta_description: toML(d.meta_description),
+                            active: d.active, sort: d.sort,
+                          });
+                        }}
                         className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] font-semibold text-brand-600"
                       >
                         এডিট

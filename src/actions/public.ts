@@ -90,7 +90,10 @@ export async function submitAppointment(_prev: FormResult | null, formData: Form
   if (!doctor) return { ok: false, message: "ডাক্তার খুঁজে পাওয়া যায়নি।" };
 
   const serial = `DB-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`;
-  await db.insert(appointments).values({
+  // `.returning` gives the row id the admin list keys on — the notification
+  // stores that, not the serial, so the new booking can be matched to its row
+  // and highlighted until someone opens it.
+  const [booked] = await db.insert(appointments).values({
     serialNo: serial,
     doctorId: doctor.id,
     chamberId: d.chamberId ?? null,
@@ -100,14 +103,14 @@ export async function submitAppointment(_prev: FormResult | null, formData: Form
     problem: d.problem ?? null,
     visitDate: d.visitDate,
     timeSlot: d.timeSlot,
-  });
+  }).returning({ id: appointments.id });
 
   // Dashboard badge on /admin/appointments. `source: "public"` — the booking
   // came from the website, so there is no admin panel that already saw it.
   await notify({
     panel: "appointments",
     kind: "appointment.new",
-    entityId: serial,
+    entityId: booked?.id,
     title: {
       bn: `নতুন অ্যাপয়েন্টমেন্ট: ${d.patientName}`,
       en: `New appointment: ${d.patientName}`,
@@ -164,18 +167,24 @@ export async function submitLead(_prev: FormResult | null, formData: FormData): 
   }
   const d = parsed.data;
 
-  await db.insert(leads).values({
-    type: d.type,
-    name: d.name,
-    phone: d.phone,
-    message: d.message ?? null,
-    extra: d.extra ? { note: d.extra } : {},
-  });
+  // Same reason as the appointment above: the notification needs the row id so
+  // the leads list can highlight this one until it is opened.
+  const [created] = await db
+    .insert(leads)
+    .values({
+      type: d.type,
+      name: d.name,
+      phone: d.phone,
+      message: d.message ?? null,
+      extra: d.extra ? { note: d.extra } : {},
+    })
+    .returning({ id: leads.id });
 
   // Dashboard badge on /admin/leads.
   await notify({
     panel: "leads",
     kind: "lead.new",
+    entityId: created?.id,
     title: { bn: `নতুন লিড: ${d.name}`, en: `New lead: ${d.name}` },
     body: {
       bn: `${d.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"} • ${d.phone}`,

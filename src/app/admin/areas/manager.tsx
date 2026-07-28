@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { deleteArea } from "@/actions/admin-content";
 import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
 import { Pagination } from "@/components/admin/pagination";
-import { toML, type ML } from "@/lib/utils";
+import { cn, toML, type ML } from "@/lib/utils";
+import { NEW_ROW_CLASS, NewFlag, useNewRows } from "@/components/admin/notifications";
 import { num as bnNum } from "@/lib/i18n";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { AreaForm, EMPTY_AREA } from "./form";
@@ -46,6 +47,9 @@ export function AreasManager({
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null);
+  // Thanas added from another panel's form lead the list, tinted, until opened.
+  const newRows = useNewRows("areas");
+  const ordered = newRows.newFirst(rows);
 
   const handleClose = () => {
     setEditing(null);
@@ -84,11 +88,14 @@ export function AreasManager({
             </tr>
           </thead>
           <tbody>
-            {rows.map((a) => {
+            {ordered.map((a) => {
               const name = toML(a.name);
+              const isNew = newRows.isNew(a.id);
               return (
-                <tr key={a.id}>
-                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">{name.bn}</td>
+                <tr key={a.id} className={cn(isNew && NEW_ROW_CLASS)}>
+                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">
+                    <span className="flex items-center gap-2">{name.bn}{isNew && <NewFlag />}</span>
+                  </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{a.district_bn || "..."}</td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-mute">{name.en || "..."}</td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-faint">{a.slug}</td>
@@ -99,13 +106,16 @@ export function AreasManager({
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                     <div className="flex gap-1.5">
                       <button
-                        onClick={() => setEditing({
-                          id: a.id, slug: a.slug, name: toML(a.name),
-                          district_id: a.district_id,
-                          lat: a.lat != null ? String(a.lat) : "", lng: a.lng != null ? String(a.lng) : "",
-                          intro: toML(a.intro), meta_title: toML(a.meta_title), meta_description: toML(a.meta_description),
-                          active: a.active, sort: a.sort,
-                        })}
+                        onClick={() => {
+                          newRows.markRead(a.id);
+                          setEditing({
+                            id: a.id, slug: a.slug, name: toML(a.name),
+                            district_id: a.district_id,
+                            lat: a.lat != null ? String(a.lat) : "", lng: a.lng != null ? String(a.lng) : "",
+                            intro: toML(a.intro), meta_title: toML(a.meta_title), meta_description: toML(a.meta_description),
+                            active: a.active, sort: a.sort,
+                          });
+                        }}
                         className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] font-semibold text-brand-600"
                       >
                         এডিট

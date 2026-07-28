@@ -4,6 +4,8 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateAppointmentStatus } from "@/actions/admin-system";
 import { StatusBadge } from "@/components/admin/ui";
+import { NewFlag, useNewRows } from "@/components/admin/notifications";
+import { cn } from "@/lib/utils";
 import { num as bnNum, date as bnDate } from "@/lib/i18n";
 
 const STATUS: Record<string, { tone: "blue" | "green" | "gray" | "red"; label: string }> = {
@@ -22,6 +24,8 @@ type Appt = {
 export function AppointmentRow({ appt }: { appt: Appt }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const newRows = useNewRows("appointments");
+  const isNew = newRows.isNew(appt.id);
 
   const setStatus = (status: "new" | "confirmed" | "completed" | "cancelled") =>
     startTransition(async () => {
@@ -32,10 +36,19 @@ export function AppointmentRow({ appt }: { appt: Appt }) {
   const s = STATUS[appt.status] || STATUS.new;
 
   return (
-    <div className="flex flex-wrap items-start gap-3.5 rounded-[14px] border border-line bg-white p-[18px]">
+    <div
+      // Touching the card at all counts as seeing it — the status buttons
+      // inside bubble up here too.
+      onClick={() => newRows.markRead(appt.id)}
+      className={cn(
+        "flex flex-wrap items-start gap-3.5 rounded-[14px] border p-[18px]",
+        isNew ? "border-brand-500 bg-brand-100" : "border-line bg-white"
+      )}
+    >
       <div className="min-w-[220px] flex-1">
         <div className="mb-1 flex flex-wrap items-center gap-2.5">
           <span className="text-[15px] font-bold text-ink">{appt.patient_name}</span>
+          {isNew && <NewFlag />}
           <StatusBadge tone={s.tone}>{s.label}</StatusBadge>
           <span className="font-latin text-xs text-ink-ghost">#{appt.serial_no}</span>
         </div>
