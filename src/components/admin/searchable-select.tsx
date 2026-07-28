@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { fuzzyFilter } from "@/lib/fuzzy";
+import { useNotifications } from "@/components/admin/notifications";
 
 export type Option = { id: number; label: string; label_en?: string | null; sub?: string };
 
@@ -309,6 +310,7 @@ export function QuickAddModal({
   const [en, setEn] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { refresh: refreshNotifications } = useNotifications();
 
   const submit = async () => {
     if (!bn.trim() || !en.trim()) {
@@ -319,7 +321,14 @@ export function QuickAddModal({
     setError(null);
     const res = await onSubmit({ bn: bn.trim(), en: en.trim() });
     setBusy(false);
-    if (!res.ok) setError(res.message || "সংরক্ষণ ব্যর্থ");
+    if (!res.ok) {
+      setError(res.message || "সংরক্ষণ ব্যর্থ");
+      return;
+    }
+    // A quick-create from this modal notifies the panel that owns the new row
+    // (hospitals, districts, …). Pull the counts now so the badge lands with
+    // the create instead of on the next poll.
+    refreshNotifications();
   };
 
   return (

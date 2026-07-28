@@ -425,6 +425,33 @@ export const integrations = pgTable("integrations", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ------------- admin notifications -------------
+// Unread badge feed for the dashboard. `panel` is the /admin route segment that
+// owns the row, so the sidebar can group unread counts by it and clear one
+// panel with a single UPDATE. `source` records which panel the write came from
+// — when it equals `panel` no row is written at all (see lib/notify.ts), since
+// an admin adding a hospital from the hospital dashboard needs no telling.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    panel: text("panel").notNull(),
+    kind: text("kind").notNull(),
+    entityId: text("entity_id"),
+    title: jsonb("title").$type<ML>().notNull().default(mlEmpty),
+    body: jsonb("body").$type<ML>().notNull().default(mlEmpty),
+    href: text("href"),
+    source: text("source"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Partial index — only unread rows are ever counted.
+    unreadIdx: index("idx_notifications_unread").on(t.panel).where(sql`${t.readAt} IS NULL`),
+    createdIdx: index("idx_notifications_created").on(t.createdAt.desc()),
+  })
+);
+
 // ------------- audit log -------------
 export const auditLog = pgTable(
   "audit_log",
@@ -524,4 +551,5 @@ export type Redirect = typeof redirects.$inferSelect;
 export type StaticPage = typeof staticPages.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
+export type NotificationRow = typeof notifications.$inferSelect;
 export type SiteSetting = typeof siteSettings.$inferSelect;

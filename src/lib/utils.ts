@@ -13,6 +13,15 @@ export const toML = (v: unknown): ML => {
   return { bn: obj.bn || "", en: obj.en || "" };
 };
 
+// ---------- select option lists ----------
+// Adds an option to a dropdown's local list unless it is already there. The
+// quick-create actions reuse an existing row when the name already exists, so
+// the returned row is not guaranteed to be new — pushing it blindly would show
+// the same hospital / district twice.
+export function withOption<T extends { id: number }>(list: T[], item: T): T[] {
+  return list.some((o) => o.id === item.id) ? list : [...list, item];
+}
+
 // ---------- doctor socials ----------
 export type SocialLinksDraft = {
   website: string;

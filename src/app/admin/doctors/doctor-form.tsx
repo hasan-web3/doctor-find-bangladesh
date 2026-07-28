@@ -21,6 +21,7 @@ import {
 import {
   type ML,
   emptyML,
+  withOption,
   type SocialLinksDraft,
   EMPTY_SOCIAL_LINKS,
 } from "@/lib/utils";
@@ -493,12 +494,13 @@ export function DoctorForm({
           title="নতুন হাসপাতাল যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateHospital(name);
+            const res = await quickCreateHospital({ ...name, source: "doctors" });
             if (!res.ok) return { ok: false, message: res.message };
-            setHospitals((prev) => [
-              ...prev,
-              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
-            ]);
+            // `res.row` may be a pre-existing hospital the action reused, so
+            // guard against listing it twice.
+            setHospitals((prev) =>
+              withOption(prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en })
+            );
             set("hospital_id", res.row.id);
             setModal(null);
             return { ok: true };
@@ -510,13 +512,17 @@ export function DoctorForm({
           title="নতুন বিভাগ যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateSpecialty(name);
+            const res = await quickCreateSpecialty({ ...name, source: "doctors" });
             if (!res.ok) return { ok: false, message: res.message };
-            setSpecialties((prev) => [
-              ...prev,
-              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
-            ]);
-            set("specialty_ids", [...form.specialty_ids, res.row.id]);
+            setSpecialties((prev) =>
+              withOption(prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en })
+            );
+            // Same reason: a reused specialty may already be selected, and a
+            // repeated id here would post the doctor_specialties row twice.
+            set(
+              "specialty_ids",
+              form.specialty_ids.includes(res.row.id) ? form.specialty_ids : [...form.specialty_ids, res.row.id]
+            );
             setModal(null);
             return { ok: true };
           }}
@@ -527,12 +533,11 @@ export function DoctorForm({
           title="নতুন জেলা যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateDistrict(name);
+            const res = await quickCreateDistrict({ ...name, source: "doctors" });
             if (!res.ok) return { ok: false, message: res.message };
-            setDistricts((prev) => [
-              ...prev,
-              { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en },
-            ]);
+            setDistricts((prev) =>
+              withOption(prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en })
+            );
             const idx = modal.chamberIndex;
             setChamber(idx, { district_id: res.row.id, area_id: null });
             setModal(null);
@@ -545,20 +550,19 @@ export function DoctorForm({
           title="নতুন থানা / উপজেলা যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateArea({ ...name, district_id: modal.districtId });
+            const res = await quickCreateArea({ ...name, district_id: modal.districtId, source: "doctors" });
             if (!res.ok) return { ok: false, message: res.message };
             const dist = districts.find((d) => d.id === modal.districtId);
-            setAreas((prev) => [
-              ...prev,
-              {
+            setAreas((prev) =>
+              withOption(prev, {
                 id: res.row.id,
                 name_bn: res.row.name_bn,
                 name_en: res.row.name_en,
                 district_id: modal.districtId,
                 district_bn: dist?.name_bn ?? null,
                 district_en: dist?.name_en ?? null,
-              },
-            ]);
+              })
+            );
             setChamber(modal.chamberIndex, { area_id: res.row.id });
             setModal(null);
             return { ok: true };

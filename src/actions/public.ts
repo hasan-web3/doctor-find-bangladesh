@@ -6,6 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db, appointments, doctors, leads } from "@/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendNotification } from "@/lib/mailer";
+import { notify } from "@/lib/notify";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE, num as bnNum } from "@/lib/i18n";
 
@@ -78,7 +79,11 @@ export async function submitAppointment(_prev: FormResult | null, formData: Form
   const d = parsed.data;
 
   const [doctor] = await db
-    .select({ id: doctors.id, name_bn: sql<string>`${doctors.name}->>'bn'` })
+    .select({
+      id: doctors.id,
+      name_bn: sql<string>`${doctors.name}->>'bn'`,
+      name_en: sql<string>`${doctors.name}->>'en'`,
+    })
     .from(doctors)
     .where(and(eq(doctors.slug, d.doctorSlug), eq(doctors.active, true)))
     .limit(1);
@@ -95,6 +100,24 @@ export async function submitAppointment(_prev: FormResult | null, formData: Form
     problem: d.problem ?? null,
     visitDate: d.visitDate,
     timeSlot: d.timeSlot,
+  });
+
+  // Dashboard badge on /admin/appointments. `source: "public"` — the booking
+  // came from the website, so there is no admin panel that already saw it.
+  await notify({
+    panel: "appointments",
+    kind: "appointment.new",
+    entityId: serial,
+    title: {
+      bn: `নতুন অ্যাপয়েন্টমেন্ট: ${d.patientName}`,
+      en: `New appointment: ${d.patientName}`,
+    },
+    body: {
+      bn: `${doctor.name_bn} • ${d.visitDate} ${d.timeSlot} • ${d.phone}`,
+      en: `${doctor.name_en || doctor.name_bn} • ${d.visitDate} ${d.timeSlot} • ${d.phone}`,
+    },
+    href: "/admin/appointments",
+    source: "public",
   });
 
   // Fire-and-forget email; booking never depends on SMTP being configured.
@@ -147,6 +170,19 @@ export async function submitLead(_prev: FormResult | null, formData: FormData): 
     phone: d.phone,
     message: d.message ?? null,
     extra: d.extra ? { note: d.extra } : {},
+  });
+
+  // Dashboard badge on /admin/leads.
+  await notify({
+    panel: "leads",
+    kind: "lead.new",
+    title: { bn: `নতুন লিড: ${d.name}`, en: `New lead: ${d.name}` },
+    body: {
+      bn: `${d.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"} • ${d.phone}`,
+      en: `${d.type === "doctor" ? "Doctor promotion" : "Patient support"} • ${d.phone}`,
+    },
+    href: "/admin/leads",
+    source: "public",
   });
 
   sendNotification(

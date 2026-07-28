@@ -4,7 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { fuzzyFilter } from "@/lib/fuzzy";
 
-export type FilterOption = { id: number | string; label: string; sub?: string };
+export type FilterOption = {
+  id: number | string;
+  label: string;
+  // The same option's name in the OTHER language. Never rendered — it exists
+  // purely so the search box matches either language: typing "medicine" on the
+  // Bangla page finds "মেডিসিন", and typing "মেডিসিন" on the English page finds
+  // "Medicine". Callers pass the localized name as `label` and its counterpart
+  // here. Mirrors `label_en` in the admin SearchableSelect.
+  labelAlt?: string;
+  sub?: string;
+};
 
 export function SearchableFilter({
   options,
@@ -38,7 +48,7 @@ export function SearchableFilter({
   }, [open]);
 
   const filtered = useMemo(
-    () => fuzzyFilter(options, q, (o) => [o.label, o.sub]),
+    () => fuzzyFilter(options, q, (o) => [o.label, o.labelAlt, o.sub]),
     [q, options]
   );
 

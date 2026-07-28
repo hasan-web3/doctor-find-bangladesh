@@ -200,6 +200,10 @@ export const getSpecialties = unstable_cache(
 
     return rows.map((s): Specialty => ({
       id: s.id, slug: s.slug,
+      // Keep the raw bilingual name alongside the localized one. Filter
+      // dropdowns need the other language to make their search box match
+      // either script — see FilterOption.labelAlt.
+      name_ml: s.name,
       name: ml(s.name, locale), icon: s.icon, tint: s.tint,
       intro: ml(s.intro, locale), meta_title: ml(s.metaTitle, locale),
       meta_description: ml(s.metaDescription, locale),

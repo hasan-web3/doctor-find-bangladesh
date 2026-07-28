@@ -2,15 +2,21 @@ import { Suspense } from 'react';
 import Loading from './loading';
 import Link from "next/link";
 import { AdminSidebar } from "@/components/admin/sidebar";
+import { NotificationBell, NotificationsProvider } from "@/components/admin/notifications";
 import { getSession } from "@/lib/auth";
+import { getNotificationState } from "@/lib/notify";
 import { logoutAction } from "@/actions/auth";
 
 export const metadata = { robots: { index: false, follow: false } };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
+  // Initial notification state is server-rendered so the badges are correct on
+  // first paint; the provider keeps them current after that (this layout does
+  // not re-run on soft navigation between admin pages).
+  const [session, notificationState] = await Promise.all([getSession(), getNotificationState()]);
 
   return (
+    <NotificationsProvider initial={notificationState}>
     <div className="grid min-h-screen grid-cols-1 bg-[#F1F5F9] md:grid-cols-[236px_1fr]">
       <AdminSidebar />
       <div className="flex min-w-0 flex-col">
@@ -20,6 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             ← সাইটে ফিরুন
           </Link>
           <div className="flex-1" />
+          <NotificationBell />
           <div className="flex items-center gap-[9px]">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 font-heading font-semibold text-white">
               {session?.name?.[0] || "অ্যা"}
@@ -40,5 +47,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="px-[22px] pb-[60px] pt-6"><Suspense fallback={<Loading />}>{children}</Suspense></div>
       </div>
     </div>
+    </NotificationsProvider>
   );
 }

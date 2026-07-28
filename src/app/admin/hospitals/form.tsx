@@ -7,7 +7,7 @@ import { saveHospital } from "@/actions/admin-content";
 import { quickCreateArea, quickCreateDistrict, quickCreateSpecialty } from "@/actions/admin-quick-create";
 import { Field, inputCls, Toggle, Toast, ImageUpload, MLInput } from "@/components/admin/ui";
 import { SearchableSelect, SearchableMultiSelect, QuickAddModal, type Option } from "@/components/admin/searchable-select";
-import { toML, emptyML, type ML } from "@/lib/utils";
+import { toML, emptyML, withOption, type ML } from "@/lib/utils";
 import { parseLatLng } from "@/lib/map-coords";
 
 type SpecialtyOpt = { id: number; name_bn: string; name_en: string | null };
@@ -354,13 +354,18 @@ export function HospitalForm({
           title="নতুন বিভাগ যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateSpecialty(name);
+            const res = await quickCreateSpecialty({ ...name, source: "hospitals" });
             if (!res.ok) return { ok: false, message: res.message };
+            // `res.row` may be a specialty that already existed (the action
+            // reuses rather than duplicating), so neither the option list nor
+            // the departments list may gain a second copy.
             const fresh: SpecialtyOpt = { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en };
-            setSpecialties((prev) => [...prev, fresh]);
+            setSpecialties((prev) => withOption(prev, fresh));
             setDraft({
                 ...draft,
-                departments: [...draft.departments, { bn: fresh.name_bn, en: fresh.name_en || "" }],
+                departments: draft.departments.some((d) => d.bn === fresh.name_bn)
+                  ? draft.departments
+                  : [...draft.departments, { bn: fresh.name_bn, en: fresh.name_en || "" }],
             });
             setModal(null);
             return { ok: true };
@@ -372,10 +377,10 @@ export function HospitalForm({
           title="নতুন জেলা যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateDistrict(name);
+            const res = await quickCreateDistrict({ ...name, source: "hospitals" });
             if (!res.ok) return { ok: false, message: res.message };
             const fresh: DistrictOpt = { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en };
-            setDistricts((prev) => [...prev, fresh]);
+            setDistricts((prev) => withOption(prev, fresh));
             setDraft({ ...draft, district_id: res.row.id, area_id: null });
             setModal(null);
             return { ok: true };
@@ -387,7 +392,7 @@ export function HospitalForm({
           title="নতুন থানা / উপজেলা যোগ করুন"
           onClose={() => setModal(null)}
           onSubmit={async (name) => {
-            const res = await quickCreateArea({ ...name, district_id: modal.districtId });
+            const res = await quickCreateArea({ ...name, district_id: modal.districtId, source: "hospitals" });
             if (!res.ok) return { ok: false, message: res.message };
             const parent = districts.find((d) => d.id === modal.districtId);
             const fresh: AreaOpt = {
@@ -396,7 +401,7 @@ export function HospitalForm({
               district_bn: parent?.name_bn ?? null,
               district_en: parent?.name_en ?? null,
             };
-            setAreas((prev) => [...prev, fresh]);
+            setAreas((prev) => withOption(prev, fresh));
             setDraft({ ...draft, area_id: res.row.id });
             setModal(null);
             return { ok: true };

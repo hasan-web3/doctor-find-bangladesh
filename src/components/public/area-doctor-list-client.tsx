@@ -9,7 +9,7 @@ import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { getDict } from "@/lib/dict";
-import { type Locale } from "@/lib/i18n";
+import { t, type Locale } from "@/lib/i18n";
 import type { DoctorCardData, Specialty } from "@/lib/data";
 import { Shimmer } from "@/components/shimmer";
 
@@ -53,11 +53,24 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
 
   const debouncedNameQuery = useDebounce(nameQuery, 300);
 
-  // Convert specialties to options for the dropdown
-  const specialtyOptions = useMemo(
-    () => allSpecialties.map((s) => ({ id: s.id, label: s.name, sub: s.slug })),
-    [allSpecialties]
-  );
+  // Convert specialties to options for the dropdown.
+  //
+  // `label_en` is searched but never rendered by SearchableMultiSelect, so we
+  // put the name in the OTHER language there: that makes typing "medicine"
+  // find "মেডিসিন" on the Bangla page and vice versa on the English one.
+  // (Despite the field name it is just an extra search key here.)
+  const specialtyOptions = useMemo(() => {
+    const alt: Locale = locale === "bn" ? "en" : "bn";
+    return allSpecialties.map((s) => {
+      const altName = t(s.name_ml, alt);
+      return {
+        id: s.id,
+        label: s.name,
+        label_en: altName && altName !== s.name ? altName : null,
+        sub: s.slug,
+      };
+    });
+  }, [allSpecialties, locale]);
   const idToSpecialtySlug = useMemo(
     () => new Map(allSpecialties.map((s) => [s.id, s.slug])),
     [allSpecialties]

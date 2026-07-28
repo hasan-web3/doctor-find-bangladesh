@@ -29,7 +29,9 @@ function useDebounce<T>(value: T, delay: number): T {
 type EnrichedDoctor = DoctorCardData & { all_specialties: string[] };
 
 type Props = {
-  departments: { name: string; slug: string }[];
+  // `nameAlt` is the department's name in the other language — search-only,
+  // never displayed. See FilterOption.labelAlt.
+  departments: { name: string; nameAlt?: string; slug: string }[];
   settings: { helpline: string; helpline_bn: string | null };
   locale: Locale;
   d: Dict;
@@ -55,7 +57,7 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
   const debouncedNameQuery = useDebounce(nameQuery, 300);
   
   const departmentOptions: FilterOption[] = useMemo(() => 
-    departments.map((dep) => ({ id: dep.slug, label: dep.name })),
+    departments.map((dep) => ({ id: dep.slug, label: dep.name, labelAlt: dep.nameAlt })),
     [departments]
   );
   

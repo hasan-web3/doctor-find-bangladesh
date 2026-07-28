@@ -6,7 +6,7 @@ import { saveArea } from "@/actions/admin-content";
 import { quickCreateDistrict } from "@/actions/admin-quick-create";
 import { Field, inputCls, Toggle, Toast, MLInput } from "@/components/admin/ui";
 import { SearchableSelect, QuickAddModal, type Option } from "@/components/admin/searchable-select";
-import { type ML, emptyML } from "@/lib/utils";
+import { type ML, emptyML, withOption } from "@/lib/utils";
 
 export type AreaDraft = {
   id?: number; slug: string; name: ML;
@@ -167,9 +167,9 @@ export function AreaForm({
                 title="নতুন জেলা যোগ করুন"
                 onClose={() => setShowAddDistrict(false)}
                 onSubmit={async (name) => {
-                  const res = await quickCreateDistrict(name);
+                  const res = await quickCreateDistrict({ ...name, source: "areas" });
                   if (res.ok) {
-                    setDistricts((prev) => [...prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en }]);
+                    setDistricts((prev) => withOption(prev, { id: res.row.id, name_bn: res.row.name_bn, name_en: res.row.name_en }));
                     setDraft({ ...draft, district_id: res.row.id });
                     setShowAddDistrict(false);
                     return { ok: true };

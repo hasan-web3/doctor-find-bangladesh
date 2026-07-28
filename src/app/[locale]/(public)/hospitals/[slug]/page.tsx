@@ -99,9 +99,13 @@ export default async function HospitalPage({ params }: Props) {
       );
       if (!spec) return null;
       const label = ml(spec.name, locale) || deptName;
-      return { name: label, slug: spec.slug };
+      // Carry the other language's name through as well, so the department
+      // filter's search box matches "medicine" AND "মেডিসিন" whichever locale
+      // the visitor is on. Dropped when it would duplicate the label.
+      const alt = ml(spec.name, locale === "bn" ? "en" : "bn");
+      return { name: label, nameAlt: alt && alt !== label ? alt : undefined, slug: spec.slug };
     })
-    .filter((d): d is { name: string; slug: string } => d !== null);
+    .filter((d): d is { name: string; nameAlt: string | undefined; slug: string } => d !== null);
 
   // Enrich doctors with all their specialties for the client-side filter
   const doctorIds = initialDoctorData.rows.map((d) => d.id);
