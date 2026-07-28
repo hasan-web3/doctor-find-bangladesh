@@ -116,7 +116,19 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
     description,
     alternates: {
       canonical,
+      // `bn` AND `bn-BD` both point at the Bangla URL, on purpose.
+      //
+      // `bn-BD` only matches Bengali speakers whose region resolves to
+      // Bangladesh. Bare `bn` matches ANY Bengali-language user — West Bengal,
+      // the diaspora, or anyone whose Google region is unset. Without it those
+      // searchers fall through to `en`, which is why English URLs kept winning.
+      //
+      // Order matters for readability only; Google picks the most specific
+      // match. Any change here must be mirrored in entry() in sitemap-core.ts —
+      // if the XML alternates and these tags disagree, Google discards the
+      // whole hreflang cluster and picks a version on its own.
       languages: {
+        bn: bnUrl,
         "bn-BD": bnUrl,
         en: enUrl,
         "x-default": bnUrl,

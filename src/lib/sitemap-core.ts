@@ -94,7 +94,12 @@ function entry(
   // which form is the canonical one. No other path ends in "/".
   const bnUrl = siteUrl(localeHref("bn", path)).replace(/\/$/, "");
   const enUrl = siteUrl(localeHref("en", path)).replace(/\/$/, "");
+  // MUST stay byte-identical to the `languages` map in buildMetadata()
+  // (src/lib/seo.ts). Google cross-checks the sitemap's alternates against the
+  // on-page tags; any disagreement invalidates the cluster and it picks a
+  // version on its own. `bn` widens matching beyond Bangladesh-region users.
   const alternates = [
+    { hreflang: "bn", href: bnUrl },
     { hreflang: "bn-BD", href: bnUrl },
     { hreflang: "en", href: enUrl },
     { hreflang: "x-default", href: bnUrl },

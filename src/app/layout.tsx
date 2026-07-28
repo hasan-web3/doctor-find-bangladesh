@@ -49,11 +49,18 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(siteUrl()),
     title: t(settings.seo_default_title, "bn"),
     description: t(settings.seo_default_description, "bn"),
-    // Favicon: admin-uploaded PNG from R2 when set; otherwise Next.js falls
-    // back to the file-based /icon.svg in app/. Passing the URL explicitly
-    // wins over the file-based route.
+    // Favicon: point at our OWN /favicon.ico route, never the raw R2 URL.
+    // That route (src/app/favicon.ico/route.ts) proxies the admin-uploaded
+    // image, so the icon stays admin-configurable while Google sees a stable
+    // first-party URL at the exact path it probes first. Linking pub-*.r2.dev
+    // directly is what kept the search-result icon blank: browsers fetch it
+    // fine (hence the correct tab icon) but that host is Cloudflare's
+    // rate-limited dev endpoint, and /favicon.ico itself used to 404.
+    //
+    // When nothing is uploaded we omit `icons` entirely so Next.js falls back
+    // to the file-based /icon.svg convention, exactly as before.
     ...(settings.favicon_url
-      ? { icons: { icon: settings.favicon_url, apple: settings.favicon_url } }
+      ? { icons: { icon: "/favicon.ico", shortcut: "/favicon.ico", apple: "/favicon.ico" } }
       : {}),
     // GSC verification tag: paste the meta token as GOOGLE_SITE_VERIFICATION env
     // once and Next inlines it into the head of every page. Omit until the
