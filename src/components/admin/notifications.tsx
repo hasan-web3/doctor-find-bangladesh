@@ -4,7 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icons";
-import { bnNum, bnDateTime } from "@/lib/bn";
+// Note: no bnNum here on purpose. Counts and timestamps in this feature are
+// rendered with ASCII digits ("12", not "১২") while the labels stay Bangla —
+// the rest of the admin panel still uses Bangla numerals via lib/bn.
 import { cn } from "@/lib/utils";
 import {
   EMPTY_NOTIFICATION_STATE,
@@ -159,26 +161,36 @@ export function UnreadBadge({ count, active }: { count: number; active?: boolean
         active ? "bg-white text-brand-700" : "bg-[#EF4444] text-white"
       )}
     >
-      {bnNum(count > 99 ? "99+" : count)}
+      {count > 99 ? "99+" : count}
     </span>
   );
 }
 
 // ---------- topbar bell ----------
 
-// Bangla relative time. Only rendered inside the open dropdown, so it never
-// participates in hydration.
+// Bangla relative time with ASCII digits. Only rendered inside the open
+// dropdown, so it never participates in hydration.
+//
+// The older-than-a-week fallback asks for the `latn` numbering system
+// explicitly: plain "bn-BD" would format the date in Bangla digits and
+// reintroduce exactly what we removed.
+const OLD_DATE_FMT = new Intl.DateTimeFormat("bn-BD-u-nu-latn", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
 function relativeBn(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
   const mins = Math.round((Date.now() - then) / 60_000);
   if (mins < 1) return "এখনই";
-  if (mins < 60) return `${bnNum(mins)} মিনিট আগে`;
+  if (mins < 60) return `${mins} মিনিট আগে`;
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${bnNum(hours)} ঘণ্টা আগে`;
+  if (hours < 24) return `${hours} ঘণ্টা আগে`;
   const days = Math.round(hours / 24);
-  if (days <= 7) return `${bnNum(days)} দিন আগে`;
-  return bnDateTime(iso);
+  if (days <= 7) return `${days} দিন আগে`;
+  return OLD_DATE_FMT.format(new Date(iso));
 }
 
 export function NotificationBell() {
@@ -200,14 +212,14 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={total ? `${bnNum(total)}টি নতুন বিজ্ঞপ্তি` : "বিজ্ঞপ্তি"}
+        aria-label={total ? `${total}টি নতুন বিজ্ঞপ্তি` : "বিজ্ঞপ্তি"}
         aria-expanded={open}
         className="relative flex h-9 w-9 items-center justify-center rounded-[9px] border border-line bg-white text-ink-mute hover:bg-page"
       >
         <Icon name="bell" size={19} />
         {total > 0 && (
           <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-[#EF4444] px-1 text-center text-[10px] font-bold leading-[18px] text-white">
-            {bnNum(total > 99 ? "99+" : total)}
+            {total > 99 ? "99+" : total}
           </span>
         )}
       </button>
@@ -219,7 +231,7 @@ export function NotificationBell() {
             <div className="flex items-center gap-2 border-b border-line px-4 py-3">
               <span className="text-[13.5px] font-bold text-ink">বিজ্ঞপ্তি</span>
               <span className="text-xs text-ink-ghost">
-                {total > 0 ? `${bnNum(total)}টি নতুন` : "সব পড়া হয়েছে"}
+                {total > 0 ? `${total}টি নতুন` : "সব পড়া হয়েছে"}
               </span>
               {total > 0 && (
                 <button
