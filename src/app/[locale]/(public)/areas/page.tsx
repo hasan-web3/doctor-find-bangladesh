@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
-import { searchAreas } from "@/lib/data";
+import { searchAreas, resolveDisplayDistrict } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
@@ -33,6 +33,7 @@ export default async function AreasPage({ params, searchParams }: Props) {
   const sp = await searchParams;
 
   const geo = await detectArea();
+  const display = await resolveDisplayDistrict(geo, locale);
   const initialAreasData = await searchAreas({
     q: sp.q,
     page: Number(sp.page || '1'),
@@ -40,12 +41,13 @@ export default async function AreasPage({ params, searchParams }: Props) {
     preferLat: geo.lat,
     preferLng: geo.lng,
     preferAreaId: geo.areaId,
-    preferDistrictId: geo.districtId,
+    // The district we NAME in the copy below, which is not the visitor's own
+    // once theirs turns out to have no doctors. Ranking by their empty
+    // district would list thanas from a district this page never mentions.
+    preferDistrictId: display?.id ?? geo.districtId,
   }, locale);
 
-  const geoDistrictName = geo.districtName
-    ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) || null
-    : null;
+  const geoDistrictName = display?.name ?? null;
   
   const areaSub = geoDistrictName
     ? (locale === "bn"

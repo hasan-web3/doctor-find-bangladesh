@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
-import { searchDistricts } from "@/lib/data";
+import { searchDistricts, resolveDisplayDistrict } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
@@ -42,9 +42,7 @@ export default async function DistrictsPage({ params, searchParams }: Props) {
     preferDistrictId: geo.districtId,
   }, locale);
 
-  const geoDistrictName = geo.districtName
-    ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) || null
-    : null;
+  const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
   
   const districtSub = geoDistrictName
     ? (locale === "bn"

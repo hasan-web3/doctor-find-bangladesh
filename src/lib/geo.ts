@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { headers, cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
-import { getAreasForGeo } from "./data";
+import { getAreasForGeo, getDistrictsForGeo } from "./data";
 import { getEnabledConfig } from "./integrations";
 
 export type GeoResult = {
@@ -14,8 +14,17 @@ export type GeoResult = {
   districtName: { bn?: string; en?: string } | null;
   lat: number | null;
   lng: number | null;
-  source: "cookie" | "ip-name" | "ip-nearest" | "none";
+  // "district" = the visitor answered the district prompt themselves. That
+  // answer outranks every inferred signal, because IP geolocation resolves to
+  // the ISP's exit node, not the person: a Khulna visitor on a Dhaka-routed
+  // provider gets told "Dhaka" and every nearest-first list is wrong for them.
+  source: "cookie" | "district" | "ip-name" | "ip-nearest" | "none";
 };
+
+// The visitor's own district answer. 30 days: long enough that we ask at most
+// once a month, short enough that someone who genuinely moves isn't stuck.
+export const DISTRICT_COOKIE = "db_district";
+export const DISTRICT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 type GeoArea = {
   id: number;
@@ -28,6 +37,28 @@ type GeoArea = {
   lng: number | null;
   doctorCount: number;
 };
+
+export type GeoDistrict = {
+  id: number;
+  slug: string;
+  name: { bn?: string; en?: string };
+  lat: number | null;
+  lng: number | null;
+  doctorCount: number;
+};
+
+// A visitor-chosen district resolves to district-level coordinates and no
+// thana. Leaving areaId null is intentional: we know their district, we do NOT
+// know their thana, and guessing one would re-introduce the false precision
+// this whole flow exists to remove. Every consumer already treats a null
+// areaId as "no thana preference" and ranks by districtId + lat/lng instead.
+function withDistrict(district: GeoDistrict): GeoResult {
+  return {
+    areaId: null, areaSlug: null, areaName: null,
+    districtId: district.id, districtSlug: district.slug, districtName: district.name,
+    lat: district.lat, lng: district.lng, source: "district",
+  };
+}
 
 
 
@@ -200,14 +231,22 @@ export async function detectAreaByIp(ip: string): Promise<GeoResult> {
 }
 
 // Visitor's served area. Preference order:
-//   1. `db_area` cookie — the visitor manually picked an area, always wins
-//   2. Vercel edge headers (`x-vercel-ip-*`) — free and sub-millisecond, so
+//   1. `db_area` cookie — the visitor manually picked a thana, most specific
+//      answer we can have, so it wins outright.
+//   2. `db_district` cookie — the visitor answered the district prompt. Once
+//      this exists we stop asking the network where they are entirely: a
+//      stated district beats an inferred one even when the IP disagrees,
+//      which is exactly the case this tier is here to fix.
+//   3. Vercel edge headers (`x-vercel-ip-*`) — free and sub-millisecond, so
 //      they are read fresh on every request. Deliberately NOT cached in a
 //      cookie: that only bought stale coordinates once the visitor changed
 //      network, VPN or city, and cost Cookie/Set-Cookie bytes on every hit.
-//   3. External IP-geo provider — only reachable when the Vercel headers are
+//   4. External IP-geo provider — only reachable when the Vercel headers are
 //      absent (local dev / self-hosted). That call IS cached for 30 minutes
 //      per IP inside lookupIp(), since it is the expensive one.
+//
+// Tiers 3–4 are now only a *hint*: they order the district prompt and drive
+// the "you seem to be browsing from…" strip until the visitor answers.
 //
 // Wrapped in React `cache` so multiple calls inside the same request (e.g.
 // generateMetadata + page component) share one result. IP-geo can't run in
@@ -220,6 +259,15 @@ export const detectArea = cache(async (): Promise<GeoResult> => {
   if (chosen) {
     const area = areas.find((a) => a.slug === chosen);
     if (area) return withArea(area, "cookie", area.lat, area.lng);
+  }
+
+  const chosenDistrict = jar.get(DISTRICT_COOKIE)?.value;
+  if (chosenDistrict) {
+    const districts = (await getDistrictsForGeo()) as GeoDistrict[];
+    const district = districts.find((x) => x.slug === chosenDistrict);
+    // A district with no coordinates still wins — we know the district id,
+    // which is enough to filter by; distance ranking simply stays off.
+    if (district) return withDistrict(district);
   }
 
   const h = await headers();

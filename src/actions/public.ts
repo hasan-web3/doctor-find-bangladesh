@@ -9,6 +9,8 @@ import { sendNotification } from "@/lib/mailer";
 import { notify } from "@/lib/notify";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE, num as bnNum } from "@/lib/i18n";
+import { DISTRICT_COOKIE, DISTRICT_COOKIE_MAX_AGE } from "@/lib/geo";
+import { getDistrictsForGeo } from "@/lib/data";
 
 export type FormResult = { ok: boolean; message: string; serial?: string };
 
@@ -210,4 +212,37 @@ export async function chooseArea(slug: string) {
     return;
   }
   jar.set("db_area", slug, { maxAge: 5, path: "/", sameSite: "lax" });
+}
+
+// ---------------- geo district choice ----------------
+// The visitor told us their district. Persist it for 30 days and let
+// detectArea() serve the whole site from it instead of their IP.
+//
+// A cookie (not localStorage) because every geo-aware surface on this site is
+// server-rendered — the district has to be readable before the first byte, or
+// the page would ship the IP-derived ordering and then rewrite it on the
+// client, which is both a flash and a wasted render.
+export async function chooseDistrict(slug: string) {
+  const jar = await cookies();
+  if (!slug) {
+    jar.delete(DISTRICT_COOKIE);
+    return { ok: false };
+  }
+
+  // Only accept a slug we actually serve — this value is echoed into SQL
+  // filters downstream, and an unknown slug would silently degrade every
+  // listing to "no location" instead of erroring visibly.
+  const districts = (await getDistrictsForGeo()) as { slug: string }[];
+  if (!districts.some((x) => x.slug === slug)) return { ok: false };
+
+  jar.set(DISTRICT_COOKIE, slug, {
+    maxAge: DISTRICT_COOKIE_MAX_AGE,
+    path: "/",
+    sameSite: "lax",
+    httpOnly: false,
+  });
+  // A stale thana pick outranks the district cookie in detectArea(), so a
+  // fresh district answer has to clear it or the new choice does nothing.
+  jar.delete("db_area");
+  return { ok: true };
 }

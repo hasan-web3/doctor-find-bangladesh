@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchDoctors } from "@/lib/data";
+import { searchDoctors, resolveDisplayDistrict } from "@/lib/data";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { detectArea } from "@/lib/geo";
 
@@ -20,6 +20,9 @@ export async function GET(
 
   try {
     const geo = await detectArea();
+  // Rank by the district the site actually NAMES for this visitor, so a
+  // client refetch cannot reorder the list around their empty district.
+  const display = await resolveDisplayDistrict(geo, locale as Locale);
     const results = await searchDoctors(
       {
         specialty: slug,
@@ -27,7 +30,7 @@ export async function GET(
         page,
         perPage,
         preferAreaId: geo.areaId,
-        preferDistrictId: geo.districtId,
+        preferDistrictId: display?.id ?? geo.districtId,
         preferLat: geo.lat,
         preferLng: geo.lng,
       },

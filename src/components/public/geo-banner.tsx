@@ -1,99 +1,57 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { chooseArea } from "@/actions/public";
 import type { Dict } from "@/lib/dict";
 
-type AreaOpt = { slug: string; name: string };
-
-// Persist geo-banner dismissal for a week so it doesn't reappear on every
-// page navigation once the user has chosen an area or closed the strip.
-const DISMISS_KEY = "geo_banner_dismissed_until";
-const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isDismissedNow(): boolean {
-  if (typeof window === "undefined") return false;
-  const raw = window.localStorage.getItem(DISMISS_KEY);
-  if (!raw) return false;
-  const until = Number(raw);
-  if (!Number.isFinite(until) || until <= Date.now()) {
-    window.localStorage.removeItem(DISMISS_KEY);
-    return false;
-  }
-  return true;
-}
-
-function markDismissed() {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DISMISS_KEY, String(Date.now() + DISMISS_MS));
-}
-
+// The quieter of the two asks. Shown after the district modal has been
+// dismissed without an answer, and only while the location is still a guess.
+//
+// Two shapes, depending on whether IP geo gave us anything:
+//   • a guess to correct  — "আপনি সম্ভবত ঢাকা থেকে দেখছেন…" + পরিবর্তন করুন
+//   • nothing at all      — a plain invitation to pick a district
+// The second exists because the strip is the visitor's only way back to the
+// picker once the modal is dismissed; without it, anyone we cannot geolocate
+// (VPN, unknown ISP, local dev) would lose the entrance entirely.
+//
+// Visibility, dismissal and the back-off timers all live in <GeoPrompt>; this
+// component is purely the strip so both surfaces can share one state machine
+// instead of racing each other through localStorage.
 export function GeoBanner({
-  areaName,
-  areas,
+  districtName,
+  onChange,
+  onDismiss,
   d,
 }: {
-  areaName: string | null;
-  areas: AreaOpt[];
-  d: Pick<Dict, "geo_viewing_from" | "geo_viewing_suffix" | "geo_change" | "geo_pick_area">;
+  /** District granularity only. A thana name here would overstate what an IP
+   *  lookup can actually tell us, and the visitor can only correct us at
+   *  district level anyway. Null when IP geo yielded nothing. */
+  districtName: string | null;
+  onChange: () => void;
+  onDismiss: () => void;
+  d: Pick<
+    Dict,
+    "geo_viewing_from" | "geo_viewing_suffix" | "geo_change" | "geo_unknown" | "geo_choose_district"
+  >;
 }) {
-  const [editing, setEditing] = useState(false);
-  // Start hidden so SSR + first paint don't flash the strip for users who
-  // already dismissed it; useEffect flips it on when the stored expiry
-  // has passed (or was never set).
-  const [visible, setVisible] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const router = useRouter();
-
-  useEffect(() => {
-    setVisible(!isDismissedNow());
-  }, []);
-
-  if (!areaName || !visible) return null;
-
-  const dismiss = () => {
-    markDismissed();
-    setVisible(false);
-  };
-
-  const pick = (slug: string) => {
-    startTransition(async () => {
-      await chooseArea(slug);
-      markDismissed();
-      setEditing(false);
-      setVisible(false);
-      router.refresh();
-    });
-  };
-
   return (
     <div className="border-b border-brand-100 bg-brand-50">
       <div className="mx-auto flex max-w-site flex-wrap items-center justify-center gap-x-3 gap-y-2 px-5 py-2 text-[13.5px] text-brand-700">
         <span>
           <span className="mr-1">◉</span>
-          {d.geo_viewing_from} <b>{areaName}</b>
-          {d.geo_viewing_suffix}
+          {districtName ? (
+            <>
+              {d.geo_viewing_from} <b>{districtName}</b>
+              {d.geo_viewing_suffix}
+            </>
+          ) : (
+            d.geo_unknown
+          )}
         </span>
-        {editing ? (
-          <select
-            autoFocus
-            disabled={pending}
-            defaultValue=""
-            onChange={(e) => e.target.value && pick(e.target.value)}
-            className="rounded-lg border border-brand-200 bg-white px-2 py-1 text-[13px] text-ink-soft outline-none"
-          >
-            <option value="" disabled>{d.geo_pick_area}</option>
-            {areas.map((a) => (
-              <option key={a.slug} value={a.slug}>{a.name}</option>
-            ))}
-          </select>
-        ) : (
-          <button onClick={() => setEditing(true)} className="font-bold underline underline-offset-2">
-            {d.geo_change}
-          </button>
-        )}
-        <button onClick={dismiss} aria-label="✕" className="text-brand-600">✕</button>
+        <button onClick={onChange} className="font-bold underline underline-offset-2">
+          {districtName ? d.geo_change : d.geo_choose_district}
+        </button>
+        <button onClick={onDismiss} aria-label="বন্ধ করুন" className="text-brand-600">
+          ✕
+        </button>
       </div>
     </div>
   );

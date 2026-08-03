@@ -26,6 +26,15 @@ const bn = {
   geo_viewing_suffix: "থেকে দেখছেন, আপনার এলাকার ডাক্তার আগে দেখানো হচ্ছে।",
   geo_change: "পরিবর্তন করুন",
   geo_pick_area: "শহর / গ্রাম বাছাই করুন",
+  // Shown instead of the "browsing from X" line when IP geo told us nothing —
+  // we cannot claim a district we do not have, but we still need to offer the
+  // picker, so the strip becomes a plain invitation.
+  geo_unknown: "আপনার জেলা বেছে নিন, কাছের ডাক্তার আগে দেখানো হবে।",
+  geo_choose_district: "জেলা বাছুন",
+  // Shown when the visitor's chosen district has no doctors yet and the site
+  // is quietly showing another district's instead. `{a}` = their district,
+  // `{b}` = the district actually being shown.
+  geo_no_doctors: "{a} জেলায় এখনো কোনো ডাক্তার যুক্ত হয়নি, তাই {b} সবচেয়ে কাছের ডাক্তার দেখানো হচ্ছে।",
 
   // hero / home
   hero_badge: "খুলনার #১ ডাক্তার ডিরেক্টরি",
@@ -272,7 +281,7 @@ const bn = {
   footer_tagline: "খুলনার বিশ্বস্ত ডাক্তার ডিরেক্টরি। এলাকা ও বিশেষজ্ঞ বিভাগ অনুযায়ী যাচাইকৃত ডাক্তার খুঁজুন ও সহজে অ্যাপয়েন্টমেন্ট নিন।",
   footer_popular_specs: "জনপ্রিয় বিভাগ",
   footer_by_area: "এলাকা অনুযায়ী",
-  footer_area_doctors_suffix: "র ডাক্তার",
+  footer_area_doctors_suffix: " ডাক্তার",
   footer_quick_links: "দ্রুত লিংক",
   footer_for_doctors: "ডাক্তারদের জন্য",
   footer_for_doctors_text: "ডাক্তার হিসেবে প্রোফাইল যুক্ত করতে বা প্রমোশনের জন্য যোগাযোগ করুন।",
@@ -314,6 +323,9 @@ const en: typeof bn = {
   geo_viewing_suffix: ", showing doctors in your area first.",
   geo_change: "Change",
   geo_pick_area: "Pick your Town / Village",
+  geo_unknown: "Choose your district to see the nearest doctors first.",
+  geo_choose_district: "Choose district",
+  geo_no_doctors: "No doctors have been added in {a} yet, so we're showing the nearest ones from {b}.",
 
   hero_badge: "Khulna's #1 Doctor Directory",
   hero_title_1: "Trusted doctors in your area,",

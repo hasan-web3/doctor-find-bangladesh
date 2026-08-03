@@ -4,7 +4,7 @@ import { Logo, Icon } from "@/components/icons";
 import { getSettings } from "@/lib/settings";
 import { getDict } from "@/lib/dict";
 import { t, localeHref, num, type Locale } from "@/lib/i18n";
-import { getSpecialties, getNearbyAreas } from "@/lib/data";
+import { getSpecialties, getNearbyAreas, resolveDisplayDistrict, getDistrictsForGeo } from "@/lib/data";
 import { detectArea } from "@/lib/geo";
 import { withPossessive } from "@/lib/bn";
 
@@ -14,18 +14,23 @@ export async function Footer({ locale }: { locale: Locale }) {
     getSpecialties(locale),
     detectArea(),
   ]);
-  const nearbyAreas = await getNearbyAreas(locale, geo.districtId, geo.lat, geo.lng);
   const d = getDict(locale);
+
+  // Name the district the doctors are actually in, not necessarily the
+  // visitor's own — and list the towns from that same district, so the tagline
+  // and the area links below it never describe two different places.
+  const display = await resolveDisplayDistrict(geo, locale);
+  const nearbyAreas = await getNearbyAreas(locale, display?.id ?? geo.districtId, geo.lat, geo.lng);
   const L = (path: string) => localeHref(locale, path);
   const brand = t(settings.brand_name, locale);
 
-  const districtNameBn = geo.districtName?.bn || d.default_district_bn;
-  const districtNameEn = geo.districtName?.en || d.default_district_en;
+  const districtName =
+    display?.name || (locale === "bn" ? d.default_district_bn : d.default_district_en);
 
   const dynamicTagline =
     locale === "bn"
-      ? `${withPossessive(districtNameBn)} বিশ্বস্ত ডাক্তার ডিরেক্টরি। এলাকা ও বিশেষজ্ঞ বিভাগ অনুযায়ী যাচাইকৃত ডাক্তার খুঁজুন ও সহজে অ্যাপয়েন্টমেন্ট নিন।`
-      : `${districtNameEn}'s trusted doctor directory. Find verified doctors by area and specialty and easily book appointments.`;
+      ? `${withPossessive(districtName)} বিশ্বস্ত ডাক্তার ডিরেক্টরি। এলাকা ও বিশেষজ্ঞ বিভাগ অনুযায়ী যাচাইকৃত ডাক্তার খুঁজুন ও সহজে অ্যাপয়েন্টমেন্ট নিন।`
+      : `${districtName}'s trusted doctor directory. Find verified doctors by area and specialty and easily book appointments.`;
 
   const QUICK_LINKS = [
     { label: d.nav_about, href: "/about" },
@@ -147,7 +152,10 @@ export async function Footer({ locale }: { locale: Locale }) {
           <div className="flex flex-col gap-[9px]">
             {nearbyAreas.map((a) => (
               <Link key={a.id} href={L(`/area/doctors/${a.district_slug}/${a.slug}`)} className="text-sm text-ink-ghost transition-colors hover:text-brand-300">
-                {a.name}{d.footer_area_doctors_suffix}
+                {/* Bengali needs the possessive inflected onto the name — a
+                    glued "র" produced "খুলনা সদরর" for consonant endings. */}
+                {locale === "bn" ? withPossessive(a.name) : a.name}
+                {d.footer_area_doctors_suffix}
               </Link>
             ))}
           </div>

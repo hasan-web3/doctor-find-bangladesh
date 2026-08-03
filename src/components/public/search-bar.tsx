@@ -85,6 +85,29 @@ export function SearchBar({
   const thanaIdToSlug = useMemo(() => new Map(thanasForDistrict.map((t, i) => [i + 1, t.slug])), [thanasForDistrict]);
   const [thanaId, setThanaId] = useState<number | null>(preselectThanaSlug && preselectDistrictSlug ? slugToThanaId.get(preselectThanaSlug) ?? null : null);
 
+  // `useState` reads its initial value once, so the two dropdowns would keep
+  // whatever the IP guess produced on first mount even after the visitor
+  // answers the district prompt — the server re-renders with new preselect
+  // props but this component ignores them. Re-apply whenever the incoming
+  // preselect actually changes, which only happens on a real location change.
+  //
+  // Tracked by value rather than with a plain effect so a visitor's own
+  // dropdown choice is never reset by an unrelated re-render.
+  const appliedPreselect = useRef(`${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`);
+  useEffect(() => {
+    const key = `${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`;
+    if (appliedPreselect.current === key) return;
+    appliedPreselect.current = key;
+
+    setDistrictId(preselectDistrictSlug ? slugToDistrictId.get(preselectDistrictSlug) ?? null : null);
+    // Derived from the incoming props, not from `thanasForDistrict`, which is
+    // still keyed to the previous district during this pass.
+    const idx = preselectDistrictSlug && preselectThanaSlug
+      ? thanas.filter((t) => t.district_slug === preselectDistrictSlug).findIndex((t) => t.slug === preselectThanaSlug)
+      : -1;
+    setThanaId(idx >= 0 ? idx + 1 : null);
+  }, [preselectDistrictSlug, preselectThanaSlug, slugToDistrictId, thanas]);
+
   // --- Fetch suggestions when debounced query changes ---
   useEffect(() => {
     if (debouncedQ.length < 2) {

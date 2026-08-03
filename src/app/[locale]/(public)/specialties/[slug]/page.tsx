@@ -5,7 +5,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), detectArea()]);
   if (!spec) return {};
 
-  const districtName = t(geo.districtName, locale) || (locale === "bn" ? "খুলনা" : "Khulna");
+  const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
   const isIpDetected = geo.source === "ip-name" || geo.source === "ip-nearest";
 
   const title = spec.meta_title ? ml(spec.meta_title, locale) :
@@ -92,7 +92,7 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
 
   const suggestedSpecialties = allSpecialties.filter((s) => s.id !== spec.id);
 
-  const districtName = t(geo.districtName, locale) || (locale === "bn" ? "খুলনা" : "Khulna");
+  const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
   const isIpDetected = geo.source === "ip-name" || geo.source === "ip-nearest";
 
   const pageTitle = isIpDetected

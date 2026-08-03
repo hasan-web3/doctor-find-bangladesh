@@ -75,6 +75,10 @@ export type DoctorCardData = {
   specialty: string; specialty_slug: string | null;
   hospital: string; hospital_slug: string | null;
   chamber: string; area: string; area_slug: string | null; fee: number | null;
+  // The doctor's district, resolved chamber-first then hospital. Drives the
+  // dynamic place name in headings when the visitor's own district turns out
+  // to have no doctors.
+  district: string; district_slug: string | null;
   experience_years: number | null;
 };
 
@@ -114,6 +118,7 @@ type CardRow = {
   specialty_ml: MLText | null; specialty_slug: string | null;
   hospital_ml: MLText | null; hospital_slug: string | null;
   chamber_ml: MLText | null; area_ml: MLText | null; area_slug: string | null;
+  district_ml: MLText | null; district_slug: string | null;
   fee: number | null;
   experience_years: number | null;
 };
@@ -122,9 +127,19 @@ const cardSelect = sql`
   d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified, d.featured,
   sp.name AS specialty_ml, sp.slug AS specialty_slug,
   hp.name AS hospital_ml, hp.slug AS hospital_slug,
-  ch.name AS chamber_ml, ar.name AS area_ml, ar.slug AS area_slug, ch.fee,
+  ch.name AS chamber_ml,
+  COALESCE(ar.name, har.name) AS area_ml,
+  COALESCE(ar.slug, har.slug) AS area_slug,
+  dist.name AS district_ml, dist.slug AS district_slug,
+  ch.fee,
   d.experience_years`;
 
+// A doctor resolves to exactly ONE place, and the priority is the same
+// everywhere on the site: their first visible chamber, and only if they have
+// none, their profile-linked hospital. Without the hospital backup a doctor
+// whose chambers are all hidden (or who has none at all) renders with a blank
+// area and no district, which is what made a Bhola visitor see Khulna doctors
+// under a "Bhola" heading.
 const cardFrom = sql`
   FROM doctors d
   LEFT JOIN LATERAL (
@@ -138,7 +153,9 @@ const cardFrom = sql`
     SELECT c.name, c.fee, c.area_id FROM chambers c
     WHERE c.doctor_id = d.id AND c.visible ORDER BY c.sort LIMIT 1
   ) ch ON TRUE
-  LEFT JOIN areas ar ON ar.id = ch.area_id`;
+  LEFT JOIN areas ar ON ar.id = ch.area_id
+  LEFT JOIN areas har ON har.id = hp.area_id
+  LEFT JOIN districts dist ON dist.id = COALESCE(ar.district_id, har.district_id)`;
 
 function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
   return {
@@ -156,6 +173,8 @@ function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
     chamber: ml(row.chamber_ml, locale),
     area: ml(row.area_ml, locale),
     area_slug: row.area_slug ?? null,
+    district: ml(row.district_ml, locale),
+    district_slug: row.district_slug ?? null,
     fee: row.fee ?? null,
     experience_years: row.experience_years ?? null,
   };
@@ -360,6 +379,83 @@ export const getAreasForGeo = unstable_cache(
   { tags: ["areas", "doctors", "districts"] }
 );
 
+// Districts with coords + active-doctor count. Feeds the "which district are
+// you in?" prompt: the visitor picks one and that choice — not their IP —
+// becomes the location for the whole site. Deliberately district-level only;
+// a thana list would be 500+ rows and is more than we need to ask a stranger.
+export const getDistrictsForGeo = unstable_cache(
+  async () => {
+    const res = await db.execute<{
+      id: number; slug: string; name: MLText;
+      lat: number | null; lng: number | null; doctorCount: number;
+    }>(sql`
+      SELECT
+        d.id,
+        d.slug,
+        d.name,
+        d.lat,
+        d.lng,
+        (
+          SELECT COUNT(DISTINCT c.doctor_id)::int
+          FROM chambers c
+          JOIN doctors dr ON dr.id = c.doctor_id
+          JOIN areas a ON a.id = c.area_id
+          WHERE a.district_id = d.id AND c.visible AND dr.active
+        ) AS "doctorCount"
+      FROM districts d
+      WHERE d.active
+      ORDER BY d.sort, d.name->>'en'
+    `);
+    return res.rows;
+  },
+  ["geo-districts-v1"],
+  { tags: ["districts", "areas", "doctors"] }
+);
+
+// The thana with the most doctors in each district, used to preselect the
+// hero search once we know the visitor's district.
+//
+// Counts a doctor as belonging to a thana in the same two ways the public
+// area listing does — a visible chamber here, OR their linked hospital sits
+// here. `getAreas`/`getAreasForGeo` count chambers only, which reports zero
+// everywhere on datasets where doctors are attached through hospitals, so
+// neither can be reused for this.
+export const getBusiestAreaByDistrict = unstable_cache(
+  async () => {
+    const res = await db.execute<{
+      district_id: number | string; district_slug: string; slug: string; doctor_count: number;
+    }>(sql`
+      SELECT DISTINCT ON (a.district_id)
+        a.district_id,
+        dd.slug AS district_slug,
+        a.slug,
+        (
+          SELECT COUNT(DISTINCT doc.id)::int
+          FROM doctors doc
+          WHERE doc.active AND (
+            EXISTS (
+              SELECT 1 FROM chambers c
+              WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM hospitals h
+              WHERE h.id = doc.hospital_id AND h.area_id = a.id
+            )
+          )
+        ) AS doctor_count
+      FROM areas a
+      JOIN districts dd ON dd.id = a.district_id
+      WHERE a.active AND a.district_id IS NOT NULL
+      ORDER BY a.district_id, doctor_count DESC, a.sort, a.id
+    `);
+    // district_id is bigint; the pool parses it to a number, but coerce so a
+    // driver-level change can never turn this into a silent no-match.
+    return res.rows.map((r) => ({ ...r, district_id: Number(r.district_id) }));
+  },
+  ["busiest-area-by-district-v1"],
+  { tags: ["areas", "doctors", "hospitals", "districts"] }
+);
+
 // ---------- hospitals ----------
 export async function searchHospitals(
   p: { page?: number; perPage?: number },
@@ -555,6 +651,71 @@ export async function getHomepageDoctors(
   }, locale);
   return results.rows;
 }
+
+// The district to NAME in page copy — which is not always the district the
+// visitor is in.
+//
+// If their own district has doctors, we say their district. If it does not,
+// every list on the page falls back to doctors from elsewhere, and labelling
+// those "ভোলার জনপ্রিয় ডাক্তার" when every card is a Khulna doctor is simply
+// wrong. In that case we name the district of the doctor the site actually
+// ranks first — resolved through the same chamber-then-hospital chain — so the
+// heading always describes the results underneath it.
+//
+// Ranking preferences are passed through unchanged, so this asks the exact
+// question the listings ask and cannot disagree with the first card.
+//
+// `cache`d per request: several surfaces (metadata + page body + footer) need
+// this and must not each run the ranking query.
+export type DisplayDistrict = {
+  id: number | null;
+  slug: string | null;
+  name: string;
+  /** True when we had to move off the visitor's own district to find doctors. */
+  substituted: boolean;
+};
+
+export const resolveDisplayDistrict = cache(
+  async (geo: GeoResult, locale: Locale): Promise<DisplayDistrict | null> => {
+    const ownName = geo.districtName ? ml(geo.districtName, locale) : null;
+    const own: DisplayDistrict | null = ownName
+      ? { id: geo.districtId, slug: geo.districtSlug, name: ownName, substituted: false }
+      : null;
+
+    if (geo.districtId) {
+      const busiest = await getBusiestAreaByDistrict();
+      const hit = busiest.find((b) => b.district_id === geo.districtId);
+      if (hit && hit.doctor_count > 0) return own;
+    }
+
+    const { rows } = await searchDoctors(
+      {
+        perPage: 1,
+        preferLat: geo.lat,
+        preferLng: geo.lng,
+        preferAreaId: geo.areaId,
+        preferDistrictId: geo.districtId,
+      },
+      locale
+    );
+    const top = rows[0];
+    // No doctors anywhere, or the top one has neither chamber nor hospital
+    // location — keep the visitor's own district rather than going blank.
+    if (!top?.district || !top.district_slug) return own;
+    if (top.district_slug === geo.districtSlug) return own;
+
+    // Every caller also needs the id (to filter thanas by district), which the
+    // doctor card does not carry.
+    const districts = await getDistrictsForGeo();
+    const match = districts.find((x) => x.slug === top.district_slug);
+    return {
+      id: match?.id ?? null,
+      slug: top.district_slug,
+      name: top.district,
+      substituted: true,
+    };
+  }
+);
 
 export type DoctorSearchParams = {
   q?: string;
@@ -1181,8 +1342,25 @@ export const getNearbyAreas = async (
   lat: number | null,
   lng: number | null
 ): Promise<{ id: number; slug: string; name: string, district_slug: string | null }[]> => {
-  // Primary path: If a district is detected, find the nearest areas within it.
+  // Primary path: If a district is detected, find the best areas within it.
   if (districtId) {
+    // Same "belongs to this thana" rule as the public area listing: a visible
+    // chamber here, or the doctor's linked hospital sits here.
+    const areaDoctorCount = sql<number>`(
+      SELECT COUNT(DISTINCT doc.id)::int
+      FROM doctors doc
+      WHERE doc.active AND (
+        EXISTS (
+          SELECT 1 FROM chambers c
+          WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = "areas"."id"
+        )
+        OR EXISTS (
+          SELECT 1 FROM hospitals h
+          WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+        )
+      )
+    )`.as("doctor_count");
+
     const areasInDistrict = await db
       .select({
         id: areasT.id,
@@ -1192,6 +1370,7 @@ export const getNearbyAreas = async (
         lat: areasT.lat,
         lng: areasT.lng,
         sort: areasT.sort,
+        doctorCount: areaDoctorCount,
       })
       .from(areasT)
       .leftJoin(districts, eq(districts.id, areasT.districtId))
@@ -1199,32 +1378,27 @@ export const getNearbyAreas = async (
 
     if (areasInDistrict.length === 0) return [];
 
-    if (lat && lng) {
-      const ranked = areasInDistrict
-        .map((a) => ({
-          ...a,
-          dist: a.lat && a.lng ? haversineKm(lat, lng, a.lat, a.lng) : Infinity,
-        }))
-        .sort((a, b) => a.dist - b.dist);
-
-      return ranked.slice(0, 6).map((a) => ({
-        id: a.id,
-        slug: a.slug,
-        name: ml(a.name, locale),
-        district_slug: a.districtSlug
-      }));
-    }
-
-    // Fallback sort if no coords within the district
-    return areasInDistrict
-      .sort((a, b) => a.sort - b.sort)
-      .slice(0, 6)
+    // Areas that actually have doctors come first, nearest within each group.
+    // Distance alone used to surface empty thanas above the ones a visitor can
+    // actually book in — the link looked local and then led to an empty page.
+    const ranked = areasInDistrict
       .map((a) => ({
-        id: a.id,
-        slug: a.slug,
-        name: ml(a.name, locale),
-        district_slug: a.districtSlug
-      }));
+        ...a,
+        dist: lat && lng && a.lat && a.lng ? haversineKm(lat, lng, a.lat, a.lng) : Infinity,
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.doctorCount > 0) - Number(a.doctorCount > 0) ||
+          a.dist - b.dist ||
+          a.sort - b.sort
+      );
+
+    return ranked.slice(0, 6).map((a) => ({
+      id: a.id,
+      slug: a.slug,
+      name: ml(a.name, locale),
+      district_slug: a.districtSlug
+    }));
   }
 
   // Fallback path: If no location is detected, show the most popular areas site-wide.
@@ -1334,6 +1508,27 @@ export async function searchAreas(
   }
   
   const whereSql = sql.join(conditions, sql` AND `);
+  // Count doctors "belonging" to this thana in either of two ways:
+  //   1. They run a visible chamber in this thana.
+  //   2. They have no chamber at all (or all hidden) but their profile-linked
+  //      hospital sits in this thana.
+  // DISTINCT so a doctor with BOTH still counts once.
+  // Declared before the ORDER BY because the ranking below reuses it.
+  const doctorCountSubquery = sql`(
+    SELECT COUNT(DISTINCT doc.id)::int
+    FROM doctors doc
+    WHERE doc.active AND (
+      EXISTS (
+        SELECT 1 FROM chambers c
+        WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
+      )
+      OR EXISTS (
+        SELECT 1 FROM hospitals h
+        WHERE h.id = doc.hospital_id AND h.area_id = a.id
+      )
+    )
+  )`;
+
   const orderParts = [];
 
   // Thana ranking uses ONLY thana geography — never a doctor's chamber or a
@@ -1347,6 +1542,10 @@ export async function searchAreas(
         ELSE 2
       END ASC`);
   }
+  // Within a tier, a thana somebody can actually book in outranks an empty
+  // one. Distance alone put thanas with no doctors at the top of the list,
+  // where every click led to an empty page.
+  orderParts.push(sql`(${doctorCountSubquery} > 0) DESC`);
   if (p.preferLat != null && p.preferLng != null) {
     // A thana with no coordinates of its own borrows its district's, so it
     // still ranks instead of sinking below every coordinate-bearing thana.
@@ -1367,26 +1566,6 @@ export async function searchAreas(
 
   const perPage = Math.min(p.perPage || 50, 100);
   const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
-
-  // Count doctors "belonging" to this thana in either of two ways:
-  //   1. They run a visible chamber in this thana.
-  //   2. They have no chamber at all (or all hidden) but their profile-linked
-  //      hospital sits in this thana.
-  // DISTINCT so a doctor with BOTH still counts once.
-  const doctorCountSubquery = sql`(
-    SELECT COUNT(DISTINCT doc.id)::int
-    FROM doctors doc
-    WHERE doc.active AND (
-      EXISTS (
-        SELECT 1 FROM chambers c
-        WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
-      )
-      OR EXISTS (
-        SELECT 1 FROM hospitals h
-        WHERE h.id = doc.hospital_id AND h.area_id = a.id
-      )
-    )
-  )`;
 
   const rowsQuery = db.execute<{
     id: number; slug: string; name: MLText; district_id: number | null; district: MLText; district_slug: string | null;

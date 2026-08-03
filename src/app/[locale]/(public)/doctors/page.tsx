@@ -8,7 +8,7 @@ import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/l
 import { AnimatedGrid } from "@/components/animated-grid";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
-  getDistrictsForSearch, getThanasForSearch,
+  getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -30,7 +30,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
   const geo = await detectArea();
   const d = getDict(locale);
-  const geoDistrictName = geo.districtName ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) : null;
+  const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
 
   const title = geoDistrictName
     ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
@@ -71,7 +71,7 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
 
   const hospitals = hospitalData.rows;
 
-  const geoDistrictName = geo.districtName ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) : null;
+  const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
   const pageTitle = geoDistrictName
     ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
     : (locale === "bn" ? "আপনার এলাকার ডাক্তারদের তালিকা" : "Doctors in Your Area");

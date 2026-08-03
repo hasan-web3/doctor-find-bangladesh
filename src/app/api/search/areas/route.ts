@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchAreas, type AreaSearchParams } from "@/lib/data";
+import { searchAreas, type AreaSearchParams, resolveDisplayDistrict } from "@/lib/data";
 import { detectArea } from "@/lib/geo";
 import { isLocale, type Locale } from "@/lib/i18n";
 
@@ -18,6 +18,9 @@ export async function GET(request: Request) {
   // so page 2+ is ranked on exactly the same basis as the server-rendered
   // page 1. Explicit lat/lng in the query still wins if the client sent them.
   const geo = await detectArea();
+  // Rank by the district the site actually NAMES for this visitor, so a
+  // client refetch cannot reorder the list around their empty district.
+  const display = await resolveDisplayDistrict(geo, locale as Locale);
 
   const params: AreaSearchParams = {
     q: searchParams.get("q") || undefined,
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
     preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : geo.lat,
     preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : geo.lng,
     preferAreaId: geo.areaId,
-    preferDistrictId: geo.districtId,
+    preferDistrictId: display?.id ?? geo.districtId,
   };
 
   try {

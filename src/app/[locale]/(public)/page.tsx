@@ -29,7 +29,8 @@ const AreaMap = dynamic(() =>
 import {
   getSpecialties, getAreas, getFeaturedDoctors, searchHospitals,
   getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
-  getDistrictsForSearch, getThanasForSearch, type Area, type Specialty,
+  getDistrictsForSearch, getThanasForSearch, getBusiestAreaByDistrict, resolveDisplayDistrict,
+  getNearbyAreas, type Area, type Specialty,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea, haversineKm } from "@/lib/geo";
@@ -82,12 +83,12 @@ export default async function HomePage({ params }: Props) {
 
   const [
     settings, specialties, areas, slides, faqs, testimonials, hospitalData, blogResult,
-    geo, mapsConfig, searchDistricts, searchThanas,
+    geo, mapsConfig, searchDistricts, searchThanas, busiestAreas,
   ] = await Promise.all([
     getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, getHeroSlides(locale),
     getFaqs("home", null, locale), getTestimonials(locale), searchHospitals({}, locale),
     getBlogPosts(locale, { perPage: 3 }), detectArea(), getEnabledConfig("google_maps"),
-    getDistrictsForSearch(), getThanasForSearch(),
+    getDistrictsForSearch(), getThanasForSearch(), getBusiestAreaByDistrict(),
   ]);
 
   const blog = blogResult.rows;
@@ -104,9 +105,11 @@ export default async function HomePage({ params }: Props) {
   // Dynamic titles and subtitles.
   // If we have a detected district, we use that (e.g. "খুলনার" / "Khulna's").
   // If not, we default to "আপনার এলাকার" (Bangla) / "your area's" or "your area" (English) as requested.
-  const geoDistrictName = geo.districtName
-    ? (locale === "bn" ? geo.districtName.bn : geo.districtName.en) || null
-    : null;
+  // Not necessarily the visitor's own district — when theirs has no doctors
+  // this is the district of the doctors actually listed below, so every
+  // heading on the page matches the cards under it.
+  const displayDistrict = await resolveDisplayDistrict(geo, locale);
+  const geoDistrictName = displayDistrict?.name ?? null;
 
   const heroBadgeText = geoDistrictName
     ? (locale === "bn"
@@ -150,11 +153,15 @@ export default async function HomePage({ params }: Props) {
         ? "প্রতিদিন আপনার এলাকার হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
         : "Thousands of patients in your area search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them.");
 
-  const displayedAreas = (
-    geo.districtId
-      ? areas.filter(a => a.district_id === geo.districtId)
-      : areas
-  ).slice(0, 6);
+  // Thanas of the district this page NAMES, ordered doctors-first then
+  // nearest. getNearbyAreas already encodes exactly that ranking (and counts
+  // doctors through the chamber-then-hospital chain, which `areas` does not),
+  // so the chips can never advertise a thana with nothing in it.
+  const displayedAreas = displayDistrict?.id
+    ? await getNearbyAreas(locale, displayDistrict.id, geo.lat, geo.lng)
+    : areas.slice(0, 6).map((a) => ({
+        id: a.id, slug: a.slug, name: a.name, district_slug: a.district_slug,
+      }));
 
   // Specialties with at least one active doctor come first (randomised inside
   // that group so the featured tiles stay lively), followed by the empty ones.
@@ -193,6 +200,30 @@ export default async function HomePage({ params }: Props) {
   const matchedArea = geo.areaId ? areas.find((a) => a.id === geo.areaId) : null;
   const initialLat = matchedArea?.lat ?? 22.8456;
   const initialLng = matchedArea?.lng ?? 89.5403;
+
+  // ---- hero search preselect ----
+  // District comes straight from detectArea(), which already ranks the
+  // visitor's own answer above the IP guess.
+  //
+  // The town is chosen by doctor count, not by distance. The nearest town to
+  // an IP centroid is regularly one with no chambers at all, and preselecting
+  // it means the visitor's first search returns nothing — the worst possible
+  // first impression on a directory. The busiest town in their district is a
+  // far better default, and they can still change it.
+  //
+  // An explicit thana pick (`db_area`) is the one thing that outranks this:
+  // the visitor named that town themselves, so we do not second-guess it.
+  // Keyed to the DISPLAY district, not the visitor's raw one. If we are
+  // showing Khulna doctors under Khulna headings, the filter must say Khulna
+  // too — preselecting the empty district the visitor picked would make the
+  // very first search return nothing.
+  const preselectDistrictSlug = displayDistrict?.slug ?? geo.districtSlug;
+  const preselectThanaSlug =
+    geo.source === "cookie"
+      ? geo.areaSlug
+      : busiestAreas.find(
+          (b) => b.district_slug === preselectDistrictSlug && b.doctor_count > 0
+        )?.slug ?? geo.areaSlug;
 
   const STEPS = [
     { no: num(1, locale), title: d.step1_title, text: d.step1_text, icon: "search" },
@@ -249,8 +280,8 @@ export default async function HomePage({ params }: Props) {
               thanas={searchThanas.map((t) => ({ slug: t.slug, name: locale === "bn" ? t.name_bn : (t.name_en || t.name_bn), name_en: t.name_en, district_slug: t.district_slug }))}
               locale={locale}
               d={d}
-              preselectDistrictSlug={geo.districtSlug}
-              preselectThanaSlug={geo.areaSlug}
+              preselectDistrictSlug={preselectDistrictSlug}
+              preselectThanaSlug={preselectThanaSlug}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 min-[900px]:col-start-1 min-[900px]:row-start-3 min-[900px]:mt-[18px]">

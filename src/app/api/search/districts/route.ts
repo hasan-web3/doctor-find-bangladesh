@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchDistricts, type DistrictSearchParams } from "@/lib/data";
+import { searchDistricts, type DistrictSearchParams, resolveDisplayDistrict } from "@/lib/data";
 import { detectArea } from "@/lib/geo";
 import { isLocale, type Locale } from "@/lib/i18n";
 
@@ -16,6 +16,9 @@ export async function GET(request: Request) {
 
   // Same-basis ranking for page 2+ as the server-rendered first page.
   const geo = await detectArea();
+  // Rank by the district the site actually NAMES for this visitor, so a
+  // client refetch cannot reorder the list around their empty district.
+  const display = await resolveDisplayDistrict(geo, locale as Locale);
 
   const params: DistrictSearchParams = {
     q: searchParams.get("q") || undefined,
@@ -23,7 +26,7 @@ export async function GET(request: Request) {
     perPage: searchParams.has("perPage") ? Number(searchParams.get("perPage")) : 24,
     preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : geo.lat,
     preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : geo.lng,
-    preferDistrictId: geo.districtId,
+    preferDistrictId: display?.id ?? geo.districtId,
   };
 
   try {
