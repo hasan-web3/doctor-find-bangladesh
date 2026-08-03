@@ -77,7 +77,9 @@ export function Navbar({
       </div>
 
       {/* navbar */}
-      <div className="sticky top-0 z-50 border-b border-line bg-white/90 backdrop-blur-[10px]">
+      {/* data-sticky-nav: the geo strip measures this bar so it can pin
+          directly underneath it instead of sliding behind it. */}
+      <div data-sticky-nav className="sticky top-0 z-50 border-b border-line bg-white/90 backdrop-blur-[10px]">
         <div className="mx-auto flex max-w-site items-center gap-4 px-5 py-3">
           <Link href={L("/")} className="flex items-center gap-[9px]" aria-label={brandName}>
             {/* Logo pipeline:

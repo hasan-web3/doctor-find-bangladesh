@@ -55,19 +55,20 @@ export function NoDoctorsNotice({
     window.setTimeout(() => setVisible(false), 200);
   };
 
+  // A notification, not an error. The amber is reduced to a single left bar
+  // against a plain white card: enough to catch the eye and mark the message
+  // as "heads up", without the all-over wash that read as something breaking.
+  // Body text stays normal ink so it is simply read, not alarmed at.
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-20 left-3 right-3 z-40 mx-auto max-w-[420px] rounded-xl border border-brand-100 bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,.14)] transition-all duration-200 ease-out min-[1060px]:bottom-5 min-[1060px]:left-5 min-[1060px]:right-auto motion-reduce:transition-none ${
+      className={`fixed bottom-20 left-3 right-3 z-40 mx-auto max-w-[420px] overflow-hidden rounded-xl border border-line border-l-4 border-l-warm bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,.14)] transition-all duration-200 ease-out min-[1060px]:bottom-5 min-[1060px]:left-5 min-[1060px]:right-auto motion-reduce:transition-none ${
         leaving ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
       }`}
     >
       <div className="flex items-start gap-2.5">
-        <span aria-hidden className="mt-px text-[15px] leading-none text-brand-600">
-          ◉
-        </span>
-        <p className="flex-1 text-[12.5px] leading-relaxed text-ink-soft">{message}</p>
+        <p className="flex-1 text-[12.5px] leading-relaxed text-ink">{message}</p>
         <button
           onClick={dismiss}
           aria-label="বন্ধ করুন"
