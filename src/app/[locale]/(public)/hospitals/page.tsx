@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { searchHospitals } from "@/lib/data";
-import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
-import { detectArea } from "@/lib/geo";
+import { buildMetadata } from "@/lib/seo";
+import { STATIC_GEO } from "@/lib/geo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { HospitalListClient } from "@/components/public/hospital-list-client";
 
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ page?: string, perPage?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// See the note in ../areas/page.tsx: reading searchParams anywhere in a route
+// forces `ƒ Dynamic`, so the server renders the canonical first page and
+// <HospitalListClient> applies the query string after mount.
+type Props = { params: Promise<{ locale: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
 
-  const sp = await searchParams;
   const d = getDict(locale);
   const title = d.hospitals_title;
   const description = d.hospitals_sub;
@@ -23,21 +28,20 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     path: "/hospitals",
     title,
     description,
-    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
-export default async function HospitalsPage({ params, searchParams }: Props) {
+export default async function HospitalsPage({ params }: Props) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const sp = await searchParams;
 
-  const geo = await detectArea();
-  const initialHospitalData = await searchHospitals({ 
-    page: Number(sp.page || '1'),
-    perPage: Number(sp.perPage || '12'),
+  const geo = STATIC_GEO;
+  // Canonical first page — identical for every visitor, so it caches.
+  const initialHospitalData = await searchHospitals({
+    page: 1,
+    perPage: 12,
   }, locale, geo);
 
   const pageTitle = d.hospitals_title;

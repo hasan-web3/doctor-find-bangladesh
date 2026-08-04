@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
-import { getDoctorBySlug, getFaqs, searchDoctors, geoSearchPrefs } from "@/lib/data";
+import { getDoctorBySlug, getFaqs, searchDoctors, geoSearchPrefs, getAllDoctorSlugs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldPhysician, ldFaq } from "@/lib/seo-utils";
 import { getEnabledConfig } from "@/lib/integrations";
-import { detectArea } from "@/lib/geo";
+import { STATIC_GEO } from "@/lib/geo";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { JsonLd } from "@/components/json-ld";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
@@ -24,6 +24,22 @@ import {
 } from "lucide-react";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, date as fmtDate, type Locale } from "@/lib/i18n";
+
+// ISR: detail; purged by path on edit.
+export const revalidate = 43200;
+
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllDoctorSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
 
@@ -62,7 +78,7 @@ export default async function DoctorDetailPage({ params }: Props) {
   const L = (path: string) => localeHref(locale, path);
 
   const [doc, settings, geo] = await Promise.all([
-    getDoctorBySlug(slug, locale), getSettings(), detectArea(),
+    getDoctorBySlug(slug, locale), getSettings(), STATIC_GEO,
   ]);
 
   if (!doc || !doc.active) {

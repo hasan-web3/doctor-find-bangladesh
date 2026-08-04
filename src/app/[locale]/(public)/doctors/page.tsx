@@ -5,6 +5,7 @@ import { DoctorCard } from "@/components/public/doctor-card";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { Pagination } from "@/components/public/pagination";
 import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/listing-filters";
+import { DoctorListClient } from "@/components/public/doctor-list-client";
 import { AnimatedGrid } from "@/components/animated-grid";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
@@ -12,23 +13,33 @@ import {
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { detectArea } from "@/lib/geo";
+import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-type SP = { [key: string]: string | string[] | undefined };
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<SP> };
+// ISR: highest-traffic listing.
+export const revalidate = 900;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// See the note in ../areas/page.tsx. This page carries the heaviest filter set
+// on the site (specialty, area, district, hospital, gender, fee, sort, page),
+// and all of it now runs through <DoctorListClient> against /api/doctors. The
+// server renders only the canonical unfiltered first page, so one cached
+// document serves every visitor and every crawler.
+//
+// Canonical consequence, stated explicitly: /doctors?page=2 no longer emits a
+// self-referential canonical — it consolidates to /doctors. That is a
+// deliberate, standard pagination-consolidation choice, not an oversight.
+// The old `noindex` on thin filter combinations is likewise gone; those URLs
+// now canonicalise to /doctors, which achieves the same end.
+type Props = { params: Promise<{ locale: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
-  const pageNum = sp.page ? Math.max(1, Number(sp.page)) : 1;
-  const hasThinFilter = Boolean(sp.q || sp.gender || sp.maxFee);
 
-  const geo = await detectArea();
+  const geo = STATIC_GEO;
   const d = getDict(locale);
   const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
 
@@ -48,24 +59,19 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     title,
     description,
     ogTitle: title,
-    canonicalQuery: pageNum > 1 ? `?page=${pageNum}` : undefined,
-    noindex: hasThinFilter,
   });
 }
 
-export default async function DoctorsPage({ params, searchParams }: Props) {
+export default async function DoctorsPage({ params }: Props) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const sp = await searchParams;
 
-  const perPageOptions = [12, 24, 48, 96];
-  const perPage = sp.perPage ? Math.max(1, Number(sp.perPage)) : 12;
-  const sanitizedPerPage = perPageOptions.includes(perPage) ? perPage : 12;
+  const sanitizedPerPage = 12;
 
   const [settings, specialties, areas, hospitalData, geo, searchDistricts, searchThanas] = await Promise.all([
-    getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, searchHospitals({}, locale), detectArea(),
+    getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, searchHospitals({}, locale), STATIC_GEO,
     getDistrictsForSearch(), getThanasForSearch(),
   ]);
 
@@ -78,28 +84,21 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
 
   const geoPrefs = await geoSearchPrefs(geo, locale);
 
+  // The canonical, unfiltered first page. Filters, sort and pagination are
+  // applied by <DoctorListClient> against /api/doctors.
   const query: DoctorSearchParams = {
-    q: typeof sp.q === "string" ? sp.q : undefined,
-    specialty: sp.specialty,
-    area: sp.area,
-    district: sp.district,
-    hospital: sp.hospital,
-    gender: typeof sp.gender === "string" ? sp.gender : undefined,
-    maxFee: sp.maxFee ? Number(sp.maxFee) : undefined,
-    sort: (typeof sp.sort === "string" ? sp.sort : undefined) as DoctorSearchParams["sort"],
-    page: sp.page ? Math.max(1, Number(sp.page)) : 1,
+    page: 1,
     perPage: sanitizedPerPage,
-    preferAreaId: !sp.area && !sp.sort ? geoPrefs.preferAreaId : null,
-    preferDistrictId: !sp.area && !sp.sort ? geoPrefs.preferDistrictId : null,
-    preferLat: !sp.sort ? geoPrefs.preferLat : null,
-    preferLng: !sp.sort ? geoPrefs.preferLng : null,
+    preferAreaId: geoPrefs.preferAreaId,
+    preferDistrictId: geoPrefs.preferDistrictId,
+    preferLat: geoPrefs.preferLat,
+    preferLng: geoPrefs.preferLng,
     // Unconditional: an explicit filter or sort narrows *which* doctors are
     // listed, it does not mean the admin's curated order stops applying.
     priorityDistrictId: geoPrefs.priorityDistrictId,
   };
 
   const { rows, total } = await searchDoctors(query, locale);
-  const totalPages = Math.ceil(total / (query.perPage || 12));
 
   const pageSub = total > 0
   ? (geoDistrictName
@@ -149,27 +148,14 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
               <SortSelect d={d} />
             </Suspense>
           </div>
-          {rows.length > 0 ? (
-            <AnimatedGrid className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 min-[1100px]:grid-cols-3 min-[1400px]:grid-cols-4">
-              {rows.map((doc) => (
-                <DoctorCard key={doc.id} doctor={doc} helpline={settings.helpline} locale={locale} d={d} />
-              ))}
-            </AnimatedGrid>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-line bg-white p-12 text-center">
-              <div className="mb-2 font-heading text-lg font-bold text-ink">{d.no_doctors_found}</div>
-              <p className="text-sm text-ink-faint">
-                {d.no_doctors_found_sub} {locale === "bn" ? settings.helpline_bn : settings.helpline}
-              </p>
-            </div>
-          )}
-
-          <Pagination
-            page={query.page || 1}
-            totalPages={totalPages}
+          <DoctorListClient
+            initialDoctors={rows}
+            initialTotal={total}
             locale={locale}
-            perPage={sanitizedPerPage}
-            showPerPageSelector
+            d={d}
+            helpline={settings.helpline}
+            helplineBn={settings.helpline_bn}
+            defaultPerPage={sanitizedPerPage}
           />
         </div>
       </div>

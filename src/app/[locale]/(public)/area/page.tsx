@@ -1,6 +1,9 @@
 import { permanentRedirect } from "next/navigation";
 import { localeHref, isLocale } from "@/lib/i18n";
 
+// ISR: redirect stub.
+export const revalidate = 86400;
+
 // /area used to render a byte-identical copy of /areas with a different
 // canonical tag — two URLs, one page, and Google picked its own winner
 // ("Duplicate, Google chose different canonical than user" in GSC).

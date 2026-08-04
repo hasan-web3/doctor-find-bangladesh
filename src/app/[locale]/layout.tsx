@@ -1,61 +1,59 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { Baloo_Da_2, Hind_Siliguri, Inter, Noto_Sans_Bengali } from "next/font/google";
 import { getSettings } from "@/lib/settings";
 import { siteUrl } from "@/lib/seo-utils";
 import { t, isLocale, htmlLang, type Locale } from "@/lib/i18n";
 import { getEnabledConfig } from "@/lib/integrations";
+import { fontVariables } from "@/lib/fonts";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import "./globals.css";
+import "../globals.css";
 
-const baloo = Baloo_Da_2({
-  subsets: ["bengali", "latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-baloo",
-  display: "swap",
-});
+// ---------------------------------------------------------------------------
+// ROOT LAYOUT for every public URL.
+// ---------------------------------------------------------------------------
+// This is a *root* layout (it renders <html>/<body>) even though it sits under
+// a dynamic segment. `src/app/(dashboard)/layout.tsx` is the second root layout
+// and covers /admin + /admin-login.
+//
+// Why the split: the previous single root layout at src/app/layout.tsx read
+// `headers()` to discover the locale. A Dynamic API in the root layout opts the
+// ENTIRE app out of static rendering — a production build emitted 0 prerendered
+// pages and every request billed Vercel Active CPU. The locale was always
+// available as a route param (the middleware rewrites `/doctors` to
+// `/bn/doctors`), so the header read was redundant with information we already
+// had. Reading it from `params` keeps <html lang> correct AND lets every page
+// below become static/ISR.
+//
+// Do not reintroduce cookies()/headers() anywhere in this file or in any layout
+// below it. Per-visitor state belongs in <LocationProvider> on the client.
 
-const hind = Hind_Siliguri({
-  subsets: ["bengali", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-hind",
-  display: "swap",
-});
+// The site ships exactly two locales, and `[locale]` is the only dynamic
+// segment above every public page. Without this, Next cannot prove the segment
+// is enumerable and every route below stays `ƒ Dynamic` no matter how many
+// `revalidate` exports the pages carry — the whole tree hinges on these two
+// values being known at build time.
+export function generateStaticParams() {
+  return [{ locale: "bn" }, { locale: "en" }];
+}
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-// Noto Sans Bengali is used only to render Bangla digits (০–৯) crisply — it
-// sits first in every font stack, and other Bangla glyphs fall through to
-// Baloo / Hind. Self-hosting via next/font kills the render-blocking Google
-// Fonts @import chain that used to live at the top of globals.css.
-const notoBengali = Noto_Sans_Bengali({
-  subsets: ["bengali"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-noto-bengali",
-  display: "swap",
-});
-
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale: raw } = await params;
+  const locale: Locale = isLocale(raw) ? raw : "bn";
   const settings = await getSettings();
   const gscToken = process.env.GOOGLE_SITE_VERIFICATION;
   return {
     metadataBase: new URL(siteUrl()),
-    title: t(settings.seo_default_title, "bn"),
-    description: t(settings.seo_default_description, "bn"),
+    title: t(settings.seo_default_title, locale),
+    description: t(settings.seo_default_description, locale),
     // Favicon: point at our OWN /favicon.ico route, never the raw R2 URL.
     // That route (src/app/favicon.ico/route.ts) proxies the admin-uploaded
     // image, so the icon stays admin-configurable while Google sees a stable
-    // first-party URL at the exact path it probes first. Linking pub-*.r2.dev
-    // directly is what kept the search-result icon blank: browsers fetch it
-    // fine (hence the correct tab icon) but that host is Cloudflare's
-    // rate-limited dev endpoint, and /favicon.ico itself used to 404.
+    // first-party URL at the exact path it probes first.
     //
     // When nothing is uploaded we omit `icons` entirely so Next.js falls back
     // to the file-based /icon.svg convention, exactly as before.
@@ -69,10 +67,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Locale is stamped by the middleware; admin and neutral routes fall back to bn.
-  const h = await headers();
-  const raw = h.get("x-locale");
+export default async function LocaleRootLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
+  // Locale comes from the URL segment the middleware rewrote to — no headers().
+  const { locale: raw } = await params;
   const locale: Locale = isLocale(raw) ? raw : "bn";
 
   const analytics = await getEnabledConfig("analytics").catch(() => null);
@@ -85,7 +88,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : null;
 
   return (
-    <html lang={htmlLang(locale)} className={`${baloo.variable} ${hind.variable} ${inter.variable} ${notoBengali.variable}`}>
+    <html lang={htmlLang(locale)} className={fontVariables}>
       <body suppressHydrationWarning={true}>
         {/* Guard against the React #11538 crash when the user's browser runs
             Google Translate (or a similar translator) on the page: those

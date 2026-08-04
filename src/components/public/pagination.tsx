@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { num, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { SearchableSelect } from "@/components/admin/searchable-select";
@@ -31,7 +32,7 @@ const PER_PAGE_OPTIONS = [
 export function Pagination({ page, totalPages, perPage, locale = "bn", showPerPageSelector = false }: Props) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const params = useUrlSearchParams();
 
   // This component can't render if it's not needed
   if (totalPages <= 1 && (!showPerPageSelector || (perPage || 12) >= totalPages * (perPage || 12))) {

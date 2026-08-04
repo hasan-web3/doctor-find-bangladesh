@@ -324,7 +324,7 @@ export async function deleteDoctors(ids: number[]): Promise<ActionResult & { del
   return { ok: true, message: `${rows.length} জন ডাক্তার মুছে ফেলা হয়েছে`, deleted: rows.length };
 }
 
-import { type DoctorInitial } from "@/app/admin/doctors/doctor-form";
+import { type DoctorInitial } from "@/app/(dashboard)/admin/doctors/doctor-form";
 import { type SocialLinksDraft, toML, EMPTY_SOCIAL_LINKS } from "@/lib/utils";
 import { sql } from "drizzle-orm";
 

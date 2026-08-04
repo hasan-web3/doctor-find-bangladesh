@@ -10,22 +10,38 @@ import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch,
   getDistrictBySlug, countDoctorsFor,
+  getAllDistrictSlugs,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { detectArea } from "@/lib/geo";
-import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
+import { STATIC_GEO } from "@/lib/geo";
+import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-type SP = { [key: string]: string | string[] | undefined };
-type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<SP> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllDistrictSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+
+type SP = { [key: string]: string | string[] | undefined };
+type Props = { params: Promise<{ locale: string; slug: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   const district = await getDistrictBySlug(slug, locale);
   if (!district) return {};
 
@@ -43,20 +59,15 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     title: district.meta_title || title,
     description: district.meta_description || description,
     noindex: doctorCount === 0,
-    canonicalQuery: pageCanonicalQuery(typeof sp.page === "string" ? sp.page : undefined),
   });
 }
 
-export default async function DistrictDoctorsPage({ params, searchParams }: Props) {
+export default async function DistrictDoctorsPage({ params }: Props) {
   const { slug, locale } = await params;
   if (!isLocale(locale)) notFound();
-  
-  const sp = await searchParams;
   const d = getDict(locale);
   
-  const perPageOptions = [12, 24, 48, 96];
-  const perPage = sp.perPage ? Math.max(1, Number(sp.perPage)) : 12;
-  const sanitizedPerPage = perPageOptions.includes(perPage) ? perPage : 12;
+  const sanitizedPerPage = 12;
 
   const [settings, district, specialties, allThanas, hospitalData, geo, allDistricts, allSearchThanas] = await Promise.all([
     getSettings(),
@@ -64,7 +75,7 @@ export default async function DistrictDoctorsPage({ params, searchParams }: Prop
     getSpecialties(locale),
     getAreas(locale) as Promise<Area[]>,
     searchHospitals({}, locale),
-    detectArea(),
+    STATIC_GEO,
     getDistrictsForSearch(),
     getThanasForSearch(),
   ]);
@@ -73,15 +84,16 @@ export default async function DistrictDoctorsPage({ params, searchParams }: Prop
 
   const hospitals = hospitalData.rows;
   
+  // Canonical, unfiltered first page. Filters/sort/pagination are applied
+  // client-side against the API, so this render is the same for everyone.
   const query: DoctorSearchParams = {
-    ...sp,
     district: [slug], // Always filter by the current district slug
-    page: sp.page ? Math.max(1, Number(sp.page)) : 1,
+    page: 1,
     perPage: sanitizedPerPage,
-    preferAreaId: !sp.area && !sp.sort ? geo.areaId : null,
-    preferDistrictId: !sp.area && !sp.sort ? geo.districtId : null,
-    preferLat: !sp.sort ? geo.lat : null,
-    preferLng: !sp.sort ? geo.lng : null,
+    preferAreaId: geo.areaId,
+    preferDistrictId: geo.districtId,
+    preferLat: geo.lat,
+    preferLng: geo.lng,
     // This page IS a district, so its own curated order wins over the
     // visitor's. Someone browsing /districts/khulna/doctors is asking about
     // Khulna, whatever their cookie says.

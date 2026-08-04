@@ -33,12 +33,15 @@ import {
   getNearbyAreas, type Area, type Specialty,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { detectArea, haversineKm } from "@/lib/geo";
+import { STATIC_GEO, haversineKm } from "@/lib/geo";
 import { buildMetadata } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 import { t, isLocale, localeHref, num, date as fmtDate, type Locale } from "@/lib/i18n";
+
+// ISR: featured doctors + slides + blog rail.
+export const revalidate = 1800;
 
 type Props = { params: Promise<{ locale: string }> };
 
@@ -87,7 +90,7 @@ export default async function HomePage({ params }: Props) {
   ] = await Promise.all([
     getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, getHeroSlides(locale),
     getFaqs("home", null, locale), getTestimonials(locale), searchHospitals({}, locale),
-    getBlogPosts(locale, { perPage: 3 }), detectArea(), getEnabledConfig("google_maps"),
+    getBlogPosts(locale, { perPage: 3 }), STATIC_GEO, getEnabledConfig("google_maps"),
     getDistrictsForSearch(), getThanasForSearch(), getBusiestAreaByDistrict(),
   ]);
 
@@ -202,8 +205,9 @@ export default async function HomePage({ params }: Props) {
   const initialLng = matchedArea?.lng ?? 89.5403;
 
   // ---- hero search preselect ----
-  // District comes straight from detectArea(), which already ranks the
-  // visitor's own answer above the IP guess.
+  // District comes from STATIC_GEO — the canonical, visitor-independent geo, so
+  // this preselect is the same for every visitor and the HTML stays cacheable.
+  // The visitor's own district is applied after hydration by LocationProvider.
   //
   // The town is chosen by doctor count, not by distance. The nearest town to
   // an IP centroid is regularly one with no chambers at all, and preselecting

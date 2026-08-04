@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { useTransition } from "react";
 import { splitLocalePath, localeHref, LOCALE_COOKIE, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ function FlagEN({ size = 16 }: { size?: number }) {
 // long-lived cookie so it survives refreshes and future visits.
 export function LangSwitcher({ locale }: { locale: Locale }) {
   const pathname = usePathname();
-  const search = useSearchParams();
+  const search = useUrlSearchParams();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 

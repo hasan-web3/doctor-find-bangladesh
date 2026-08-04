@@ -9,7 +9,13 @@ import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, num, type Locale } from "@/lib/i18n";
 
-export const dynamic = "force-dynamic";
+// ISR: form shell only; the POST is a Server Action.
+//
+// This page used to be `force-dynamic`, which was the only genuinely wrong
+// dynamic directive on the public site: nothing here varies per visitor. The
+// form submits through a Server Action, which posts to the server regardless
+// of how the surrounding HTML was rendered, so the shell caches safely.
+export const revalidate = 86400;
 
 type Props = { params: Promise<{ locale: string }> };
 

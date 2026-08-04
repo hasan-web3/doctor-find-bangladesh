@@ -21,10 +21,11 @@ export type GeoResult = {
   source: "cookie" | "district" | "ip-name" | "ip-nearest" | "none";
 };
 
-// The visitor's own district answer. 30 days: long enough that we ask at most
-// once a month, short enough that someone who genuinely moves isn't stuck.
-export const DISTRICT_COOKIE = "db_district";
-export const DISTRICT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+// Cookie names/TTLs live in the client-safe module so <LocationProvider> and
+// the server actions cannot drift apart on the spelling. Re-exported here so
+// existing server-side importers keep working unchanged.
+export { DISTRICT_COOKIE, DISTRICT_COOKIE_MAX_AGE, AREA_COOKIE } from "./location";
+import { DISTRICT_COOKIE } from "./location";
 
 type GeoArea = {
   id: number;
@@ -68,6 +69,24 @@ const EMPTY: GeoResult = {
   lat: null, lng: null, source: "none",
 };
 
+// ---------------------------------------------------------------------------
+// The canonical, visitor-independent geo used by every ISR page.
+// ---------------------------------------------------------------------------
+// Public pages must render ONE document that is correct for everybody, or they
+// cannot be cached on a shared CDN — the first visitor's district would be
+// served to every visitor after them. Passing this into geoSearchPrefs() turns
+// off distance ranking and area/district preference, leaving the site's own
+// ordering (featured, then verified, then the admin's curated priority list).
+//
+// resolveDisplayDistrict() still resolves a real district name from it — the
+// district of the top-ranked doctor — so headings read naturally ("খুলনার
+// ডাক্তারদের তালিকা") rather than going blank, and that name is the same for
+// every visitor and for Googlebot.
+//
+// The visitor's ACTUAL location is applied after hydration by
+// <LocationProvider> (src/components/public/location-provider.tsx).
+export const STATIC_GEO: GeoResult = EMPTY;
+
 function withArea(area: GeoArea, source: GeoResult["source"], ipLat: number | null, ipLng: number | null): GeoResult {
   return {
     areaId: area.id, areaSlug: area.slug, areaName: area.name,
@@ -76,18 +95,10 @@ function withArea(area: GeoArea, source: GeoResult["source"], ipLat: number | nu
   };
 }
 
-// Haversine distance in km — good enough for "which area is closest".
-export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
+// Haversine lives in the client-safe module now (the browser does the distance
+// ranking). Re-exported so server-side importers of `@/lib/geo` are unchanged.
+export { haversineKm } from "./location";
+import { haversineKm } from "./location";
 
 function matchByName(areas: GeoArea[], city: string): GeoArea | null {
   const needle = city.toLowerCase();
@@ -218,6 +229,31 @@ function resolveLocation(loc: IpLocation, areas: GeoArea[]): GeoResult {
     if (near) return withArea(near, "ip-nearest", loc.lat, loc.lng);
   }
   return { ...EMPTY, lat: loc.lat, lng: loc.lng };
+}
+
+// Header-only detection: Vercel edge geo first, external IP-geo as fallback.
+//
+// Deliberately reads NO cookies, so it is safe to call from a route handler
+// that must not depend on the visitor's stored answer — /api/user/location is
+// purely the "where does the network think you are" tier. The manual choice is
+// resolved on the client, which already has the cookie and the district list
+// and therefore needs no round trip at all.
+export async function detectAreaFromHeaders(h: Headers): Promise<GeoResult> {
+  const areas = (await getAreasForGeo()) as GeoArea[];
+
+  // Fast path — Vercel edge already told us where the visitor is, for free.
+  const vercelLoc = readVercelGeo(h);
+  if (vercelLoc) {
+    const resolved = resolveLocation(vercelLoc, areas);
+    if (resolved.areaSlug) return resolved;
+    if (vercelLoc.lat !== null || vercelLoc.city) return resolved;
+  }
+
+  // Local dev / non-Vercel host — fall back to the paid/free IP-geo provider.
+  const ip = h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  if (ip) return detectAreaByIp(ip);
+
+  return EMPTY;
 }
 
 // Non-cached IP lookup helper (kept for callers that only have a raw IP).

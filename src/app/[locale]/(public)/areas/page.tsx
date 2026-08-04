@@ -2,23 +2,30 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { searchAreas, resolveDisplayDistrict } from "@/lib/data";
-import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
+import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { AreaListClient } from "@/components/public/area-list-client";
-import { detectArea } from "@/lib/geo";
+import { STATIC_GEO } from "@/lib/geo";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// No `searchParams` in Props on purpose. Awaiting searchParams anywhere in a
+// route — page body OR generateMetadata — forces `ƒ Dynamic` and a full render
+// per request. The server now always renders the canonical first page, and
+// <AreaListClient> applies ?q=/?page=/?perPage= after mount by re-fetching from
+// the cached API route. Pagination stays shareable and back-button-able because
+// the URL is still the source of truth; only the *reader* moved to the client.
+type Props = { params: Promise<{ locale: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   return buildMetadata({
     locale,
     path: "/areas",
-    canonicalQuery: pageCanonicalQuery(sp.page),
     title: locale === "bn" ? "এলাকা অনুযায়ী ডাক্তার" : "Doctors by Area",
     description:
       locale === "bn"
@@ -27,19 +34,18 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   });
 }
 
-export default async function AreasPage({ params, searchParams }: Props) {
+export default async function AreasPage({ params }: Props) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const sp = await searchParams;
 
-  const geo = await detectArea();
+  const geo = STATIC_GEO;
   const display = await resolveDisplayDistrict(geo, locale);
+  // Canonical first page — identical for every visitor, so it caches.
   const initialAreasData = await searchAreas({
-    q: sp.q,
-    page: Number(sp.page || '1'),
-    perPage: Number(sp.perPage || '24'),
+    page: 1,
+    perPage: 24,
     preferLat: geo.lat,
     preferLng: geo.lng,
     preferAreaId: geo.areaId,

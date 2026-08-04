@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDoctorBySlug } from "@/lib/data";
+import { getDoctorBySlug, getAllDoctorSlugs } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { BookingWizard } from "@/components/public/booking-wizard";
@@ -10,9 +10,24 @@ import { DoctorPhoto } from "@/components/public/doctor-photo";
 import { getDict } from "@/lib/dict";
 import { isLocale, num, localeHref, type Locale } from "@/lib/i18n";
 
+// ISR: detail; purged by path on edit.
+export const revalidate = 43200;
+
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllDoctorSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+
 type Props = {
   params: Promise<{ locale: string; slug: string }>;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -36,9 +51,8 @@ function initials(name: string) {
   return name.replace(/^(ডা\.?|Dr\.?)\s*/i, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
 }
 
-export default async function AppointmentPage({ params, searchParams }: Props) {
+export default async function AppointmentPage({ params }: Props) {
   const { locale: raw, slug } = await params;
-  const sp = await searchParams;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
@@ -47,7 +61,6 @@ export default async function AppointmentPage({ params, searchParams }: Props) {
   const doc = await getDoctorBySlug(slug, locale);
   if (!doc || !doc.active) notFound();
 
-  const preselectedChamber = sp.chamber ? Number(sp.chamber) : null;
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[70px] pt-[26px]">
@@ -116,7 +129,6 @@ export default async function AppointmentPage({ params, searchParams }: Props) {
         doctorSlug={doc.slug}
         doctorName={doc.name}
         chambers={doc.chambers}
-        initialChamberId={preselectedChamber}
         locale={locale}
         d={d}
       />

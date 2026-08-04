@@ -1,7 +1,68 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+
+// ---------------------------------------------------------------------------
+// useUrlSearchParams — a drop-in for next/navigation's useSearchParams() that
+// does NOT opt the page out of static rendering.
+// ---------------------------------------------------------------------------
+// Next bails a page out of prerendering the moment a client component calls
+// useSearchParams(), because the query string is not known at build time. The
+// documented escape hatch is a <Suspense> boundary — but that puts the
+// FALLBACK into the static HTML, which for our listings would mean shipping
+// pages with no doctor cards in them and asking Google to run JS to see the
+// content. Unacceptable on a directory whose entire value is those listings.
+//
+// So we read the query string ourselves instead:
+//   - on the server and on the very first client render it is "" — exactly the
+//     state the prerendered HTML represents (page 1, no filters);
+//   - after mount it reflects the real URL and stays reactive.
+//
+// Reactivity needs both halves: `popstate` covers back/forward, and Next's
+// router.push/replace ultimately call history.pushState/replaceState, which
+// fire no event of their own — so we patch them once to emit one. Without the
+// patch, clicking to page 2 would change the URL and nothing would re-render.
+
+const NAV_EVENT = "app:urlchange";
+let historyPatched = false;
+
+function patchHistoryOnce() {
+  if (historyPatched || typeof window === "undefined") return;
+  historyPatched = true;
+  for (const method of ["pushState", "replaceState"] as const) {
+    const original = window.history[method];
+    window.history[method] = function patched(
+      this: History,
+      ...args: Parameters<History[typeof method]>
+    ) {
+      const result = original.apply(this, args);
+      window.dispatchEvent(new Event(NAV_EVENT));
+      return result;
+    };
+  }
+}
+
+function subscribe(onChange: () => void): () => void {
+  patchHistoryOnce();
+  window.addEventListener("popstate", onChange);
+  window.addEventListener(NAV_EVENT, onChange);
+  return () => {
+    window.removeEventListener("popstate", onChange);
+    window.removeEventListener(NAV_EVENT, onChange);
+  };
+}
+
+const getSnapshot = () => window.location.search;
+// Must be a stable value, not a new object: useSyncExternalStore compares
+// snapshots by identity and would loop forever on a fresh one each call.
+const getServerSnapshot = () => "";
+
+/** The current query string ("?a=1"), reactive, prerender-safe. */
+export function useUrlSearchParams(): URLSearchParams {
+  const search = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return new URLSearchParams(search);
+}
 
 // Pagination state lives in the URL, never in React state.
 //
@@ -14,7 +75,7 @@ import { useCallback, useEffect, useRef } from "react";
 export function usePageParams(defaultPerPage: number) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const params = useUrlSearchParams();
 
   const page = Math.max(1, Number(params.get("page")) || 1);
   const perPage = Math.max(1, Number(params.get("perPage")) || defaultPerPage);

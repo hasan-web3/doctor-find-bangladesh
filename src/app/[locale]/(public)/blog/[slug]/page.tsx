@@ -4,13 +4,29 @@ import Image from "next/image";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
-import { getBlogPostBySlug } from "@/lib/data";
+import { getBlogPostBySlug, getAllBlogSlugs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldArticle } from "@/lib/seo-utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
+
+// ISR: detail; purged by path on edit.
+export const revalidate = 43200;
+
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllBlogSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
 

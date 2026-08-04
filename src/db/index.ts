@@ -22,9 +22,19 @@ declare global {
 function createPool(): Pool {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
+  // `next build` forks several worker processes to prerender pages in parallel,
+  // and each one creates its own pool. At max: 10 that multiplies into enough
+  // concurrent clients to trip Supabase's pooler limit mid-build
+  // ("EMAXCONN max client connections reached, limit: 200") — which fails the
+  // deploy, not just a page. Prerendering is throughput-bound on Postgres
+  // anyway, so a smaller per-worker pool costs nothing and makes builds
+  // deterministic.
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
   return new Pool({
     connectionString: url,
-    max: 10,
+    max: isBuild ? 4 : 10,
+    // Don't let idle build/serverless connections sit on the pooler.
+    idleTimeoutMillis: isBuild ? 5_000 : 30_000,
     ssl:
       url.includes("localhost") || url.includes("127.0.0.1")
         ? false

@@ -2,23 +2,27 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { searchDistricts, resolveDisplayDistrict } from "@/lib/data";
-import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
+import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { DistrictListClient } from "@/components/public/district-list-client";
-import { detectArea } from "@/lib/geo";
+import { STATIC_GEO } from "@/lib/geo";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// See the note in ../areas/page.tsx: reading searchParams anywhere in a route
+// forces `ƒ Dynamic`, so the server renders the canonical first page and
+// <DistrictListClient> applies the query string after mount.
+type Props = { params: Promise<{ locale: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   return buildMetadata({
     locale,
     path: "/districts",
-    canonicalQuery: pageCanonicalQuery(sp.page),
     title: locale === "bn" ? "জেলা অনুযায়ী ডাক্তার" : "Doctors by District",
     description:
       locale === "bn"
@@ -27,18 +31,17 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   });
 }
 
-export default async function DistrictsPage({ params, searchParams }: Props) {
+export default async function DistrictsPage({ params }: Props) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const sp = await searchParams;
 
-  const geo = await detectArea();
+  const geo = STATIC_GEO;
+  // Canonical first page — identical for every visitor, so it caches.
   const initialDistrictsData = await searchDistricts({
-    q: sp.q,
-    page: Number(sp.page || '1'),
-    perPage: Number(sp.perPage || '24'),
+    page: 1,
+    perPage: 24,
     preferLat: geo.lat,
     preferLng: geo.lng,
     preferDistrictId: geo.districtId,

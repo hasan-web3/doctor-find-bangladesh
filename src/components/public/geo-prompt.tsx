@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { chooseDistrict } from "@/actions/public";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useLocation } from "./location-provider";
 import { GeoBanner } from "./geo-banner";
 import { DistrictModal, type DistrictOption } from "./district-modal";
 import type { Dict } from "@/lib/dict";
@@ -100,9 +100,8 @@ export function GeoPrompt({
   // agree; the effect below is what opens either one.
   const [modalOpen, setModalOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
   const pathname = usePathname();
-  const router = useRouter();
+  const { setDistrict } = useLocation();
 
   const eligible = ELIGIBLE.some((re) => re.test(neutralPath(pathname)));
 
@@ -141,24 +140,19 @@ export function GeoPrompt({
 
   const pick = useCallback(
     (slug: string) => {
-      startTransition(async () => {
-        try {
-          const res = await chooseDistrict(slug);
-          if (!res?.ok) return;
-          setModalOpen(false);
-          setBannerOpen(false);
-          // Every geo-aware surface is server-rendered, so the new cookie only
-          // takes effect once the server re-renders with it.
-          router.refresh();
-        } catch {
-          // A rejected action (offline, deploy mid-click) would otherwise
-          // propagate to the nearest error boundary and blank the surrounding
-          // UI over a location preference. Leave the modal open instead — the
-          // visitor can simply tap again.
-        }
-      });
+      // Purely client-side now: the cookie is written in the browser and every
+      // geo-aware surface reads it from LocationProvider's context. There is
+      // no server round trip and no router.refresh() — the page HTML is
+      // canonical and identical for every visitor, so re-fetching it would
+      // return byte-for-byte the same document.
+      //
+      // The slug is validated against the district list the server already
+      // sent, so an unknown value can never reach the cookie.
+      setDistrict(slug);
+      setModalOpen(false);
+      setBannerOpen(false);
     },
-    [router]
+    [setDistrict]
   );
 
   if (hasDistrict) return null;
@@ -178,7 +172,9 @@ export function GeoPrompt({
           districts={districts}
           onPick={pick}
           onClose={closeModal}
-          pending={pending}
+          // Writing a cookie is synchronous — the modal closes in the same
+          // tick, so there is no in-flight state left to show.
+          pending={false}
         />
       )}
     </>

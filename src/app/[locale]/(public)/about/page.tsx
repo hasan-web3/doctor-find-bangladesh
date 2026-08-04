@@ -7,6 +7,9 @@ import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 
+// ISR: static copy; edits push via revalidatePath.
+export const revalidate = 86400;
+
 type Props = { params: Promise<{ locale: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

@@ -4,28 +4,41 @@ import { Logo, Icon } from "@/components/icons";
 import { getSettings } from "@/lib/settings";
 import { getDict } from "@/lib/dict";
 import { t, localeHref, num, type Locale } from "@/lib/i18n";
-import { getSpecialties, getNearbyAreas, resolveDisplayDistrict, getDistrictsForGeo } from "@/lib/data";
-import { detectArea } from "@/lib/geo";
+import { getSpecialties, getNearbyAreas } from "@/lib/data";
 import { withPossessive } from "@/lib/bn";
 
 export async function Footer({ locale }: { locale: Locale }) {
-  const [settings, specialties, geo] = await Promise.all([
+  // The footer is rendered into EVERY cached page, so nothing here may depend
+  // on per-visitor state (that is what kept these pages out of the CDN) and
+  // nothing here may read a cache tagged "doctors".
+  //
+  // That second rule is subtle and matters more than it looks: a page's full
+  // route cache records every tag it read, so a single `revalidateTag("doctors")`
+  // from one admin edit would invalidate every page on the site through this
+  // component. It used to call resolveDisplayDistrict(), which resolves the
+  // district by running the doctor ranking query — one doctor edit then purged
+  // the entire cache, exactly the blanket-invalidation problem we removed from
+  // revalidate.ts.
+  //
+  // The district name now comes from the dictionary (it was already the
+  // fallback), and getNearbyAreas(null, ...) returns the six busiest thanas
+  // site-wide — a stable, crawler-friendly link set that is the same for
+  // everybody, rather than one that reshuffles with the visitor's exit node.
+  const [settings, specialties] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
-    detectArea(),
   ]);
   const d = getDict(locale);
 
-  // Name the district the doctors are actually in, not necessarily the
-  // visitor's own — and list the towns from that same district, so the tagline
-  // and the area links below it never describe two different places.
-  const display = await resolveDisplayDistrict(geo, locale);
-  const nearbyAreas = await getNearbyAreas(locale, display?.id ?? geo.districtId, geo.lat, geo.lng);
+  // Passing a null district takes getNearbyAreas' site-wide branch: the six
+  // thanas with the most doctors, ordered by doctor count. It is a direct query
+  // rather than a tagged cache read, so it carries no tag into this page's
+  // cache entry.
+  const nearbyAreas = await getNearbyAreas(locale, null, null, null);
   const L = (path: string) => localeHref(locale, path);
   const brand = t(settings.brand_name, locale);
 
-  const districtName =
-    display?.name || (locale === "bn" ? d.default_district_bn : d.default_district_en);
+  const districtName = locale === "bn" ? d.default_district_bn : d.default_district_en;
 
   const dynamicTagline =
     locale === "bn"

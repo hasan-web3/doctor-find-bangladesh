@@ -7,6 +7,9 @@ import { getDict } from "@/lib/dict";
 import { t, isLocale, num, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+// ISR: static copy; edits push via revalidatePath.
+export const revalidate = 86400;
+
 type Props = { params: Promise<{ locale: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

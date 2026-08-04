@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { SearchableMultiSelect, type Option } from "@/components/admin/searchable-select";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { Pagination } from "@/components/public/pagination";
-import { usePageParams, useResetPageOnFilterChange } from "@/components/public/use-page-params";
+import { usePageParams, useResetPageOnFilterChange, useUrlSearchParams } from "@/components/public/use-page-params";
 import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
@@ -39,7 +39,7 @@ type Props = {
 };
 
 export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, locale, settings, initialDoctors, initialTotal }: Props) {
-  const searchParams = useSearchParams();
+  const searchParams = useUrlSearchParams();
   const [parent] = useAutoAnimate();
   const d = getDict(locale);
   const isInitialRender = useRef(true);

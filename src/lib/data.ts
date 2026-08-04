@@ -247,7 +247,14 @@ export const getSpecialties = unstable_cache(
     }));
   },
   ["specialties-list"],
-  { tags: ["specialties", "doctors"] }
+  // NOT tagged "doctors", despite carrying `doctor_count`. This reader is in the
+  // shared layout (the footer's specialty links), and a page's cache entry
+  // inherits every tag it reads — so a "doctors" tag here would make one doctor
+  // edit invalidate every page on the site. The count is an informational
+  // number next to a link; letting it lag until the next specialty edit or the
+  // route's own revalidate window is the right trade for keeping invalidation
+  // targeted.
+  { tags: ["specialties"] }
 );
 
 export const getAreas = unstable_cache(
@@ -392,7 +399,11 @@ export const getAreasForGeo = unstable_cache(
     return res.rows;
   },
   ["geo-areas-v4"],
-  { tags: ["areas", "doctors", "districts"] }
+  // Same reasoning as getSpecialties above: this feeds the district/area picker
+  // rendered in the shared layout, so tagging it "doctors" would let a single
+  // doctor edit purge every cached page. The doctor counts shown in the picker
+  // lag until an area/district edit or the route's revalidate window.
+  { tags: ["areas", "districts"] }
 );
 
 // Districts with coords + active-doctor count. Feeds the "which district are
@@ -425,7 +436,10 @@ export const getDistrictsForGeo = unstable_cache(
     return res.rows;
   },
   ["geo-districts-v1"],
-  { tags: ["districts", "areas", "doctors"] }
+  // Not tagged "doctors" — this is the district list the shared layout hands to
+  // <LocationProvider>/<GeoShell>, so a "doctors" tag here would make one doctor
+  // edit invalidate every cached page. See getSpecialties for the full argument.
+  { tags: ["districts", "areas"] }
 );
 
 // The thana with the most doctors in each district, used to preselect the
@@ -769,7 +783,41 @@ export type DoctorSearchParams = {
   priorityDistrictId?: number | null;
 };
 
+// The heaviest query in the app — trigram `word_similarity` matching across
+// doctors, doctor_specialties, specialties, chambers and hospitals plus four
+// correlated EXISTS subqueries — and the only major reader that was not cached.
+// It runs on the homepage, /doctors, every detail page's "suggested" rail, the
+// listing APIs and the suggestions endpoint.
+//
+// Free-text queries are deliberately NOT cached: `q` has unbounded cardinality,
+// so caching it would fill the data cache with single-use entries. Everything
+// else — the filter/sort/pagination combinations, which repeat heavily — is
+// cached and tagged "doctors", so any doctor mutation drops it immediately.
+// NOTE: no `revalidate` here, deliberately. A page's own revalidate window is
+// clamped to the SHORTEST revalidate of any cache entry it reads, and the
+// public layout reaches this function through Footer -> resolveDisplayDistrict.
+// A 600s TTL here therefore silently rewrote every page in the app to 10
+// minutes — /about included — overriding the per-route windows. Tag
+// invalidation is the right mechanism anyway: "doctors" is purged by every
+// doctor mutation, so the entry is never meaningfully stale.
+const searchDoctorsCached = unstable_cache(
+  async (paramsJson: string, locale: Locale) =>
+    searchDoctorsUncached(JSON.parse(paramsJson) as DoctorSearchParams, locale),
+  ["search-doctors"],
+  { tags: ["doctors"] }
+);
+
 export async function searchDoctors(
+  p: DoctorSearchParams,
+  locale: Locale
+): Promise<{ rows: DoctorCardData[]; total: number }> {
+  if (p.q) return searchDoctorsUncached(p, locale);
+  // Sorted keys so {a,b} and {b,a} resolve to the same cache entry rather than
+  // two identical-but-separate ones.
+  return searchDoctorsCached(JSON.stringify(p, Object.keys(p).sort()), locale);
+}
+
+async function searchDoctorsUncached(
   p: DoctorSearchParams,
   locale: Locale
 ): Promise<{ rows: DoctorCardData[]; total: number }> {
@@ -1753,3 +1801,81 @@ export async function searchDistricts(
   return { rows, total };
 }
 
+
+// ---------------------------------------------------------------------------
+// Slug enumerations for generateStaticParams()
+// ---------------------------------------------------------------------------
+// A dynamic segment that generateStaticParams() does not enumerate is rendered
+// on EVERY request — verified against a production `next start`: routes whose
+// params were prebuilt answer with `s-maxage`, routes whose params were not
+// answer with `private, no-store`. Returning an empty array is not enough.
+//
+// So each detail route enumerates its slugs here and gets prerendered at build.
+// `dynamicParams` stays at its default (true), so a slug created after the last
+// deploy still resolves — it renders once and is then cached like the rest.
+//
+// Tagged with the same tags as the listings, so an admin mutation drops these
+// alongside the pages that consume them.
+
+export const getAllDoctorSlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: doctorsT.slug }).from(doctorsT).where(eq(doctorsT.active, true)))
+      .map((r) => r.slug),
+  ["all-doctor-slugs"],
+  { tags: ["doctors"] }
+);
+
+export const getAllHospitalSlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: hospitalsT.slug }).from(hospitalsT).where(eq(hospitalsT.active, true)))
+      .map((r) => r.slug),
+  ["all-hospital-slugs"],
+  { tags: ["hospitals"] }
+);
+
+export const getAllSpecialtySlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: specialtiesT.slug }).from(specialtiesT).where(eq(specialtiesT.active, true)))
+      .map((r) => r.slug),
+  ["all-specialty-slugs"],
+  { tags: ["specialties"] }
+);
+
+export const getAllBlogSlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: blogPosts.slug }).from(blogPosts).where(eq(blogPosts.published, true)))
+      .map((r) => r.slug),
+  ["all-blog-slugs"],
+  { tags: ["blog"] }
+);
+
+export const getAllDistrictSlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: districts.slug }).from(districts).where(eq(districts.active, true)))
+      .map((r) => r.slug),
+  ["all-district-slugs"],
+  { tags: ["districts"] }
+);
+
+/**
+ * `{ district, area }` pairs for /area/doctors/[district]/[area].
+ *
+ * Only thanas that actually HAVE a doctor. Prebuilding all ~1,240 combinations
+ * spent most of the build rendering empty pages that `generateMetadata` already
+ * marks `noindex` — they are not in the sitemap and Google is told to ignore
+ * them. An empty thana still resolves on demand (dynamicParams is true) and
+ * starts being prebuilt automatically as soon as it gains a doctor.
+ *
+ * Reuses getAreasForGeo(), which already carries the doctor count through the
+ * chamber-then-hospital chain, so this adds no extra query.
+ */
+export const getAllAreaSlugPairs = unstable_cache(
+  async () => {
+    const areas = await getAreasForGeo();
+    return areas
+      .filter((a) => a.doctorCount > 0 && a.slug && a.district_slug)
+      .map((a) => ({ area: a.slug, district: a.district_slug as string }));
+  },
+  ["all-area-slug-pairs"],
+  { tags: ["areas", "districts", "doctors"] }
+);

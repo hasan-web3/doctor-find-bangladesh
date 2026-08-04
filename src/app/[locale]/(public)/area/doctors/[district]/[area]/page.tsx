@@ -2,21 +2,38 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
-import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor } from "@/lib/data";
+import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { detectArea } from "@/lib/geo";
-import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
+import { STATIC_GEO } from "@/lib/geo";
+import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { AreaDoctorListClient } from "@/components/public/area-doctor-list-client";
 
-type Props = { params: Promise<{ locale: string; district: string, area: string }>; searchParams: Promise<{ page?: string; perPage?: string; q?: string, specialty?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const pairs = await getAllAreaSlugPairs();
+  return pairs.map((p) => ({ district: p.district, area: p.area }));
+}
+
+
+// See the note in ../../../../areas/page.tsx: no searchParams server-side, or
+// the route renders per request. <AreaDoctorListClient> applies them.
+type Props = { params: Promise<{ locale: string; district: string, area: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, district, area: areaSlug } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   const area = await getAreaBySlugs(district, areaSlug, locale);
   if (!area) return {};
 
@@ -38,18 +55,15 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
         : `Experienced doctors across specialties in ${area.name}, ${area.district}, with chamber addresses and schedules. Book appointments easily.`),
     ogTitle: locale === "bn" ? `${area.name}-এর ডাক্তার ও চেম্বার` : `Doctors in ${area.name}`,
     noTemplate: Boolean(area.meta_title),
-    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
-export default async function AreaPage({ params, searchParams }: Props) {
+export default async function AreaPage({ params }: Props) {
   const { locale: raw, district, area: areaSlug } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const sp = await searchParams;
-
-  const geo = await detectArea();
+  const geo = STATIC_GEO;
 
   const area = await getAreaBySlugs(district, areaSlug, locale);
   if (!area) {
@@ -72,8 +86,6 @@ export default async function AreaPage({ params, searchParams }: Props) {
       area: area.slug,
       page: 1,
       perPage: 12,
-      q: sp.q,
-      specialty: sp.specialty,
       preferAreaId: geo.areaId,
       preferDistrictId: geo.districtId,
       preferLat: geo.lat,

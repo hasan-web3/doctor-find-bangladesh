@@ -4,24 +4,29 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { getBlogPosts, getBlogCategories } from "@/lib/data";
-import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
+import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { AnimatedGrid } from "@/components/animated-grid";
 import { BlogListClient } from "@/components/public/blog-list-client";
+import { BlogCategoryChips } from "@/components/public/blog-category-chips";
 import { Pagination } from "@/components/public/pagination";
 
-type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ category?: string; page?: string; perPage?: string }> };
+// ISR: new posts should surface quickly.
+export const revalidate = 900;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// See the note in ../areas/page.tsx: reading searchParams anywhere in a route
+// forces `ƒ Dynamic`. The server renders the canonical first page of the
+// unfiltered feed; ?category= and ?page= are applied on the client.
+type Props = { params: Promise<{ locale: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   return buildMetadata({
     locale,
     path: "/blog",
-    canonicalQuery: pageCanonicalQuery(sp.page),
     title: locale === "bn" ? "স্বাস্থ্য টিপস ও ব্লগ" : "Health Tips & Blog",
     description:
       locale === "bn"
@@ -30,19 +35,17 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   });
 }
 
-export default async function BlogPage({ params, searchParams }: Props) {
+export default async function BlogPage({ params }: Props) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  const L = (path: string) => localeHref(locale, path);
-  const sp = await searchParams;
 
-  const page = Number(sp.page || "1");
-  const perPage = Number(sp.perPage || "12");
+  const page = 1;
+  const perPage = 12;
 
   const [{ rows: posts, total }, categories] = await Promise.all([
-    getBlogPosts(locale, { page, perPage, category: sp.category }),
+    getBlogPosts(locale, { page, perPage }),
     getBlogCategories(locale),
   ]);
 
@@ -54,31 +57,7 @@ export default async function BlogPage({ params, searchParams }: Props) {
       <h1 className="mb-1.5 font-heading text-[clamp(26px,4vw,34px)] font-bold text-ink">{d.blog_title}</h1>
       <p className="mb-5 text-base text-ink-mute">{d.blog_sub}</p>
 
-      {categories.length > 0 && (
-        <div className="mb-[26px] flex flex-wrap gap-2">
-          <Link
-            href={L("/blog")}
-            className={cn(
-              "rounded-full border px-4 py-2 text-sm font-semibold",
-              !sp.category ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-white text-ink-soft"
-            )}
-          >
-            {d.all}
-          </Link>
-          {categories.map((c) => (
-            <Link
-              key={c.id}
-              href={`${L("/blog")}?category=${c.slug}`}
-              className={cn(
-                "rounded-full border px-4 py-2 text-sm font-semibold",
-                sp.category === c.slug ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-white text-ink-soft"
-              )}
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      )}
+      <BlogCategoryChips categories={categories} locale={locale} allLabel={d.all} />
 
       {posts.length > 0 ? (
         <>

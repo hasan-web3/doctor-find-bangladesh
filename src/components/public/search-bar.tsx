@@ -10,6 +10,7 @@ import { Shimmer } from "@/components/shimmer";
 import Link from "next/link";
 import Image from "next/image";
 import { Icon } from "@/components/icons";
+import { useLocation } from "@/components/public/location-provider";
 
 // A simple debounce hook
 function useDebounce(value: string, delay: number): string {
@@ -63,6 +64,7 @@ export function SearchBar({
   preselectThanaSlug?: string | null;
 }) {
   const router = useRouter();
+  const { location } = useLocation();
   const [q, setQ] = useState("");
   const [parent] = useAutoAnimate();
   const searchWrapperRef = useRef<HTMLDivElement>(null);
@@ -93,20 +95,28 @@ export function SearchBar({
   //
   // Tracked by value rather than with a plain effect so a visitor's own
   // dropdown choice is never reset by an unrelated re-render.
+  // The visitor's own district outranks the server's preselect. The server
+  // renders one cacheable document for everybody, so `preselectDistrictSlug` is
+  // now the site-canonical district rather than theirs; LocationProvider
+  // supplies the real one after hydration. Falling back to the prop keeps the
+  // dropdown sensibly filled for a first-time visitor and for crawlers.
+  const effectiveDistrictSlug = location.districtSlug ?? preselectDistrictSlug;
+  const effectiveThanaSlug = location.districtSlug ? location.areaSlug : preselectThanaSlug;
+
   const appliedPreselect = useRef(`${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`);
   useEffect(() => {
-    const key = `${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`;
+    const key = `${effectiveDistrictSlug ?? ""}|${effectiveThanaSlug ?? ""}`;
     if (appliedPreselect.current === key) return;
     appliedPreselect.current = key;
 
-    setDistrictId(preselectDistrictSlug ? slugToDistrictId.get(preselectDistrictSlug) ?? null : null);
-    // Derived from the incoming props, not from `thanasForDistrict`, which is
+    setDistrictId(effectiveDistrictSlug ? slugToDistrictId.get(effectiveDistrictSlug) ?? null : null);
+    // Derived from the incoming values, not from `thanasForDistrict`, which is
     // still keyed to the previous district during this pass.
-    const idx = preselectDistrictSlug && preselectThanaSlug
-      ? thanas.filter((t) => t.district_slug === preselectDistrictSlug).findIndex((t) => t.slug === preselectThanaSlug)
+    const idx = effectiveDistrictSlug && effectiveThanaSlug
+      ? thanas.filter((t) => t.district_slug === effectiveDistrictSlug).findIndex((t) => t.slug === effectiveThanaSlug)
       : -1;
     setThanaId(idx >= 0 ? idx + 1 : null);
-  }, [preselectDistrictSlug, preselectThanaSlug, slugToDistrictId, thanas]);
+  }, [effectiveDistrictSlug, effectiveThanaSlug, slugToDistrictId, thanas]);
 
   // --- Fetch suggestions when debounced query changes ---
   useEffect(() => {
@@ -120,6 +130,10 @@ export function SearchBar({
       setIsSuggestionsLoading(true);
       setIsSuggestionsOpen(true);
       const params = new URLSearchParams({ q: debouncedQ, locale });
+      // Suggestions stay location-aware, but the district travels as an
+      // explicit param instead of the endpoint re-deriving it from cookies on
+      // every keystroke.
+      if (location.districtSlug) params.set("preferDistrict", location.districtSlug);
       try {
         const res = await fetch(`/api/search/suggestions?${params.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch");
@@ -134,7 +148,7 @@ export function SearchBar({
     };
 
     fetchSuggestions();
-  }, [debouncedQ, locale]);
+  }, [debouncedQ, locale, location.districtSlug]);
   
   // --- Close suggestions when clicking outside ---
   useEffect(() => {

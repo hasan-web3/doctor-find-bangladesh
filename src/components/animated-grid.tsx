@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { type ReactNode } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useUrlSearchParams } from "@/components/public/use-page-params";
 
 export function AnimatedGrid({
   children,
@@ -13,7 +14,7 @@ export function AnimatedGrid({
 }) {
   // Use a combination of pathname and searchParams as a unique key for the page transition.
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const searchParams = useUrlSearchParams();
   const key = `${pathname}?${searchParams.toString()}`;
 
   return (

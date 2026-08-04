@@ -5,18 +5,30 @@ import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, countDoctorsFor, type Area } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
+import { buildMetadata, findRedirect } from "@/lib/seo";
 import { Pagination } from "@/components/public/pagination";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 
-// The combination "money pages": /specialties/neurology/khalishpur
-type Props = { params: Promise<{ locale: string; slug: string; area: string }>; searchParams: Promise<{ page?: string; perPage?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// Empty list = prebuild nothing, but mark the route statically generatable so
+// Next serves it as ISR: first request renders and caches, later requests hit
+// the cache. Without this a dynamic segment is re-rendered on every request.
+export function generateStaticParams() {
+  return [];
+}
+
+
+// The combination "money pages": /specialties/neurology/khalishpur
+// See the note in ../../../areas/page.tsx: no searchParams server-side, or
+// the route renders per request. Pagination is applied client-side.
+type Props = { params: Promise<{ locale: string; slug: string; area: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug, area } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   const [spec, areaRow] = await Promise.all([getSpecialtyBySlug(slug, locale), getAreaBySlug(area, locale)]);
   if (!spec || !areaRow) return {};
 
@@ -37,18 +49,15 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
       : `Experienced ${spec.name} specialists in ${areaRow.name}, Khulna. See chamber addresses, schedules and fees, then book easily.`,
     ogTitle: locale === "bn" ? `${areaRow.name}র ${short} ডাক্তার` : `${short} Doctors in ${areaRow.name}`,
     ogSubtitle: locale === "bn" ? "খুলনা" : "Khulna",
-    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
-export default async function SpecialtyAreaPage({ params, searchParams }: Props) {
+export default async function SpecialtyAreaPage({ params }: Props) {
   const { locale: raw, slug, area } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
-  const sp = await searchParams;
-
   const [spec, areaRow] = await Promise.all([getSpecialtyBySlug(slug, locale), getAreaBySlug(area, locale)]);
   if (!spec || !areaRow) {
     const hit = await findRedirect(`/specialties/${slug}/${area}`);
@@ -59,10 +68,9 @@ export default async function SpecialtyAreaPage({ params, searchParams }: Props)
     }
     notFound();
   }
-
-  const page = sp.page ? Math.max(1, Number(sp.page)) : 1;
+  const page = 1;
   const perPageOptions = [12, 24, 48, 96];
-  const perPage = sp.perPage ? Math.max(1, Number(sp.perPage)) : 12;
+  const perPage = 12;
   const sanitizedPerPage = perPageOptions.includes(perPage) ? perPage : 12;
 
   const [settings, { rows, total }] = await Promise.all([

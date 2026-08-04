@@ -3,31 +3,45 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { Icon } from "@/components/icons";
-import { getHospitalBySlug, getFaqs, searchDoctors, geoSearchPrefs } from "@/lib/data";
+import { getHospitalBySlug, getFaqs, searchDoctors, geoSearchPrefs, getAllHospitalSlugs } from "@/lib/data";
 import { db } from "@/db";
 import { doctorSpecialties, specialties as specialtiesT } from "@/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
 import { getSettings } from "@/lib/settings";
 import { getEnabledConfig } from "@/lib/integrations";
-import { detectArea } from "@/lib/geo";
+import { STATIC_GEO } from "@/lib/geo";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { HospitalGallery } from "@/components/public/hospital-gallery";
 import { LazyMap } from "@/components/public/lazy-map";
 import { HospitalDoctorList } from "@/components/public/hospital-doctor-list";
-import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
+import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldMedicalClinic, ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, t, type Locale } from "@/lib/i18n";
 
+// ISR: detail; purged by path on edit.
+export const revalidate = 43200;
+
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllHospitalSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+
 type Props = {
   params: Promise<{ locale: string; slug: string }>;
-  searchParams: Promise<{ page?: string; perPage?: string }>;
 };
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
   const h = await getHospitalBySlug(slug, locale);
   if (!h) return {};
   return buildMetadata({
@@ -43,21 +57,18 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     ogSubtitle: `${h.area || "Khulna"}`,
     ogImage: h.image_url || undefined,
     noTemplate: Boolean(h.meta_title),
-    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
 const ml = (v: any, locale: Locale) => t(v, locale);
 
-export default async function HospitalPage({ params, searchParams }: Props) {
+export default async function HospitalPage({ params }: Props) {
   const { locale: raw, slug } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
-  // The doctor list below is paginated, so the server has to render the slice
-  // the URL names or ?page=2 would ship page one's doctors.
-  const sp = await searchParams;
-
+  // The doctor list below renders its canonical first page here; <HospitalDoctorList>
+  // takes over for pagination so this route stays cacheable.
   const h = await getHospitalBySlug(slug, locale);
   if (!h) {
     const hit = await findRedirect(`/hospitals/${slug}`);
@@ -69,14 +80,14 @@ export default async function HospitalPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  const geo = await detectArea();
+  const geo = STATIC_GEO;
   const [settings, faqs, initialDoctorData, maps, departmentSpecs] = await Promise.all([
     getSettings(),
     getFaqs("hospital", h.id, locale),
     searchDoctors({
       hospitalId: h.id,
-      page: Number(sp.page || "1"),
-      perPage: Number(sp.perPage || "12"),
+      page: 1,
+      perPage: 12,
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),
     getEnabledConfig("google_maps"),

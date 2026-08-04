@@ -1,5 +1,7 @@
 "use client";
 
+import { useUrlSearchParams } from "@/components/public/use-page-params";
+
 import { useEffect, useMemo } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import Link from "next/link";
@@ -77,17 +79,20 @@ export function BookingWizard({
   doctorSlug,
   doctorName,
   chambers,
-  initialChamberId,
   locale,
   d,
 }: {
   doctorSlug: string;
   doctorName: string;
   chambers: Chamber[];
-  initialChamberId: number | null;
   locale: Locale;
   d: BookingDict;
 }) {
+  // `?chamber=` is read here rather than passed down from the page. The page is
+  // static ISR, and awaiting searchParams there would have made it render on
+  // every request — for a value only this client component ever uses.
+  const chamberParam = useUrlSearchParams().get("chamber");
+  const initialChamberId = chamberParam ? Number(chamberParam) : null;
   const {
     step, setStep,
     date, setDate,

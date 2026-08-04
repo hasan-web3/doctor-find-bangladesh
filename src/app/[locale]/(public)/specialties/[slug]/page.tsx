@@ -4,24 +4,40 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { detectArea } from "@/lib/geo";
-import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
+import { STATIC_GEO } from "@/lib/geo";
+import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
 
-type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
+// ISR: hub; on-demand revalidated on mutation.
+export const revalidate = 21600;
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+// Enumerated so these pages are PRERENDERED at build and then served from the
+// ISR cache. An un-enumerated dynamic segment is re-rendered on every single
+// request (verified against a production build: prebuilt params answer with
+// `s-maxage`, un-enumerated ones with `private, no-store`).
+//
+// `dynamicParams` stays at its default (true), so a slug added after this
+// deploy still resolves — it renders once, then caches like the rest.
+export async function generateStaticParams() {
+  const slugs = await getAllSpecialtySlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+
+// See the note in ../../areas/page.tsx: no searchParams server-side, or the
+// route renders per request. <SpecialtyDoctorListClient> applies them.
+type Props = { params: Promise<{ locale: string; slug: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
-  const sp = await searchParams;
-
-  const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), detectArea()]);
+  const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), STATIC_GEO]);
   if (!spec) return {};
 
   const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
@@ -48,21 +64,18 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     ogTitle: title,
     noTemplate: Boolean(spec.meta_title),
     noindex: doctorCount === 0,
-    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
 const ml = (v: any, locale: Locale) => t(v, locale);
 
-export default async function SpecialtyPage({ params, searchParams }: Props) {
+export default async function SpecialtyPage({ params }: Props) {
   const { locale: raw, slug } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
-  const sp = await searchParams;
-
-  const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), detectArea()]);
+  const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), STATIC_GEO]);
   if (!spec) {
     const hit = await findRedirect(`/specialties/${slug}`);
     if (hit) {
@@ -77,16 +90,13 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
     getSettings(),
     getSpecialties(locale),
     getFaqs("specialty", spec.id, locale),
-    // Honour ?page= / ?perPage= so a paginated URL server-renders the slice it
-    // names. Hardcoding page 1 here meant /specialties/x?page=3 shipped page
-    // one's doctors in the HTML and only corrected itself after the client
-    // refetched, which is both a flash for the visitor and duplicate content
-    // for a crawler.
+    // Canonical first page only. ?page= / ?perPage= / ?q= are applied by
+    // <SpecialtyDoctorListClient> after mount — reading them here would force
+    // this route to render per request and it would never be cached.
     searchDoctors({
       specialty: slug,
-      page: Number(sp.page || "1"),
-      perPage: Number(sp.perPage || "12"),
-      q: sp.q,
+      page: 1,
+      perPage: 12,
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),
   ]);

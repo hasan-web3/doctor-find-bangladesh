@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
 import { jwtVerify } from "jose";
 
-export const runtime = 'nodejs';
+// Runtime: EDGE (the default — deliberately not `nodejs`).
+//
+// This file used to `export const runtime = 'nodejs'`, which on Vercel makes
+// middleware a Fluid compute invocation on every matched HTML and .rsc
+// request — a continuous Active CPU cost independent of page rendering. Edge
+// middleware is metered separately and is what this code was written for:
+// `jose` is explicitly the edge-compatible JWT library (that is why it is used
+// here instead of jsonwebtoken), and `fetch` is native on edge. Nothing below
+// needs a Node built-in.
+//
+// If a future change here does need Node, prefer moving that work into a route
+// handler over switching this whole file back.
 
 // ---- locale strategy ----
 // bn (default): served at root URLs (/doctors) via internal REWRITE to /bn/doctors.
@@ -170,6 +181,23 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   return response;
 }
 
+// Everything this middleware does is for HTML navigations: the admin guard, the
+// locale rewrite and the canonical redirects. Anything it cannot act on should
+// never reach it, because on Vercel every match is a billed invocation.
+//
+// Additions over the previous matcher:
+//   - `api` — middleware did nothing for /api/* except fall through the NEUTRAL
+//     test and return next(). Excluding it is safe: the only thing it forwarded
+//     was `x-client-ip`, and geo.ts already falls back to `x-forwarded-for`.
+//   - `robots.txt`, `sitemap`, `icon.svg` — matched NEUTRAL and returned next().
+//   - `avif`, `gif`, fonts, `css`, `js`, `map`, `json`, `pdf`, `mp4` — the
+//     previous list stopped at png/jpg/jpeg/svg/webp/ico/txt/xml.
+//
+// The `.rsc` / `_next/data` suffixes are intentionally still matched: client
+// side navigations request those and they need the same locale rewrite as the
+// document request, or a soft navigation would resolve to a different tree.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|txt|xml)).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap|icon.svg|.*\\.(?:png|jpg|jpeg|gif|avif|webp|svg|ico|css|js|map|json|txt|xml|pdf|mp4|woff|woff2|ttf|otf|eot)$).*)",
+  ],
 };

@@ -4,6 +4,17 @@ import { getAreaBySlug } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 
+// ISR: redirect stub.
+export const revalidate = 86400;
+
+// Empty list = prebuild nothing, but mark the route statically generatable so
+// Next serves it as ISR: first request renders and caches, later requests hit
+// the cache. Without this a dynamic segment is re-rendered on every request.
+export function generateStaticParams() {
+  return [];
+}
+
+
 type Props = { params: Promise<{ locale: string; slug: string }> };
 
 // Keep metadata for old links shared on social media

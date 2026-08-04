@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,7 @@ export function ListingFilters({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const params = useUrlSearchParams();
   const [open, setOpen] = useState(false);
   const [maxFee, setMaxFee] = useState(
     () => params.get("maxFee") || readPersistedValue("filter", "maxFee", pathname) || "2000",
@@ -277,7 +278,7 @@ export function ListingFilters({
 export function SortSelect({ d }: { d: FilterDict & { sort_relevance: string } }) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const params = useUrlSearchParams();
 
   const options = [
     { id: 0, slug: null, label: d.sort_relevance },
@@ -329,7 +330,7 @@ function useDebounce(value: string, delay: number): string {
 export function ListingSearch({ d }: { d: FilterDict }) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const params = useUrlSearchParams();
   const [q, setQ] = useState(() => params.get("q") || readPersistedValue("search", "q", pathname) || "");
   const debouncedQ = useDebounce(q, 400);
   useEffect(() => {

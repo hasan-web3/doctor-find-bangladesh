@@ -18,7 +18,15 @@ import {
 } from "@/db";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { revalidatePublic } from "@/lib/revalidate";
+import { revalidateTag } from "next/cache";
+import {
+  revalidatePublic,
+  revalidateSpecialty,
+  revalidateArea,
+  revalidateHospital,
+  revalidateBlogPost,
+  revalidateDistrict,
+} from "@/lib/revalidate";
 import { uploadImage, destroyImage } from "@/lib/storage";
 import { slugify, nextAvailableSlug } from "@/lib/slugify";
 import { recordSlugChange } from "@/lib/seo";
@@ -30,7 +38,7 @@ import {
 } from "@/lib/seo-defaults";
 import type { ActionResult } from "./admin-doctors";
 
-import { type PostInitial } from "@/app/admin/blog/post-form";
+import { type PostInitial } from "@/app/(dashboard)/admin/blog/post-form";
 import { toML } from "@/lib/utils";
 
 const mlSchema = z.object({ bn: z.string().default(""), en: z.string().default("") });
@@ -104,7 +112,8 @@ export async function saveSpecialty(payload: unknown): Promise<ActionResult> {
     });
   }
   await audit(existing ? "update" : "create", "specialties", s.id, { name: s.name.bn });
-  revalidatePublic(["specialties", "redirects"]);
+  revalidateSpecialty({ slug, oldSlug: existing?.slug });
+  revalidateTag("redirects");
   return { ok: true, message: "বিভাগ সংরক্ষণ হয়েছে" };
 }
 
@@ -173,7 +182,7 @@ export async function saveDistrict(payload: unknown): Promise<ActionResult> {
     });
   }
   await audit(existing ? "update" : "create", "districts", d.id, { name: d.name.bn });
-  revalidatePublic(["districts", "areas"]);
+  revalidateDistrict({ slug, oldSlug: existing?.slug });
   return { ok: true, message: "জেলা সংরক্ষণ হয়েছে" };
 }
 
@@ -263,7 +272,8 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
     });
   }
   await audit(existing ? "update" : "create", "areas", a.id, { name: a.name.bn });
-  revalidatePublic(["areas", "redirects"]);
+  revalidateArea({ slug, oldSlug: existing?.slug, districtSlug: dist.slug });
+  revalidateTag("redirects");
   return { ok: true, message: "থানা / উপজেলা সংরক্ষণ হয়েছে" };
 }
 
@@ -409,7 +419,8 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
     });
   }
   await audit(existing ? "update" : "create", "hospitals", h.id, { name: h.name.bn });
-  revalidatePublic(["hospitals", "redirects"]);
+  revalidateHospital({ slug, oldSlug: existing?.slug });
+  revalidateTag("redirects");
   return { ok: true, message: "হাসপাতাল সংরক্ষণ হয়েছে" };
 }
 
@@ -500,7 +511,8 @@ export async function saveBlogPost(payload: unknown): Promise<ActionResult> {
     });
   }
   await audit(existing ? "update" : "create", "blog_posts", p.id, { title: p.title.bn });
-  revalidatePublic(["blog", "redirects"]);
+  revalidateBlogPost({ slug, oldSlug: existing?.slug });
+  revalidateTag("redirects");
   return { ok: true, message: "আর্টিকেল সংরক্ষণ হয়েছে" };
 }
 
