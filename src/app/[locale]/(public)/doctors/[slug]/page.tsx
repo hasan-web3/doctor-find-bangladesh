@@ -190,13 +190,27 @@ export default async function DoctorDetailPage({ params }: Props) {
               )}
             </div>
             
+            {/* Booking needs a chamber to book INTO: the form asks the visitor
+                to pick one, so with none visible the button leads to a dead
+                end. In that case offer the helpline instead, which is the one
+                thing that still connects them to a human. `doc.chambers` is
+                already filtered to visible rows by getDoctor(). */}
             <div className="w-full shrink-0 basis-full md:ml-auto md:w-auto md:basis-auto">
-              <Link
-                href={L(`/appointment/${doc.slug}`)}
-                className="block w-full rounded-xl bg-accent px-8 py-3 text-center font-bold text-white transition-colors hover:bg-accent-hover"
-              >
-                {d.book_appointment}
-              </Link>
+              {doc.chambers.length > 0 ? (
+                <Link
+                  href={L(`/appointment/${doc.slug}`)}
+                  className="block w-full rounded-xl bg-accent px-8 py-3 text-center font-bold text-white transition-colors hover:bg-accent-hover"
+                >
+                  {d.book_appointment}
+                </Link>
+              ) : (
+                <a
+                  href={`tel:${settings.helpline}`}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-8 py-3 text-center font-bold text-white no-underline transition-colors hover:bg-accent-hover"
+                >
+                  <span aria-hidden>✆</span> {helplineDisplay}
+                </a>
+              )}
             </div>
 
           </div>

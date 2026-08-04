@@ -35,6 +35,10 @@ export function DoctorCard({
   const tone = TONES[doctor.id % TONES.length];
   const L = (path: string) => localeHref(locale, path);
   const detailsHref = L(`/doctors/${doctor.slug}`);
+  // Call the doctor's own chamber when there is one; the site helpline is only
+  // the fallback for doctors with no visible chamber (or none carrying a
+  // number). `num()` renders it in Bangla digits on bn and Latin digits on en.
+  const callNumber = doctor.chamber_phone || helpline;
 
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-card transition-all duration-200 hover:-translate-y-1 hover:shadow-cardhover">
@@ -126,10 +130,10 @@ export function DoctorCard({
         {/* Actions: Call CTA on top full-width, secondary details + appointment split below. */}
         <div className="mt-auto flex flex-col gap-2 pt-4">
           <a
-            href={`tel:${helpline}`}
+            href={`tel:${callNumber}`}
             className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border-[1.5px] border-warm-border bg-warm-soft py-2.5 text-sm font-bold text-warm no-underline transition-colors hover:bg-warm/10"
           >
-            <span aria-hidden>✆</span> {num(helpline, locale)}
+            <span aria-hidden>✆</span> {num(callNumber, locale)}
           </a>
           <div className="flex gap-2">
             <Link

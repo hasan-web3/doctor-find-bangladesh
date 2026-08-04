@@ -75,6 +75,10 @@ export type DoctorCardData = {
   specialty: string; specialty_slug: string | null;
   hospital: string; hospital_slug: string | null;
   chamber: string; area: string; area_slug: string | null; fee: number | null;
+  // Phone of the doctor's first visible chamber that actually has one. Null
+  // when the doctor has no visible chamber, or none of them carry a number —
+  // callers then fall back to the site helpline.
+  chamber_phone: string | null;
   // The doctor's district, resolved chamber-first then hospital. Drives the
   // dynamic place name in headings when the visitor's own district turns out
   // to have no doctors.
@@ -120,6 +124,7 @@ type CardRow = {
   chamber_ml: MLText | null; area_ml: MLText | null; area_slug: string | null;
   district_ml: MLText | null; district_slug: string | null;
   fee: number | null;
+  chamber_phone: string | null;
   experience_years: number | null;
 };
 
@@ -132,6 +137,7 @@ const cardSelect = sql`
   COALESCE(ar.slug, har.slug) AS area_slug,
   dist.name AS district_ml, dist.slug AS district_slug,
   ch.fee,
+  chph.phone AS chamber_phone,
   d.experience_years`;
 
 // A doctor resolves to exactly ONE place, and the priority is the same
@@ -153,6 +159,16 @@ const cardFrom = sql`
     SELECT c.name, c.fee, c.area_id FROM chambers c
     WHERE c.doctor_id = d.id AND c.visible ORDER BY c.sort LIMIT 1
   ) ch ON TRUE
+  -- Contact number shown on the card. Kept as its OWN lateral rather than
+  -- reading ch.phone: the top chamber decides name/fee/area, but it may have
+  -- been saved without a phone, and in that case the doctor's next visible
+  -- chamber still has a perfectly good number to call. Falls back to NULL so
+  -- the UI can drop to the site helpline.
+  LEFT JOIN LATERAL (
+    SELECT c.phone FROM chambers c
+    WHERE c.doctor_id = d.id AND c.visible AND COALESCE(TRIM(c.phone), '') <> ''
+    ORDER BY c.sort, c.id LIMIT 1
+  ) chph ON TRUE
   LEFT JOIN areas ar ON ar.id = ch.area_id
   LEFT JOIN areas har ON har.id = hp.area_id
   LEFT JOIN districts dist ON dist.id = COALESCE(ar.district_id, har.district_id)`;
@@ -175,6 +191,7 @@ function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
     district: ml(row.district_ml, locale),
     district_slug: row.district_slug ?? null,
     fee: row.fee ?? null,
+    chamber_phone: row.chamber_phone?.trim() || null,
     experience_years: row.experience_years ?? null,
   };
 }
