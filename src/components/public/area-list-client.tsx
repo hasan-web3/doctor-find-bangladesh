@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AutoAnimate } from "@/components/auto-animate";
 import { Icon } from "@/components/icons";
 import { Pagination } from "@/components/public/pagination";
+import { usePageParams, useResetPageOnFilterChange } from "@/components/public/use-page-params";
+import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 import { Reveal } from "@/components/reveal";
 import { getDict } from "@/lib/dict";
 import { localeHref, num, type Locale } from "@/lib/i18n";
@@ -37,8 +39,9 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
   const [areas, setAreas] = useState<Area[]>(initialAreas);
   const [total, setTotal] = useState(initialTotal);
   const [query, setQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(24);
+  // Page and size come from the URL, which is also what the server used to
+  // build `initialAreas` — see usePageParams.
+  const { page: currentPage, perPage, resetPage } = usePageParams(24);
   const [isLoading, setIsLoading] = useState(false);
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
@@ -47,8 +50,9 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
   const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
-    // Skip fetch on initial render if no filters are applied, because we have initial data
-    if (isInitialRender.current && currentPage === 1 && !debouncedQuery) {
+    // The server already rendered whatever ?page= asked for, so the first pass
+    // never needs to refetch — only a client-only search box entry does.
+    if (isInitialRender.current && !debouncedQuery) {
       isInitialRender.current = false;
       return;
     }
@@ -86,19 +90,10 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
     fetchAreas();
   }, [debouncedQuery, currentPage, perPage, userLat, userLng, locale]);
 
-  // Reset to page 1 when query changes
-  useEffect(() => {
-    if (!isInitialRender.current) {
-      setCurrentPage(1);
-    }
-  }, [debouncedQuery]);
-  
-  const totalPages = Math.ceil(total / perPage);
+  // Reset to page 1 when the search text changes (and only then).
+  useResetPageOnFilterChange(debouncedQuery, resetPage);
 
-  const handlePerPageChange = (newPerPage: number) => {
-    setPerPage(newPerPage);
-    setCurrentPage(1);
-  };
+  const totalPages = Math.ceil(total / perPage);
 
   return (
     <div>
@@ -110,12 +105,20 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={d.search_area_placeholder || "Search by Town, Village or District name..."}
-            className="w-full pl-12 pr-4 py-4 rounded-full border border-line bg-white shadow-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-shadow text-base"
+            className="w-full pl-12 pr-12 py-4 rounded-full border border-line bg-white shadow-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-shadow text-base"
           />
           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">
             <Icon name="search" />
           </div>
+          {query && <ClearSearchButton onClear={() => setQuery("")} label={d.clear_search} className="right-4" />}
         </div>
+        <SearchResultCount
+          count={total}
+          active={Boolean(debouncedQuery)}
+          template={d.found_areas}
+          locale={locale}
+          className="px-1"
+        />
       </div>
 
       {/* Grid of Areas */}
@@ -158,8 +161,6 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
             page={currentPage}
             totalPages={totalPages}
             perPage={perPage}
-            onPageChange={(p) => setCurrentPage(p)}
-            onPerPageChange={handlePerPageChange}
             showPerPageSelector={true}
             locale={locale}
           />

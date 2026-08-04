@@ -131,6 +131,14 @@ const bn = {
   search_district_placeholder: "জেলার নাম লিখে খুঁজুন...",
   search_area_placeholder: "শহর, গ্রাম বা জেলার নাম লিখে খুঁজুন...",
   no_search_results: "আপনার অনুসন্ধানের সাথে মিলে যায় এমন কোনো এলাকা পাওয়া যায়নি।",
+  // Search feedback. {n} is replaced with the localised number. Kept as four
+  // separate phrases rather than one template because Bangla counts people
+  // with "জন" and things with "টি", so a single string cannot serve both.
+  clear_search: "সার্চ মুছুন",
+  found_areas: "{n}টি এলাকা পাওয়া গেছে",
+  found_districts: "{n}টি জেলা পাওয়া গেছে",
+  found_specialties: "{n}টি বিভাগ পাওয়া গেছে",
+  found_doctors: "{n} জন ডাক্তার পাওয়া গেছে",
   filter_by_specialty: "বিশেষজ্ঞ বিভাগ দিয়ে ফিল্টার করুন...",
   no_results: "কোনো তথ্য পাওয়া যায়নি",
   sort_relevance: "প্রাসঙ্গিকতা অনুযায়ী",
@@ -420,6 +428,11 @@ const en: typeof bn = {
   search_district_placeholder: "Search by District name...",
   search_area_placeholder: "Search by Town, Village or District name...",
   no_search_results: "No areas found matching your search.",
+  clear_search: "Clear search",
+  found_areas: "{n} areas found",
+  found_districts: "{n} districts found",
+  found_specialties: "{n} specialties found",
+  found_doctors: "{n} doctors found",
   filter_by_specialty: "Filter by specialty...",
   no_results: "No results",
   sort_relevance: "By relevance",

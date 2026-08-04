@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import { usePageParams } from "@/components/public/use-page-params";
 import Link from "next/link";
 import Image from "next/image";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
@@ -24,13 +25,12 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
   const [hospitals, setHospitals] = useState<Hospital[]>(initialHospitals);
   const [total, setTotal] = useState(initialTotal);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
+  const { page: currentPage, perPage } = usePageParams(12);
   const isInitialRender = useRef(true);
 
   useEffect(() => {
-    // Skip fetch on initial render
-    if (isInitialRender.current && currentPage === 1) {
+    // Server already rendered the slice named by ?page=.
+    if (isInitialRender.current) {
       isInitialRender.current = false;
       return;
     }
@@ -63,11 +63,6 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
 
   const totalPages = Math.ceil(total / perPage);
 
-  const handlePerPageChange = (newPerPage: number) => {
-    setPerPage(newPerPage);
-    setCurrentPage(1);
-  };
-  
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
       <Breadcrumbs locale={locale} items={[{ name: d.breadcrumb_home, path: "/" }, { name: d.nav_hospitals }]} />
@@ -129,8 +124,6 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
           page={currentPage}
           totalPages={totalPages}
           perPage={perPage}
-          onPageChange={setCurrentPage}
-          onPerPageChange={handlePerPageChange}
           showPerPageSelector={true}
           locale={locale}
         />

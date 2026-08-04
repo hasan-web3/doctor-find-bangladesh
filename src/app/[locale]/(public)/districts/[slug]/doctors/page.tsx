@@ -14,7 +14,7 @@ import {
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
@@ -22,9 +22,10 @@ import { withPossessive as bnPossessive } from "@/lib/bn";
 type SP = { [key: string]: string | string[] | undefined };
 type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<SP> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   const district = await getDistrictBySlug(slug, locale);
   if (!district) return {};
 
@@ -42,6 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: district.meta_title || title,
     description: district.meta_description || description,
     noindex: doctorCount === 0,
+    canonicalQuery: pageCanonicalQuery(typeof sp.page === "string" ? sp.page : undefined),
   });
 }
 

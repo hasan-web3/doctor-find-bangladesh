@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
@@ -8,7 +7,7 @@ import { SpecialtySlider } from "@/components/public/specialty-slider";
 import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
-import { buildMetadata, findRedirect } from "@/lib/seo";
+import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, type Locale } from "@/lib/i18n";
@@ -17,9 +16,10 @@ import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-
 
 type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
 
   const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), detectArea()]);
   if (!spec) return {};
@@ -48,6 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ogTitle: title,
     noTemplate: Boolean(spec.meta_title),
     noindex: doctorCount === 0,
+    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
@@ -60,8 +61,6 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
   const sp = await searchParams;
-  const h = await headers();
-  const debugIp = h.get('x-debug-ip');
 
   const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), detectArea()]);
   if (!spec) {
@@ -78,10 +77,15 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
     getSettings(),
     getSpecialties(locale),
     getFaqs("specialty", spec.id, locale),
+    // Honour ?page= / ?perPage= so a paginated URL server-renders the slice it
+    // names. Hardcoding page 1 here meant /specialties/x?page=3 shipped page
+    // one's doctors in the HTML and only corrected itself after the client
+    // refetched, which is both a flash for the visitor and duplicate content
+    // for a crawler.
     searchDoctors({
       specialty: slug,
-      page: 1,
-      perPage: 12,
+      page: Number(sp.page || "1"),
+      perPage: Number(sp.perPage || "12"),
       q: sp.q,
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),

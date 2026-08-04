@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { searchAreas, resolveDisplayDistrict } from "@/lib/data";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { AreaListClient } from "@/components/public/area-list-client";
@@ -11,12 +11,14 @@ import { withPossessive as bnPossessive } from "@/lib/bn";
 
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; page?: string; perPage?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   return buildMetadata({
     locale,
     path: "/areas",
+    canonicalQuery: pageCanonicalQuery(sp.page),
     title: locale === "bn" ? "এলাকা অনুযায়ী ডাক্তার" : "Doctors by Area",
     description:
       locale === "bn"

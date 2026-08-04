@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { Pagination } from "@/components/public/pagination";
+import { usePageParams, useResetPageOnFilterChange } from "@/components/public/use-page-params";
+import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
@@ -45,14 +47,13 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
   const [isLoading, setIsLoading] = useState(false);
   const [total, setTotal] = useState(initialTotal);
   const [nameQuery, setNameQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
+  const { page: currentPage, perPage, resetPage } = usePageParams(12);
 
   const debouncedNameQuery = useDebounce(nameQuery, 300);
 
   useEffect(() => {
-    // Skip fetch on initial render if no query is present
-    if (isInitialRender.current && currentPage === 1 && !debouncedNameQuery) {
+    // Server already rendered the slice named by ?page=.
+    if (isInitialRender.current && !debouncedNameQuery) {
       isInitialRender.current = false;
       return;
     }
@@ -87,19 +88,10 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
     fetchDoctors();
   }, [specialtySlug, locale, currentPage, perPage, debouncedNameQuery]);
 
-  // Reset page when filters change
-  useEffect(() => {
-    if (!isInitialRender.current) {
-      setCurrentPage(1);
-    }
-  }, [debouncedNameQuery]);
+  // Reset page when the name filter changes (and only then).
+  useResetPageOnFilterChange(debouncedNameQuery, resetPage);
 
   const totalPages = Math.ceil(total / perPage);
-
-  const handlePerPageChange = (newPerPage: number) => {
-    setPerPage(newPerPage);
-    setCurrentPage(1);
-  };
 
   return (
     <div className="mt-8">
@@ -112,12 +104,19 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
             value={nameQuery}
             onChange={(e) => setNameQuery(e.target.value)}
             placeholder={d.search_doctor_placeholder || "Enter doctor's name..."}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
+            className="w-full pl-10 pr-11 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">
             <Icon name="search" size={18} />
           </div>
+          {nameQuery && <ClearSearchButton onClear={() => setNameQuery("")} label={d.clear_search} />}
         </div>
+        <SearchResultCount
+          count={total}
+          active={Boolean(debouncedNameQuery)}
+          template={d.found_doctors}
+          locale={locale}
+        />
       </div>
 
       {/* Doctor List */}
@@ -148,8 +147,6 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
             page={currentPage}
             totalPages={totalPages}
             perPage={perPage}
-            onPageChange={setCurrentPage}
-            onPerPageChange={handlePerPageChange}
             showPerPageSelector={true}
             locale={locale}
           />

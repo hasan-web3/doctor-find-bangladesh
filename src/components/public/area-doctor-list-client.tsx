@@ -5,6 +5,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { SearchableMultiSelect, type Option } from "@/components/admin/searchable-select";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { Pagination } from "@/components/public/pagination";
+import { usePageParams, useResetPageOnFilterChange } from "@/components/public/use-page-params";
+import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
@@ -48,8 +50,9 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
   const [total, setTotal] = useState(initialTotal);
   const [nameQuery, setNameQuery] = useState(searchParams.get("q") || "");
   const [selectedSpecialtySlugs, setSelectedSpecialtySlugs] = useState<string[]>(searchParams.getAll("specialty"));
-  const [currentPage, setCurrentPage] = useState(Number(searchParams.get("page") || "1"));
-  const [perPage, setPerPage] = useState(Number(searchParams.get("perPage") || "12"));
+  // Page stays bound to the URL rather than being copied into state once on
+  // mount, so the pager can be real links and stays correct on back/forward.
+  const { page: currentPage, perPage, resetPage } = usePageParams(12);
 
   const debouncedNameQuery = useDebounce(nameQuery, 300);
 
@@ -120,19 +123,13 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
     fetchDoctors();
   }, [districtSlug, areaSlug, locale, currentPage, perPage, debouncedNameQuery, selectedSpecialtySlugs]);
 
-  // Reset page when filters change
-  useEffect(() => {
-    if (!isInitialRender.current) {
-      setCurrentPage(1);
-    }
-  }, [debouncedNameQuery, selectedSpecialtySlugs]);
+  // Reset page when the name or specialty filters change (and only then).
+  useResetPageOnFilterChange(
+    `${debouncedNameQuery}|${selectedSpecialtySlugs.join(",")}`,
+    resetPage
+  );
 
   const totalPages = Math.ceil(total / perPage);
-
-  const handlePerPageChange = (newPerPage: number) => {
-    setPerPage(newPerPage);
-    setCurrentPage(1);
-  };
 
   return (
     <div className="mt-8">
@@ -158,12 +155,21 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
               placeholder={d.search_doctor_placeholder || "Enter doctor's name..."}
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
+              className="w-full pl-10 pr-11 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
             />
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">
               <Icon name="search" size={18} />
             </div>
+            {nameQuery && <ClearSearchButton onClear={() => setNameQuery("")} label={d.clear_search} />}
           </div>
+          {/* Counts the whole filtered set, not just this page, so it reads the
+              same on page 1 and page 3. Covers the specialty filter too. */}
+          <SearchResultCount
+            count={total}
+            active={Boolean(debouncedNameQuery) || selectedSpecialtySlugs.length > 0}
+            template={d.found_doctors}
+            locale={locale}
+          />
         </div>
       </div>
 
@@ -195,8 +201,6 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
             page={currentPage}
             totalPages={totalPages}
             perPage={perPage}
-            onPageChange={setCurrentPage}
-            onPerPageChange={handlePerPageChange}
             showPerPageSelector={true}
             locale={locale}
           />

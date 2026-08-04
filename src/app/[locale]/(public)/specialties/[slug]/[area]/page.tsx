@@ -5,7 +5,7 @@ import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, countDoctorsFor, type Area } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
-import { buildMetadata, findRedirect } from "@/lib/seo";
+import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
 import { Pagination } from "@/components/public/pagination";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
@@ -13,9 +13,10 @@ import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 // The combination "money pages": /specialties/neurology/khalishpur
 type Props = { params: Promise<{ locale: string; slug: string; area: string }>; searchParams: Promise<{ page?: string; perPage?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale, slug, area } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   const [spec, areaRow] = await Promise.all([getSpecialtyBySlug(slug, locale), getAreaBySlug(area, locale)]);
   if (!spec || !areaRow) return {};
 
@@ -36,6 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       : `Experienced ${spec.name} specialists in ${areaRow.name}, Khulna. See chamber addresses, schedules and fees, then book easily.`,
     ogTitle: locale === "bn" ? `${areaRow.name}র ${short} ডাক্তার` : `${short} Doctors in ${areaRow.name}`,
     ogSubtitle: locale === "bn" ? "খুলনা" : "Khulna",
+    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 

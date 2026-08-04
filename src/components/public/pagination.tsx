@@ -7,13 +7,17 @@ import { cn } from "@/lib/utils";
 import { SearchableSelect } from "@/components/admin/searchable-select";
 import { useCallback } from "react";
 
+// Public pagination is link-only on purpose. It used to accept an
+// `onPageChange` callback, and every client-side listing passed one, which made
+// the pager render <button> elements: the URL never changed, so page 2 could
+// not be shared or bookmarked, the back button skipped the whole listing, and
+// Googlebot (which does not click buttons) could never reach anything past
+// page 1. Callers now drive the page from the URL via usePageParams().
 type Props = {
   page: number;
   totalPages: number;
   perPage?: number;
   locale?: Locale;
-  onPageChange?: (page: number) => void;
-  onPerPageChange?: (perPage: number) => void;
   showPerPageSelector?: boolean;
 };
 
@@ -24,7 +28,7 @@ const PER_PAGE_OPTIONS = [
   { id: 96, label: "96 / page" },
 ];
 
-export function Pagination({ page, totalPages, perPage, locale = "bn", onPageChange, onPerPageChange, showPerPageSelector = false }: Props) {
+export function Pagination({ page, totalPages, perPage, locale = "bn", showPerPageSelector = false }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -41,35 +45,32 @@ export function Pagination({ page, totalPages, perPage, locale = "bn", onPageCha
   
   const makeHref = useCallback((p: number) => {
     const next = new URLSearchParams(params.toString());
-    next.set("page", String(p));
-    return `${pathname}?${next.toString()}`;
+    // Page 1 is the bare path, never ?page=1 — otherwise /areas and
+    // /areas?page=1 are two URLs serving identical content, and Google has to
+    // crawl both to work out they are the same page.
+    if (p <= 1) next.delete("page");
+    else next.set("page", String(p));
+    const qs = next.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
   }, [pathname, params]);
 
-  const PageLink = ({ p, children, className }: { p: number, children: React.ReactNode, className: string }) => {
-    if (onPageChange) {
-      return (
-        <button type="button" onClick={() => onPageChange(p)} className={className}>
-          {children}
-        </button>
-      );
-    }
-    return (
-      <Link href={makeHref(p)} className={className} scroll={false}>
-        {children}
-      </Link>
-    );
-  };
+  // next/link, so this stays a client-side navigation: no full page reload, no
+  // white flash, and `scroll={false}` keeps the viewport where it was, exactly
+  // like the old buttons. The difference is that it is a real anchor, so
+  // middle-click, ctrl+click, "open in new tab" and screen readers all work.
+  const PageLink = ({ p, children, className }: { p: number, children: React.ReactNode, className: string }) => (
+    <Link href={makeHref(p)} className={className} scroll={false} aria-current={p === page ? "page" : undefined}>
+      {children}
+    </Link>
+  );
 
   const handlePerPageChange = (selectedId: number | null) => {
     if (!selectedId) return;
-    if (onPerPageChange) {
-      onPerPageChange(selectedId);
-    } else {
-      const next = new URLSearchParams(params.toString());
-      next.set("perPage", String(selectedId));
-      next.set("page", "1");
-      router.push(`${pathname}?${next.toString()}`);
-    }
+    const next = new URLSearchParams(params.toString());
+    next.set("perPage", String(selectedId));
+    // A bigger page size renumbers everything, so restart at page 1.
+    next.delete("page");
+    router.push(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
   return (

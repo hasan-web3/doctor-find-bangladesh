@@ -14,16 +14,20 @@ import { sanitizeHtml } from "@/lib/sanitize";
 import { HospitalGallery } from "@/components/public/hospital-gallery";
 import { LazyMap } from "@/components/public/lazy-map";
 import { HospitalDoctorList } from "@/components/public/hospital-doctor-list";
-import { buildMetadata, findRedirect } from "@/lib/seo";
+import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
 import { ldMedicalClinic, ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, t, type Locale } from "@/lib/i18n";
 
-type Props = { params: Promise<{ locale: string; slug: string }> };
+type Props = {
+  params: Promise<{ locale: string; slug: string }>;
+  searchParams: Promise<{ page?: string; perPage?: string }>;
+};
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   const h = await getHospitalBySlug(slug, locale);
   if (!h) return {};
   return buildMetadata({
@@ -39,16 +43,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ogSubtitle: `${h.area || "Khulna"}`,
     ogImage: h.image_url || undefined,
     noTemplate: Boolean(h.meta_title),
+    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 
 const ml = (v: any, locale: Locale) => t(v, locale);
 
-export default async function HospitalPage({ params }: Props) {
+export default async function HospitalPage({ params, searchParams }: Props) {
   const { locale: raw, slug } = await params;
   if (!isLocale(raw)) notFound();
   const locale: Locale = raw;
   const d = getDict(locale);
+  // The doctor list below is paginated, so the server has to render the slice
+  // the URL names or ?page=2 would ship page one's doctors.
+  const sp = await searchParams;
 
   const h = await getHospitalBySlug(slug, locale);
   if (!h) {
@@ -67,8 +75,8 @@ export default async function HospitalPage({ params }: Props) {
     getFaqs("hospital", h.id, locale),
     searchDoctors({
       hospitalId: h.id,
-      page: 1,
-      perPage: 12,
+      page: Number(sp.page || "1"),
+      perPage: Number(sp.perPage || "12"),
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),
     getEnabledConfig("google_maps"),

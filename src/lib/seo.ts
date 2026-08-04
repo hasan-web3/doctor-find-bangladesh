@@ -160,3 +160,13 @@ export async function findRedirect(path: string) {
     .limit(1);
   return row ?? null;
 }
+
+// Canonical suffix for a paginated listing. Page 2+ must canonicalise to
+// ITSELF, not back to page 1 — pointing every page at page 1 tells Google the
+// deeper pages are duplicates, and it stops indexing the listings (and the
+// links on them) entirely. Page 1 keeps the bare path so /doctors and
+// /doctors?page=1 never compete.
+export function pageCanonicalQuery(page?: string): string | undefined {
+  const n = Number(page);
+  return Number.isFinite(n) && n > 1 ? `?page=${n}` : undefined;
+}

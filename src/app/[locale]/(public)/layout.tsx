@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/public/navbar";
 import { BottomNav } from "@/components/public/bottom-nav";
@@ -28,8 +27,6 @@ export default async function PublicLayout({
   const { locale: rawLocale } = await params;
   if (!isLocale(rawLocale)) notFound();
   const locale: Locale = rawLocale;
-  const h = await headers();
-  const ip = h.get("x-debug-ip") ?? "0.0.0.0";
 
   const [settings, districts, geo, recaptchaSiteKey] = await Promise.all([
     getSettings(),

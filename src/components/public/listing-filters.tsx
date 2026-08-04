@@ -20,7 +20,8 @@ type HospitalOpt = Opt & { district_slug?: string | null; area_slug?: string | n
 type FilterDict = Pick<Dict,
   "filters" | "clear_all" | "filter_specialty" | "filter_area" | "filter_gender" |
   "male" | "female" | "filter_fee" | "max" | "apply_filters" |
-  "search_doctor_placeholder" | "sort_fee_asc" | "sort_fee_desc" | "sort_experience"> & {
+  "search_doctor_placeholder" | "sort_fee_asc" | "sort_fee_desc" | "sort_experience" |
+  "clear_search"> & {
   filter_hospital?: string;
   select_district?: string;
 };
@@ -372,6 +373,21 @@ export function ListingSearch({ d }: { d: FilterDict }) {
         placeholder={d.search_doctor_placeholder}
         className="flex-1 border-none bg-transparent py-3 text-[14.5px] outline-none placeholder:text-ink-ghost"
       />
+      {/* Clearing goes through the same debounced effect as typing, so the URL
+          drops ?q= and the listing reloads unfiltered. This row is a flex
+          layout, not a positioned one, so the shared ClearSearchButton (which
+          is absolutely positioned) would not sit correctly here. */}
+      {q && (
+        <button
+          type="button"
+          onClick={() => setQ("")}
+          aria-label={d.clear_search}
+          title={d.clear_search}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[15px] leading-none text-ink-faint transition-colors hover:bg-page hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand-500"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }

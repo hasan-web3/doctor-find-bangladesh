@@ -4,7 +4,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { getBlogPosts, getBlogCategories } from "@/lib/data";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -14,12 +14,14 @@ import { Pagination } from "@/components/public/pagination";
 
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ category?: string; page?: string; perPage?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   return buildMetadata({
     locale,
     path: "/blog",
+    canonicalQuery: pageCanonicalQuery(sp.page),
     title: locale === "bn" ? "স্বাস্থ্য টিপস ও ব্লগ" : "Health Tips & Blog",
     description:
       locale === "bn"

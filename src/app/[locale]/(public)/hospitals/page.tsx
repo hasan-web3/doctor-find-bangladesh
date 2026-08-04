@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { searchHospitals } from "@/lib/data";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, pageCanonicalQuery } from "@/lib/seo";
 import { detectArea } from "@/lib/geo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
@@ -9,10 +9,11 @@ import { HospitalListClient } from "@/components/public/hospital-list-client";
 
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ page?: string, perPage?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  
+
+  const sp = await searchParams;
   const d = getDict(locale);
   const title = d.hospitals_title;
   const description = d.hospitals_sub;
@@ -22,6 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     path: "/hospitals",
     title,
     description,
+    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 

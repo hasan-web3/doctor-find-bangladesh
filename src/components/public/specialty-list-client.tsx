@@ -8,6 +8,7 @@ import { fuzzyFilter } from "@/lib/fuzzy";
 import { getDict } from "@/lib/dict";
 import { localeHref, num, type Locale } from "@/lib/i18n";
 import type { Specialty } from "@/lib/data";
+import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 
 const TINTS = [
   { bg: "#F0FDFA", fg: "#0F766E" },
@@ -41,12 +42,20 @@ export function SpecialtyListClient({ initialSpecialties, locale }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={d.search_by_specialty || "বিভাগ অনুযায়ী খুঁজুন"}
-            className="w-full rounded-full border border-line bg-white py-3 pl-12 pr-4 text-base shadow-lg shadow-brand-500/5 placeholder:text-ink-ghost focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full rounded-full border border-line bg-white py-3 pl-12 pr-12 text-base shadow-lg shadow-brand-500/5 placeholder:text-ink-ghost focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">
             <Icon name="search" />
           </div>
+          {query && <ClearSearchButton onClear={() => setQuery("")} label={d.clear_search} className="right-4" />}
         </div>
+        <SearchResultCount
+          count={filteredSpecialties.length}
+          active={Boolean(query)}
+          template={d.found_specialties}
+          locale={locale}
+          className="px-1"
+        />
       </div>
 
       {/* Grid of Specialties */}

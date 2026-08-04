@@ -5,7 +5,7 @@ import { JsonLd } from "@/components/json-ld";
 import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
-import { buildMetadata, findRedirect } from "@/lib/seo";
+import { buildMetadata, findRedirect, pageCanonicalQuery } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
@@ -13,9 +13,10 @@ import { AreaDoctorListClient } from "@/components/public/area-doctor-list-clien
 
 type Props = { params: Promise<{ locale: string; district: string, area: string }>; searchParams: Promise<{ page?: string; perPage?: string; q?: string, specialty?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { locale, district, area: areaSlug } = await params;
   if (!isLocale(locale)) return {};
+  const sp = await searchParams;
   const area = await getAreaBySlugs(district, areaSlug, locale);
   if (!area) return {};
 
@@ -37,6 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         : `Experienced doctors across specialties in ${area.name}, ${area.district}, with chamber addresses and schedules. Book appointments easily.`),
     ogTitle: locale === "bn" ? `${area.name}-এর ডাক্তার ও চেম্বার` : `Doctors in ${area.name}`,
     noTemplate: Boolean(area.meta_title),
+    canonicalQuery: pageCanonicalQuery(sp.page),
   });
 }
 

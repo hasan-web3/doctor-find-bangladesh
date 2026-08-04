@@ -6,6 +6,8 @@ import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { SearchableFilter, type FilterOption } from "@/components/public/searchable-filter";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { Pagination } from "@/components/public/pagination";
+import { usePageParams, useResetPageOnFilterChange } from "@/components/public/use-page-params";
+import { ClearSearchButton, SearchResultCount } from "@/components/public/search-meta";
 import type { DoctorCardData } from "@/lib/data";
 import type { Dict } from "@/lib/dict";
 import { num, type Locale } from "@/lib/i18n";
@@ -50,8 +52,7 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDeptSlugs, setSelectedDeptSlugs] = useState<string[]>([]);
   const [nameQuery, setNameQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
+  const { page: currentPage, perPage, resetPage } = usePageParams(12);
   const isInitialRender = useRef(true);
 
   const debouncedNameQuery = useDebounce(nameQuery, 300);
@@ -67,7 +68,7 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
 
   useEffect(() => {
     // Skip fetch on initial render if no filters are applied
-    if (isInitialRender.current && currentPage === 1 && !debouncedNameQuery && selectedDeptSlugs.length === 0) {
+    if (isInitialRender.current && !debouncedNameQuery && selectedDeptSlugs.length === 0) {
       isInitialRender.current = false;
       return;
     }
@@ -101,20 +102,15 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
     fetchDoctors();
   }, [hospitalSlug, locale, currentPage, perPage, debouncedNameQuery, selectedDeptSlugs]);
   
-  // Reset page when filters change
-  useEffect(() => {
-    if (!isInitialRender.current) {
-      setCurrentPage(1);
-    }
-  }, [debouncedNameQuery, selectedDeptSlugs]);
+  // Reset page when the name or department filters change (and only then).
+  useResetPageOnFilterChange(
+    `${debouncedNameQuery}|${selectedDeptSlugs.join(",")}`,
+    resetPage
+  );
 
   const totalPages = Math.ceil(total / perPage);
 
-  const handlePerPageChange = (newPerPage: number) => {
-    setPerPage(newPerPage);
-    setCurrentPage(1);
-  };
-  
+
   const handleRemoveDept = (slug: string) => {
     setSelectedDeptSlugs((prev) => prev.filter((s) => s !== slug));
   };
@@ -151,12 +147,19 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
                 placeholder={d.search_doctor_placeholder || "Enter doctor's name..."}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
+                className="w-full pl-10 pr-11 py-2.5 rounded-lg border border-line bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none text-base"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">
                 <Icon name="search" size={18} />
               </div>
+              {nameQuery && <ClearSearchButton onClear={() => setNameQuery("")} label={d.clear_search} />}
             </div>
+            <SearchResultCount
+              count={total}
+              active={Boolean(debouncedNameQuery) || selectedDeptSlugs.length > 0}
+              template={d.found_doctors}
+              locale={locale}
+            />
           </div>
           {departments.length > 0 && (
             <div className="order-1 md:order-2">
@@ -204,8 +207,6 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
                 page={currentPage}
                 totalPages={totalPages}
                 perPage={perPage}
-                onPageChange={setCurrentPage}
-                onPerPageChange={handlePerPageChange}
                 showPerPageSelector={true}
                 locale={locale}
             />
