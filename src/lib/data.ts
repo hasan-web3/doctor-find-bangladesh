@@ -71,7 +71,7 @@ export type Hospital = {
 
 export type DoctorCardData = {
   id: number; slug: string; name: string; degrees: string; photo_url: string | null;
-  verified: boolean; featured: boolean;
+  verified: boolean;
   specialty: string; specialty_slug: string | null;
   hospital: string; hospital_slug: string | null;
   chamber: string; area: string; area_slug: string | null; fee: number | null;
@@ -114,7 +114,7 @@ const ml = (v: unknown, locale: Locale) => t(v as MLText, locale);
 type CardRow = {
   id: number; slug: string;
   name_ml: MLText; degrees_ml: MLText;
-  photo_url: string | null; verified: boolean; featured: boolean;
+  photo_url: string | null; verified: boolean;
   specialty_ml: MLText | null; specialty_slug: string | null;
   hospital_ml: MLText | null; hospital_slug: string | null;
   chamber_ml: MLText | null; area_ml: MLText | null; area_slug: string | null;
@@ -124,7 +124,7 @@ type CardRow = {
 };
 
 const cardSelect = sql`
-  d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified, d.featured,
+  d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified,
   sp.name AS specialty_ml, sp.slug AS specialty_slug,
   hp.name AS hospital_ml, hp.slug AS hospital_slug,
   ch.name AS chamber_ml,
@@ -165,7 +165,6 @@ function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
     degrees: ml(row.degrees_ml, locale),
     photo_url: row.photo_url ?? null,
     verified: row.verified,
-    featured: row.featured,
     specialty: ml(row.specialty_ml, locale),
     specialty_slug: row.specialty_slug ?? null,
     hospital: ml(row.hospital_ml, locale),
@@ -579,10 +578,7 @@ export async function getHospitalDoctors(hospitalId: number, geo: GeoResult, loc
   const results = await searchDoctors({
     hospitalId,
     perPage: 24,
-    preferLat: geo.lat,
-    preferLng: geo.lng,
-    preferAreaId: geo.areaId,
-    preferDistrictId: geo.districtId,
+    ...(await geoSearchPrefs(geo, locale)),
   }, locale);
   return results.rows;
 }
@@ -622,18 +618,6 @@ export async function getHospitalDoctorsWithSpecialties(hospitalId: number, geo:
 }
 
 // ---------- doctors ----------
-export const getFeaturedDoctors = unstable_cache(
-  async (locale: Locale, limit = 8) => {
-    const res = await db.execute<CardRow>(sql`
-      SELECT ${cardSelect} ${cardFrom}
-      WHERE d.active AND d.featured
-      ORDER BY d.updated_at DESC LIMIT ${limit}
-    `);
-    return (res.rows as CardRow[]).map((r) => mapDoctorCard(r, locale));
-  },
-  ["featured-doctors"],
-  { tags: ["doctors", "reviews"] }
-);
 
 export async function getHomepageDoctors(
   geo: GeoResult,
@@ -644,10 +628,7 @@ export async function getHomepageDoctors(
   // We pass the geo-preferences and a limit.
   const results = await searchDoctors({
     perPage: limit,
-    preferLat: geo.lat,
-    preferLng: geo.lng,
-    preferAreaId: geo.areaId,
-    preferDistrictId: geo.districtId,
+    ...(await geoSearchPrefs(geo, locale)),
   }, locale);
   return results.rows;
 }
@@ -688,6 +669,9 @@ export const resolveDisplayDistrict = cache(
       if (hit && hit.doctor_count > 0) return own;
     }
 
+    // Raw geo, deliberately not geoSearchPrefs(): that helper calls this
+    // function, and no curated order can apply yet — we are still working out
+    // which district's order would even be the right one.
     const { rows } = await searchDoctors(
       {
         perPage: 1,
@@ -717,6 +701,31 @@ export const resolveDisplayDistrict = cache(
   }
 );
 
+// The geo-derived half of a doctor search, resolved once and spread into every
+// listing so no surface can drift from the others.
+//
+// `preferDistrictId` and `priorityDistrictId` are both the DISPLAY district on
+// purpose: we rank around the district whose doctors we are actually showing,
+// and we apply that same district's curated order. Splitting them would let a
+// page rank by Khulna but pin by Bhola.
+export const geoSearchPrefs = cache(
+  async (
+    geo: GeoResult,
+    locale: Locale
+  ): Promise<Pick<DoctorSearchParams,
+    "preferLat" | "preferLng" | "preferAreaId" | "preferDistrictId" | "priorityDistrictId">> => {
+    const display = await resolveDisplayDistrict(geo, locale);
+    const districtId = display?.id ?? geo.districtId;
+    return {
+      preferLat: geo.lat,
+      preferLng: geo.lng,
+      preferAreaId: geo.areaId,
+      preferDistrictId: districtId,
+      priorityDistrictId: districtId,
+    };
+  }
+);
+
 export type DoctorSearchParams = {
   q?: string;
   specialty?: string | string[];
@@ -736,6 +745,11 @@ export type DoctorSearchParams = {
   // (nearest first). Comes from the visitor's IP lookup.
   preferLat?: number | null;
   preferLng?: number | null;
+  // District whose curated "Doctors Priority" order should be applied. This is
+  // the DISPLAY district (see resolveDisplayDistrict) — when a visitor's own
+  // district has no doctors we show another district's list, and the order
+  // that belongs to it has to come along or the top of the list is arbitrary.
+  priorityDistrictId?: number | null;
 };
 
 export async function searchDoctors(
@@ -825,16 +839,56 @@ export async function searchDoctors(
     const userAreaId = params.preferAreaId;
     const userDistrictId = params.preferDistrictId;
 
+    // Rank of this doctor in the visitor's district's curated order, or a
+    // sentinel that sorts last for everyone not pinned. Both switches have to
+    // be on: the district master (`districts.priority_enabled`) and the row's
+    // own `enabled`.
+    //
+    // Emitted as a plain scalar subquery so it can lead ANY ordering — pinned
+    // doctors come first by position, and everyone else stays tied at the
+    // sentinel so the ranking underneath decides their order untouched.
+    // Distance is deliberately not consulted for pinned doctors: a curated
+    // order that distance could reshuffle would not be an order at all.
+    // A pin also has to be inside its paid window. Doctors with no payment
+    // record at all stay pinned indefinitely — an admin can curate without
+    // money changing hands — but once a doctor HAS a promotion, the dates on
+    // it govern, so an expired sponsorship drops out on its own with no cron
+    // job and no manual cleanup.
+    const priorityRankSql = params.priorityDistrictId
+      ? sql`COALESCE((
+          SELECT p.position
+          FROM district_doctor_priority p
+          JOIN districts pdd ON pdd.id = p.district_id
+          WHERE p.doctor_id = d.id
+            AND p.district_id = ${params.priorityDistrictId}
+            AND p.enabled
+            AND pdd.priority_enabled
+            AND (
+              NOT EXISTS (SELECT 1 FROM promotions pr WHERE pr.doctor_id = d.id)
+              OR EXISTS (
+                SELECT 1 FROM promotions pr
+                WHERE pr.doctor_id = d.id
+                  AND pr.status = 'active'
+                  AND CURRENT_DATE BETWEEN pr.starts_on AND pr.ends_on
+              )
+            )
+        ), 2147483647) ASC`
+      : null;
+
     // If a specific sort order is requested (e.g., by fee), use it.
     if (params.sort) {
       const orderParts = [];
+      // A curated order outranks even an explicit sort: the admin pinned these
+      // doctors to the top of this district on purpose, and a visitor sorting
+      // by fee still expects to see them first.
+      if (priorityRankSql) orderParts.push(priorityRankSql);
       switch (params.sort) {
         case "fee_asc": orderParts.push(sql`ch.fee ASC NULLS LAST`); break;
         case "fee_desc": orderParts.push(sql`ch.fee DESC NULLS LAST`); break;
         case "experience": orderParts.push(sql`d.experience_years DESC NULLS LAST`); break;
       }
       // Even with an explicit sort, we still use quality signals as a tie-breaker.
-      orderParts.push(sql`(CASE WHEN d.featured THEN 1 WHEN d.verified THEN 2 ELSE 3 END)`);
+      orderParts.push(sql`(CASE WHEN d.verified THEN 1 ELSE 2 END)`);
       orderParts.push(sql`d.updated_at DESC`);
       orderParts.push(sql`d.id DESC`);
       orderSql = sql.join(orderParts, sql`, `);
@@ -891,26 +945,24 @@ export async function searchDoctors(
         WHERE pt.lat IS NOT NULL AND pt.lng IS NOT NULL
       )`;
 
-      // Priority ladder matches the product spec:
-      //   1. Featured  ≤ 100 km
-      //   2. Verified  ≤ 100 km
-      //   3. Normal    ≤ 100 km
-      //   4. Featured  > 100 km (or unknown distance)
-      //   5. Verified  > 100 km
-      //   6. Normal    > 100 km
+      // Priority ladder:
+      //   0. Pinned in this district's curated order (by position)
+      //   1. Verified  ≤ 100 km
+      //   2. Normal    ≤ 100 km
+      //   3. Verified  > 100 km (or unknown distance)
+      //   4. Normal    > 100 km
       // Within each tier, ORDER BY distance ASC so the physically closest
       // doctor bubbles to the top. `NULLS LAST` keeps doctors with no usable
       // coord out of the way. The user's IP-derived coords come from the
       // geo cookie / Vercel edge headers, so this executes without any extra
       // IP-API fetch per request.
       orderSql = sql`
+        ${priorityRankSql ? sql`${priorityRankSql},` : sql``}
         CASE
-          WHEN d.featured AND (${minDistanceSql}) <= 100 THEN 1
-          WHEN d.verified AND (${minDistanceSql}) <= 100 THEN 2
-          WHEN (${minDistanceSql}) <= 100 THEN 3
-          WHEN d.featured THEN 4
-          WHEN d.verified THEN 5
-          ELSE 6
+          WHEN d.verified AND (${minDistanceSql}) <= 100 THEN 1
+          WHEN (${minDistanceSql}) <= 100 THEN 2
+          WHEN d.verified THEN 3
+          ELSE 4
         END ASC,
         (${minDistanceSql}) ASC NULLS LAST,
         d.updated_at DESC,
@@ -919,25 +971,20 @@ export async function searchDoctors(
     } else {
       // Fallback if no coordinates are available, but we have area/district IDs.
       orderSql = sql`
+        ${priorityRankSql ? sql`${priorityRankSql},` : sql``}
         CASE
-          -- 1. Featured in user's area
-          WHEN d.featured AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 1
-          -- 2. Featured in user's district
-          WHEN d.featured AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 2
-          -- 3. Verified in user's area
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 3
-          -- 4. Verified in user's district
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 4
-          -- 5. Normal in user's area
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 5
-          -- 6. Normal in user's district
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 6
-          -- 7. Other featured
-          WHEN d.featured THEN 7
-          -- 8. Other verified
-          WHEN d.verified THEN 8
-          -- 9. Anything else
-          ELSE 9
+          -- 1. Verified in user's area
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 1
+          -- 2. Verified in user's district
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 2
+          -- 3. Normal in user's area
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 3
+          -- 4. Normal in user's district
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 4
+          -- 5. Other verified
+          WHEN d.verified THEN 5
+          -- 6. Anything else
+          ELSE 6
         END ASC,
         d.updated_at DESC,
         d.id DESC
@@ -1320,18 +1367,22 @@ export async function expirePromotions() {
 
   if (expired.length > 0) {
     const doctorIds = expired.map((e) => e.doctorId);
-    await db
-      .update(doctorsT)
-      .set({ featured: false, updatedAt: new Date() })
-      .where(
-        and(
-          inArray(doctorsT.id, doctorIds),
-          sql`NOT EXISTS (
-            SELECT 1 FROM promotions p WHERE p.doctor_id = ${doctorsT.id}
-            AND p.status = 'active' AND p.plan IN ('featured','premium')
-          )`
+    // Switch the curated-order entry off, so the admin panel visibly shows
+    // the doctor as deselected instead of leaving a ticked box that the public
+    // ranking silently ignores. The ranking already excludes them by date; this
+    // is what makes the expiry legible to a human.
+    await db.execute(sql`
+      UPDATE district_doctor_priority p
+      SET enabled = false, updated_at = now()
+      WHERE p.doctor_id = ANY(${doctorIds})
+        AND p.enabled
+        AND NOT EXISTS (
+          SELECT 1 FROM promotions pr
+          WHERE pr.doctor_id = p.doctor_id
+            AND pr.status = 'active'
+            AND CURRENT_DATE BETWEEN pr.starts_on AND pr.ends_on
         )
-      );
+    `);
   }
   return expired.length;
 }
@@ -1431,49 +1482,6 @@ export const getNearbyAreas = async (
       district_slug: a.districtSlug
     }));
 };
-
-
-export async function getDoctorsByAreaSlug(
-  slug: string,
-  locale: Locale
-): Promise<(DoctorCardData & { specialtySlugs: string[] })[]> {
-  const rows = await db.execute<CardRow & { specialty_slugs: string[] }>(sql`
-    SELECT
-      d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified, d.featured,
-      sp.name AS specialty_ml, sp.slug AS specialty_slug,
-      hp.name AS hospital_ml, hp.slug AS hospital_slug,
-      ch.name AS chamber_ml, ar.name AS area_ml, ar.slug AS area_slug, ch.fee,
-      (
-        SELECT array_agg(s_inner.slug)
-        FROM doctor_specialties ds_inner
-        JOIN specialties s_inner ON s_inner.id = ds_inner.specialty_id
-        WHERE ds_inner.doctor_id = d.id
-      ) as specialty_slugs
-    FROM doctors d
-    JOIN chambers c ON c.doctor_id = d.id
-    JOIN areas a ON a.id = c.area_id AND a.slug = ${slug}
-    LEFT JOIN LATERAL (
-      SELECT s.name, s.slug FROM doctor_specialties ds
-      JOIN specialties s ON s.id = ds.specialty_id
-      WHERE ds.doctor_id = d.id AND ds.is_primary = TRUE
-      LIMIT 1
-    ) sp ON TRUE
-    LEFT JOIN hospitals hp ON hp.id = d.hospital_id
-    LEFT JOIN LATERAL (
-      SELECT c2.name, c2.fee, c2.area_id FROM chambers c2
-      WHERE c2.doctor_id = d.id AND c2.visible ORDER BY c2.sort LIMIT 1
-    ) ch ON TRUE
-    LEFT JOIN areas ar ON ar.id = ch.area_id
-    WHERE d.active
-    GROUP BY d.id, sp.name, sp.slug, hp.name, hp.slug, ch.name, ch.fee, ch.area_id, ar.name, ar.slug
-    ORDER BY d.featured DESC, d.verified DESC, d.updated_at DESC
-  `);
-
-  return rows.rows.map(r => ({
-    ...mapDoctorCard(r, locale),
-    specialtySlugs: r.specialty_slugs || [],
-  }));
-}
 
 
 export type AreaSearchParams = {

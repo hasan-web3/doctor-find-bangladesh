@@ -16,14 +16,27 @@ const APPT_TONES: Record<string, { tone: "blue" | "green" | "gray" | "red"; labe
 };
 
 export default async function AdminDashboard() {
-  // Lazy auto-expiry: promotions past end date are expired and featured flags synced.
+  // Lazy auto-expiry: promotions past their end date are marked expired and
+  // their curated-order entries switched off.
   await expirePromotions();
 
   const [totalsRes, monthlyRes, expiringRes, recentApptsRes, recentAuditRes] = await Promise.all([
-    db.execute<{ doctors: number; featured: number; today_appts: number; month_revenue: number; new_leads: number }>(sql`
+    db.execute<{ doctors: number; promoted: number; today_appts: number; month_revenue: number; new_leads: number }>(sql`
       SELECT
         (SELECT COUNT(*)::int FROM doctors WHERE active) AS doctors,
-        (SELECT COUNT(*)::int FROM doctors WHERE active AND featured) AS featured,
+        -- Doctors currently pinned in a live district order. Replaces the old
+        -- featured count, which no longer influences anything on the site.
+        (SELECT COUNT(DISTINCT p.doctor_id)::int
+           FROM district_doctor_priority p
+           JOIN districts dd ON dd.id = p.district_id
+           JOIN doctors doc ON doc.id = p.doctor_id
+          WHERE p.enabled AND dd.priority_enabled AND doc.active
+            AND (
+              NOT EXISTS (SELECT 1 FROM promotions pr WHERE pr.doctor_id = p.doctor_id)
+              OR EXISTS (SELECT 1 FROM promotions pr
+                          WHERE pr.doctor_id = p.doctor_id AND pr.status = 'active'
+                            AND CURRENT_DATE BETWEEN pr.starts_on AND pr.ends_on)
+            )) AS promoted,
         (SELECT COUNT(*)::int FROM appointments WHERE visit_date = CURRENT_DATE) AS today_appts,
         (SELECT COALESCE(SUM(amount),0)::int FROM promotions WHERE starts_on >= date_trunc('month', CURRENT_DATE)) AS month_revenue,
         (SELECT COUNT(*)::int FROM leads WHERE status='new') AS new_leads
@@ -64,9 +77,9 @@ export default async function AdminDashboard() {
 
   const stats = [
     { label: "মোট ডাক্তার", value: bnNum(totals?.doctors ?? 0), icon: "user", bg: "#F0FDFA", fg: "#0D9488", href: "/admin/doctors" },
-    { label: "ফিচার্ড ডাক্তার", value: bnNum(totals?.featured ?? 0), icon: "shield", bg: "#ECFDF5", fg: "#059669", href: "/admin/promotions" },
+    { label: "প্রমোশনে থাকা ডাক্তার", value: bnNum(totals?.promoted ?? 0), icon: "shield", bg: "#ECFDF5", fg: "#059669", href: "/admin/doctors-priority" },
     { label: "আজকের অ্যাপয়েন্টমেন্ট", value: bnNum(totals?.today_appts ?? 0), icon: "calendar", bg: "#EFF6FF", fg: "#2563EB", href: "/admin/appointments" },
-    { label: "চলতি মাসের প্রমোশন আয়", value: bnMoney(totals?.month_revenue ?? 0), icon: "chart", bg: "#FFF7ED", fg: "#EA580C", href: "/admin/promotions" },
+    { label: "চলতি মাসের প্রমোশন আয়", value: bnMoney(totals?.month_revenue ?? 0), icon: "chart", bg: "#FFF7ED", fg: "#EA580C", href: "/admin/doctors-priority" },
   ];
 
   const BN_MONTHS: Record<string, string> = {

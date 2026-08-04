@@ -67,7 +67,6 @@ const doctorSchema = z.object({
   treated_conditions: mlSchema,
   hospital_id: z.coerce.number().nullable().optional(),
   verified: z.boolean().default(false),
-  featured: z.boolean().default(false),
   active: z.boolean().default(true),
   meta_title: mlSchema,
   meta_description: mlSchema,
@@ -171,7 +170,6 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
       treatedConditions,
       hospitalId: doc.hospital_id ?? null,
       verified: doc.verified,
-      featured: doc.featured,
       active: doc.active,
       metaTitle: doc.meta_title,
       metaDescription: doc.meta_description,
@@ -198,7 +196,6 @@ export async function saveDoctor(payload: unknown): Promise<ActionResult> {
         treatedConditions,
         hospitalId: doc.hospital_id ?? null,
         verified: doc.verified,
-        featured: doc.featured,
         active: doc.active,
         metaTitle: doc.meta_title,
         metaDescription: doc.meta_description,
@@ -342,7 +339,7 @@ export async function getDoctor(id: number): Promise<DoctorInitial | null> {
     gender: string | null; experience_years: number | null; patients_served: MLRaw;
     treated_conditions: { bn?: string[]; en?: string[] } | null;
     hospital_id: number | null;
-    verified: boolean; featured: boolean; active: boolean;
+    verified: boolean; active: boolean;
     meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
     social_links: Partial<SocialLinksDraft> | null;
   }>(sql`SELECT * FROM doctors WHERE id=${doctorId}`);
@@ -383,7 +380,6 @@ export async function getDoctor(id: number): Promise<DoctorInitial | null> {
     },
     hospital_id: doc.hospital_id ?? null,
     verified: doc.verified,
-    featured: doc.featured,
     active: doc.active,
     meta_title: toML(doc.meta_title),
     meta_description: toML(doc.meta_description),

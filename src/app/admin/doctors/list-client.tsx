@@ -19,7 +19,7 @@ const NEW_DOCTOR: DoctorInitial = {
   name: { ...emptyML }, slug: "", degrees: { ...emptyML }, bio: { ...emptyML }, gender: null,
   experience_years: null, patients_served: { ...emptyML }, treated_conditions: { ...emptyML },
   hospital_id: null,
-  verified: true, featured: false, active: true,
+  verified: true, active: true,
   meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
   social_links: EMPTY_SOCIAL_LINKS(),
   specialty_ids: [],
@@ -37,7 +37,7 @@ type AreaOpt = {
   district_id: number | null; district_bn: string | null; district_en?: string | null;
 };
 type Row = {
-  id: number; slug: string; name_bn: string; verified: boolean; featured: boolean; active: boolean;
+  id: number; slug: string; name_bn: string; verified: boolean; active: boolean;
   specialty_bn: string | null; area_bn: string | null; promo_ends: string | null;
 };
 
@@ -148,7 +148,7 @@ export function DoctorsList({
       <div className="mb-[18px] flex flex-wrap items-center justify-between gap-3">
         <DebouncedSearch initial={q} placeholder="ডাক্তার খুঁজুন / Search doctors" />
         <div className="flex gap-2">
-          {[["", "সব"], ["featured", "ফিচার্ড"], ["inactive", "নিষ্ক্রিয়"]].map(([value, label]) => (
+          {[["", "সব"], ["inactive", "নিষ্ক্রিয়"]].map(([value, label]) => (
             <Link
               key={value}
               href={`/admin/doctors${value ? `?filter=${value}` : ""}`}
@@ -206,7 +206,7 @@ export function DoctorsList({
                   className="h-4 w-4 cursor-pointer accent-brand-600"
                 />
               </th>
-              {["ডাক্তার", "বিভাগ", "থানা / উপজেলা", "স্ট্যাটাস", "ফিচার্ড", "প্রমোশন মেয়াদ", "অ্যাকশন"].map((h) => (
+              {["ডাক্তার", "বিভাগ", "থানা / উপজেলা", "স্ট্যাটাস", "প্রমোশন মেয়াদ", "অ্যাকশন"].map((h) => (
                 <th key={h} className="border-b border-line px-3.5 py-3 text-left text-[12.5px] font-semibold text-ink-ghost">{h}</th>
               ))}
             </tr>
@@ -233,9 +233,6 @@ export function DoctorsList({
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{d.area_bn || "..."}</td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                   <StatusBadge tone={d.active ? "green" : "amber"}>{d.active ? "সক্রিয়" : "নিষ্ক্রিয়"}</StatusBadge>
-                </td>
-                <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-xs font-bold text-[#B45309]">
-                  {d.featured ? "★ হ্যাঁ" : ""}
                 </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px] text-ink-faint">
                   {d.promo_ends ? bnDate(d.promo_ends) : "..."}

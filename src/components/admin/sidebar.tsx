@@ -9,12 +9,12 @@ import { UnreadBadge, useNotifications } from "@/components/admin/notifications"
 const NAV: { label: string; href: string; icon: string }[] = [
   { label: "ড্যাশবোর্ড", href: "/admin", icon: "chart" },
   { label: "ডাক্তার", href: "/admin/doctors", icon: "user" },
+  { label: "প্রমোশন ও পেমেন্ট", href: "/admin/doctors-priority", icon: "shield" },
   { label: "বিভাগ", href: "/admin/specialties", icon: "activity" },
   { label: "জেলা", href: "/admin/districts", icon: "pin" },
   { label: "শহর / গ্রাম", href: "/admin/areas", icon: "pin" },
   { label: "হাসপাতাল", href: "/admin/hospitals", icon: "building" },
   { label: "অ্যাপয়েন্টমেন্ট", href: "/admin/appointments", icon: "calendar" },
-  { label: "প্রমোশন ও পেমেন্ট", href: "/admin/promotions", icon: "shield" },
   { label: "লিড / যোগাযোগ", href: "/admin/leads", icon: "phone" },
   { label: "ব্লগ", href: "/admin/blog", icon: "book" },
   { label: "রিভিউ", href: "/admin/reviews", icon: "heart" },
@@ -36,7 +36,11 @@ export function AdminSidebar() {
   // Read-only here on purpose: clicking a menu item must NOT clear its badge.
   // The badge stays until the admin opens the actual new row in the list.
   const { counts } = useNotifications();
-  const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
+  // Boundary-aware: a plain startsWith would light up "ডাক্তার" while the
+  // visitor is on /admin/doctors-priority, since one href is a prefix of the
+  // other.
+  const isActive = (href: string) =>
+    href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <aside className="flex flex-col bg-ink text-[#CBD5E1] md:sticky md:top-0 md:h-screen">

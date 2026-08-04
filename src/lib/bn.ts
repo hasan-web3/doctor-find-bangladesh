@@ -21,6 +21,52 @@ export function withPossessive(word: string): string {
   return `${word}ের`;
 }
 
+// Human-readable span between two ISO dates, in Bangla.
+//
+// Counted the way a sponsorship is sold: 8 March → 8 April reads as "১ মাস",
+// not "৩১ দিন". So the walk is calendar-based (years, then months, then the
+// leftover days) rather than a raw millisecond division, which would drift
+// across months of different lengths and across leap years.
+//
+// Whole weeks get their own phrasing because that is how short packages are
+// usually quoted — 14 days is "২ সপ্তাহ", but 15 days stays "১৫ দিন".
+export function bnDuration(startIso: string, endIso: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startIso) || !/^\d{4}-\d{2}-\d{2}$/.test(endIso)) return null;
+  const [sy, sm, sd] = startIso.split("-").map(Number);
+  const [ey, em, ed] = endIso.split("-").map(Number);
+  const start = Date.UTC(sy, sm - 1, sd);
+  const end = Date.UTC(ey, em - 1, ed);
+  if (end < start) return null;
+
+  const totalDays = Math.round((end - start) / 86400000);
+  // Same start and end still means the doctor is promoted that day.
+  if (totalDays === 0) return "১ দিন";
+
+  let years = ey - sy;
+  let months = em - sm;
+  let days = ed - sd;
+  if (days < 0) {
+    months -= 1;
+    // Days in the month preceding the end date — day 0 of a month is the last
+    // day of the previous one.
+    days += new Date(Date.UTC(ey, em - 1, 0)).getUTCDate();
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  if (years === 0 && months === 0 && days % 7 === 0 && days >= 7) {
+    return `${bnNum(days / 7)} সপ্তাহ`;
+  }
+
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${bnNum(years)} বছর`);
+  if (months > 0) parts.push(`${bnNum(months)} মাস`);
+  if (days > 0) parts.push(`${bnNum(days)} দিন`);
+  return parts.join(" ");
+}
+
 const bnDigits = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
 
 export function bnNum(n: number | string): string {

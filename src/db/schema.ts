@@ -86,6 +86,10 @@ export const districts = pgTable(
     metaDescription: jsonb("meta_description").$type<ML>().notNull().default(mlEmpty),
     active: boolean("active").notNull().default(true),
     sort: integer("sort").notNull().default(0),
+    // Master switch for the district's curated doctor order. Off => the whole
+    // district falls back to normal geo ranking even if rows exist in
+    // district_doctor_priority, so an order can be paused without losing it.
+    priorityEnabled: boolean("priority_enabled").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -175,7 +179,6 @@ export const doctors = pgTable(
     photoKey: text("photo_key"),
     photoUrl: text("photo_url"),
     verified: boolean("verified").notNull().default(false),
-    featured: boolean("featured").notNull().default(false),
     active: boolean("active").notNull().default(true),
     metaTitle: jsonb("meta_title").$type<ML>().notNull().default(mlEmpty),
     metaDescription: jsonb("meta_description").$type<ML>().notNull().default(mlEmpty),
@@ -187,8 +190,29 @@ export const doctors = pgTable(
   },
   (t) => ({
     genderCk: check("doctors_gender_check", sql`${t.gender} IN ('male', 'female', 'other')`),
-    flagsIdx: index("idx_doctors_flags").on(t.active, t.featured),
     hospitalIdx: index("idx_doctors_hospital").on(t.hospitalId),
+  })
+);
+
+// Curated "these doctors first, in this order" list, scoped to one district.
+// Replaces the old site-wide `doctors.featured` ranking tier, which could not
+// say anything district-specific. See migrations/009_doctor_priority.sql.
+export const districtDoctorPriority = pgTable(
+  "district_doctor_priority",
+  {
+    districtId: bigint("district_id", { mode: "number" }).notNull().references(() => districts.id, { onDelete: "cascade" }),
+    doctorId: bigint("doctor_id", { mode: "number" }).notNull().references(() => doctors.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    // Per-doctor switch, so one entry can be parked without dragging it out of
+    // the list and re-adding it later.
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.districtId, t.doctorId] }),
+    positionIdx: index("idx_ddp_district_position").on(t.districtId, t.position),
+    doctorIdx: index("idx_ddp_doctor").on(t.doctorId),
   })
 );
 

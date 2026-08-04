@@ -1,5 +1,3 @@
-import { Suspense } from 'react';
-import Loading from './loading';
 import Link from "next/link";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { NotificationBell, NotificationsProvider } from "@/components/admin/notifications";
@@ -44,7 +42,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </button>
           </form>
         </div>
-        <div className="px-[22px] pb-[60px] pt-6"><Suspense fallback={<Loading />}>{children}</Suspense></div>
+        {/* See the note in (public)/layout.tsx: ./loading.tsx supplies the
+            Suspense boundary in the right place, a manual one here would sit
+            outside error.tsx and swallow the error page. */}
+        <div className="px-[22px] pb-[60px] pt-6">{children}</div>
       </div>
     </div>
     </NotificationsProvider>

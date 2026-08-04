@@ -31,6 +31,7 @@ export async function GET(
         perPage,
         preferAreaId: geo.areaId,
         preferDistrictId: display?.id ?? geo.districtId,
+        priorityDistrictId: display?.id ?? geo.districtId,
         preferLat: geo.lat,
         preferLng: geo.lng,
       },

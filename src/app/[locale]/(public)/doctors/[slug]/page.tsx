@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
-import { getDoctorBySlug, getFaqs, searchDoctors } from "@/lib/data";
+import { getDoctorBySlug, getFaqs, searchDoctors, geoSearchPrefs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldPhysician, ldFaq } from "@/lib/seo-utils";
@@ -96,10 +96,7 @@ export default async function DoctorDetailPage({ params }: Props) {
   // Suggested doctors: geo-preferred (featured-first within visitor's area), excluding this one.
   const suggested = (await searchDoctors(
     {
-      preferLat: geo.lat,
-      preferLng: geo.lng,
-      preferAreaId: geo.areaId,
-      preferDistrictId: geo.districtId,
+      ...(await geoSearchPrefs(geo, locale)),
       perPage: 12,
       excludeId: doc.id,
     },

@@ -15,16 +15,15 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
 
   const conds: SQL[] = [sql`TRUE`];
   if (q) conds.push(searchClause(q, [sql`d.name->>'bn'`, sql`d.name->>'en'`, sql`d.slug`]));
-  if (sp.filter === "featured") conds.push(sql`d.featured`);
   if (sp.filter === "inactive") conds.push(sql`NOT d.active`);
   const where = sql.join(conds, sql` AND `);
 
   const [rowsRes, totalRes, spRes, arRes, hoRes, diRes] = await Promise.all([
     db.execute<{
-      id: number; slug: string; name_bn: string; verified: boolean; featured: boolean; active: boolean;
+      id: number; slug: string; name_bn: string; verified: boolean; active: boolean;
       specialty_bn: string | null; area_bn: string | null; promo_ends: string | null;
     }>(sql`
-      SELECT d.id, d.slug, d.name->>'bn' AS name_bn, d.verified, d.featured, d.active,
+      SELECT d.id, d.slug, d.name->>'bn' AS name_bn, d.verified, d.active,
         (SELECT s.name->>'bn' FROM doctor_specialties ds JOIN specialties s ON s.id=ds.specialty_id
          WHERE ds.doctor_id=d.id ORDER BY ds.is_primary DESC LIMIT 1) AS specialty_bn,
         (SELECT a.name->>'bn' FROM chambers c JOIN areas a ON a.id=c.area_id

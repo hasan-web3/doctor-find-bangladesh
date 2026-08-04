@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import { headers } from "next/headers";
-import Loading from "./loading";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/public/navbar";
 import { BottomNav } from "@/components/public/bottom-nav";
@@ -116,7 +114,12 @@ export default async function PublicLayout({
           districts={rankedDistricts}
           d={d}
         />
-        <main><Suspense fallback={<Loading />}>{children}</Suspense></main>
+        {/* No manual <Suspense> here. ./loading.tsx already gives this segment
+            a Suspense boundary, and Next places it INSIDE error.tsx's boundary.
+            Wrapping children by hand put the fallback outside the error
+            boundary instead, so a page that threw left the visitor staring at
+            the loading skeleton forever rather than seeing the error page. */}
+        <main>{children}</main>
         <Footer locale={locale} />
         {/* Spacer so the last inch of every page stays visible above the
             fixed bottom tab bar on mobile; noop on desktop. */}

@@ -37,7 +37,7 @@ export default async function NewDoctorPage() {
           name: { ...emptyML }, slug: "", degrees: { ...emptyML }, bio: { ...emptyML }, gender: null,
           experience_years: null, patients_served: { ...emptyML }, treated_conditions: { ...emptyML },
           hospital_id: null,
-          verified: true, featured: false, active: true,
+          verified: true, active: true,
           meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
           social_links: EMPTY_SOCIAL_LINKS(),
           specialty_ids: [],

@@ -54,7 +54,7 @@ export type DoctorInitial = {
   // bn and en can be edited side-by-side.
   treated_conditions: ML;
   hospital_id: number | null;
-  verified: boolean; featured: boolean; active: boolean;
+  verified: boolean; active: boolean;
   meta_title: ML; meta_description: ML; photo_url: string | null;
   social_links: SocialLinksDraft;
   specialty_ids: number[]; chambers: ChamberDraft[];
@@ -215,7 +215,6 @@ export function DoctorForm({
               />
               <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
                 <Toggle checked={form.verified} onChange={(v) => set("verified", v)} label="ভেরিফায়েড" />
-                <Toggle checked={form.featured} onChange={(v) => set("featured", v)} label="ফিচার্ড হিসেবে দেখান" />
                 <Toggle checked={form.active} onChange={(v) => set("active", v)} label="সক্রিয় (পাবলিক সাইটে দেখাবে)" />
               </div>
             </div>

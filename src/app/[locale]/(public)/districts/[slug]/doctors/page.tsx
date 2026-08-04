@@ -80,6 +80,10 @@ export default async function DistrictDoctorsPage({ params, searchParams }: Prop
     preferDistrictId: !sp.area && !sp.sort ? geo.districtId : null,
     preferLat: !sp.sort ? geo.lat : null,
     preferLng: !sp.sort ? geo.lng : null,
+    // This page IS a district, so its own curated order wins over the
+    // visitor's. Someone browsing /districts/khulna/doctors is asking about
+    // Khulna, whatever their cookie says.
+    priorityDistrictId: district.id,
   };
 
   const { rows, total } = await searchDoctors(query, locale);

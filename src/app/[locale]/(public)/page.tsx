@@ -27,7 +27,7 @@ const AreaMap = dynamic(() =>
   import("@/components/public/area-map").then((m) => m.AreaMap),
 );
 import {
-  getSpecialties, getAreas, getFeaturedDoctors, searchHospitals,
+  getSpecialties, getAreas, searchHospitals,
   getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
   getDistrictsForSearch, getThanasForSearch, getBusiestAreaByDistrict, resolveDisplayDistrict,
   getNearbyAreas, type Area, type Specialty,

@@ -3,7 +3,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { Icon } from "@/components/icons";
-import { getHospitalBySlug, getFaqs, searchDoctors } from "@/lib/data";
+import { getHospitalBySlug, getFaqs, searchDoctors, geoSearchPrefs } from "@/lib/data";
 import { db } from "@/db";
 import { doctorSpecialties, specialties as specialtiesT } from "@/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
@@ -69,10 +69,7 @@ export default async function HospitalPage({ params }: Props) {
       hospitalId: h.id,
       page: 1,
       perPage: 12,
-      preferLat: geo.lat,
-      preferLng: geo.lng,
-      preferAreaId: geo.areaId,
-      preferDistrictId: geo.districtId,
+      ...(await geoSearchPrefs(geo, locale)),
     }, locale),
     getEnabledConfig("google_maps"),
     // Only look up the specialties this hospital actually lists — matching on

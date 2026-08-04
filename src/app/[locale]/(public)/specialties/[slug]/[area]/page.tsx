@@ -65,7 +65,15 @@ export default async function SpecialtyAreaPage({ params, searchParams }: Props)
 
   const [settings, { rows, total }] = await Promise.all([
     getSettings(),
-    searchDoctors({ specialty: spec.slug, area: areaRow.slug, page, perPage: sanitizedPerPage }, locale),
+    // Scoped to one thana, so the curated order of the district that thana
+    // belongs to applies — same rule as the plain thana page.
+    searchDoctors({
+      specialty: spec.slug,
+      area: areaRow.slug,
+      page,
+      perPage: sanitizedPerPage,
+      priorityDistrictId: areaRow.district_id ?? null,
+    }, locale),
   ]);
   const totalPages = Math.ceil(total / sanitizedPerPage);
   const short = spec.name.split(" (")[0];

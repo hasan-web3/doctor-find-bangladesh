@@ -8,7 +8,7 @@ import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/l
 import { AnimatedGrid } from "@/components/animated-grid";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
-  getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict,
+  getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict, geoSearchPrefs,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -76,6 +76,7 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
     ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
     : (locale === "bn" ? "আপনার এলাকার ডাক্তারদের তালিকা" : "Doctors in Your Area");
 
+  const geoPrefs = await geoSearchPrefs(geo, locale);
 
   const query: DoctorSearchParams = {
     q: typeof sp.q === "string" ? sp.q : undefined,
@@ -88,10 +89,13 @@ export default async function DoctorsPage({ params, searchParams }: Props) {
     sort: (typeof sp.sort === "string" ? sp.sort : undefined) as DoctorSearchParams["sort"],
     page: sp.page ? Math.max(1, Number(sp.page)) : 1,
     perPage: sanitizedPerPage,
-    preferAreaId: !sp.area && !sp.sort ? geo.areaId : null,
-    preferDistrictId: !sp.area && !sp.sort ? geo.districtId : null,
-    preferLat: !sp.sort ? geo.lat : null,
-    preferLng: !sp.sort ? geo.lng : null,
+    preferAreaId: !sp.area && !sp.sort ? geoPrefs.preferAreaId : null,
+    preferDistrictId: !sp.area && !sp.sort ? geoPrefs.preferDistrictId : null,
+    preferLat: !sp.sort ? geoPrefs.preferLat : null,
+    preferLng: !sp.sort ? geoPrefs.preferLng : null,
+    // Unconditional: an explicit filter or sort narrows *which* doctors are
+    // listed, it does not mean the admin's curated order stops applying.
+    priorityDistrictId: geoPrefs.priorityDistrictId,
   };
 
   const { rows, total } = await searchDoctors(query, locale);

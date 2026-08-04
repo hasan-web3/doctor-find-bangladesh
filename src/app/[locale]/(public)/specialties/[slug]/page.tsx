@@ -5,7 +5,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { detectArea } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -83,10 +83,7 @@ export default async function SpecialtyPage({ params, searchParams }: Props) {
       page: 1,
       perPage: 12,
       q: sp.q,
-      preferAreaId: geo.areaId,
-      preferDistrictId: geo.districtId,
-      preferLat: geo.lat,
-      preferLng: geo.lng,
+      ...(await geoSearchPrefs(geo, locale)),
     }, locale),
   ]);
 

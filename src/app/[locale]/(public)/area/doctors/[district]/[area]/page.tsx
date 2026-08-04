@@ -76,6 +76,9 @@ export default async function AreaPage({ params, searchParams }: Props) {
       preferDistrictId: geo.districtId,
       preferLat: geo.lat,
       preferLng: geo.lng,
+      // A thana page belongs to one district, so that district's curated
+      // order applies here regardless of where the visitor is.
+      priorityDistrictId: area.district_id ?? null,
     }, locale),
   ]);
 

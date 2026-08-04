@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getHospitalBySlug, searchDoctors } from "@/lib/data";
+import { getHospitalBySlug, searchDoctors, geoSearchPrefs } from "@/lib/data";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { detectArea } from "@/lib/geo";
 
@@ -34,8 +34,7 @@ export async function GET(
         specialty: specialty ? specialty.split(",") : undefined,
         page,
         perPage,
-        preferLat: geo.lat,
-        preferLng: geo.lng
+        ...(await geoSearchPrefs(geo, locale as Locale)),
       },
       locale
     );

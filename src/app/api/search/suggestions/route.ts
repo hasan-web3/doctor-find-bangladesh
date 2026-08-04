@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchDoctors, type DoctorSearchParams } from "@/lib/data";
+import { searchDoctors, geoSearchPrefs, type DoctorSearchParams } from "@/lib/data";
 import { detectArea } from "@/lib/geo";
 import { isLocale, type Locale } from "@/lib/i18n";
 
@@ -25,10 +25,7 @@ export async function GET(request: Request) {
   const params: DoctorSearchParams = {
     q,
     perPage: 5, // Limit to 5 suggestions
-    preferLat: geo.lat,
-    preferLng: geo.lng,
-    preferAreaId: geo.areaId,
-    preferDistrictId: geo.districtId,
+    ...(await geoSearchPrefs(geo, locale)),
   };
 
   try {
