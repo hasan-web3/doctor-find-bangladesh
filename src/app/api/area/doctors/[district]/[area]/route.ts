@@ -1,51 +1,55 @@
 import { NextResponse } from "next/server";
-import { searchDoctors, resolveDisplayDistrict } from "@/lib/data";
+import { searchDoctors, getDistrictsForGeo } from "@/lib/data";
+import { geoRankingFromParams } from "@/lib/geo-request";
 import { isLocale, type Locale } from "@/lib/i18n";
-import { detectArea } from "@/lib/geo";
+
+// Doctors in one thana, for <AreaDoctorListClient>.
+//
+// The URL pins WHICH doctors are listed; the visitor's location only decides
+// the order within that thana. So the page's own district supplies both the
+// preference and the curated order — someone on /area/doctors/khulna/boyra is
+// asking about Boyra, whatever their cookie says — while their coordinates
+// still rank the results nearest-first inside it.
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ district: string, area: string }> }
+  { params }: { params: Promise<{ district: string; area: string }> }
 ) {
   const { district, area } = await params;
-  const { searchParams } = new URL(req.url);
-  const locale = searchParams.get("locale");
-  const q = searchParams.get("q") || undefined;
-  const specialty = searchParams.get("specialty") || undefined;
-  const page = Number(searchParams.get("page") || "1");
-  const perPage = Number(searchParams.get("perPage") || "12");
+  const sp = new URL(req.url).searchParams;
+  const locale = sp.get("locale");
+  const q = sp.get("q") || undefined;
+  const specialty = sp.get("specialty") || undefined;
+  const page = Number(sp.get("page") || "1");
+  const perPage = Number(sp.get("perPage") || "12");
 
   if (!locale || !isLocale(locale)) {
     return NextResponse.json({ error: "Invalid locale" }, { status: 400 });
   }
 
   try {
-    const geo = await detectArea();
-  // Rank by the district the site actually NAMES for this visitor, so a
-  // client refetch cannot reorder the list around their empty district.
-  const display = await resolveDisplayDistrict(geo, locale as Locale);
+    const districts = await getDistrictsForGeo();
+    const ownDistrictId = districts.find((x) => x.slug === district)?.id ?? null;
+    const ranking = await geoRankingFromParams(sp, locale as Locale, ownDistrictId);
+
     const results = await searchDoctors(
       {
-        district: district,
-        area: area,
+        district,
+        area,
         q,
         specialty: specialty ? specialty.split(",") : undefined,
         page,
         perPage,
-        preferAreaId: geo.areaId,
-        preferDistrictId: display?.id ?? geo.districtId,
-        priorityDistrictId: display?.id ?? geo.districtId,
-        preferLat: geo.lat,
-        preferLng: geo.lng,
+        ...ranking,
+        preferDistrictId: ownDistrictId ?? ranking.preferDistrictId,
       },
       locale as Locale
     );
-    return NextResponse.json(results);
+    return NextResponse.json(results, {
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+    });
   } catch (error) {
     console.error("Failed to search doctors for area:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

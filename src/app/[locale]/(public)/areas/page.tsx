@@ -69,9 +69,7 @@ export default async function AreasPage({ params }: Props) {
       <h1 className="mb-1.5 font-heading text-[clamp(26px,4vw,34px)] font-bold text-ink">{d.sec_area_title}</h1>
       <p className="mb-8 text-base text-ink-mute">{areaSub}</p>
 
-      <AreaListClient 
-        userLat={geo.lat}
-        userLng={geo.lng}
+      <AreaListClient
         locale={locale}
         initialAreas={initialAreasData.rows}
         initialTotal={initialAreasData.total}

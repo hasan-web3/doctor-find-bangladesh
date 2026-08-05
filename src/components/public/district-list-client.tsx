@@ -12,6 +12,7 @@ import { localeHref, num, type Locale } from "@/lib/i18n";
 import type { District } from "@/lib/data";
 import Link from "next/link";
 import { Shimmer } from "@/components/shimmer";
+import { useGeoQuery } from "@/components/public/use-geo-query";
 
 // A simple debounce hook
 function useDebounce(value: string, delay: number): string {
@@ -28,14 +29,15 @@ function useDebounce(value: string, delay: number): string {
 }
 
 type Props = {
-  userLat: number | null;
-  userLng: number | null;
   locale: Locale;
   initialDistricts: District[];
   initialTotal: number;
 };
 
-export function DistrictListClient({ userLat, userLng, locale, initialDistricts, initialTotal }: Props) {
+// Same story as <AreaListClient>: the coordinates used to arrive as props read
+// off STATIC_GEO on a cached page, so they were always null and the nearest-
+// first ordering never ran. They come from <LocationProvider> now.
+export function DistrictListClient({ locale, initialDistricts, initialTotal }: Props) {
   const [districts, setDistricts] = useState<District[]>(initialDistricts);
   const [total, setTotal] = useState(initialTotal);
   const [query, setQuery] = useState("");
@@ -44,16 +46,20 @@ export function DistrictListClient({ userLat, userLng, locale, initialDistricts,
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
   const isInitialRender = useRef(true);
+  const geo = useGeoQuery();
 
   const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
     // Server already rendered the slice named by ?page=; only a search box
-    // entry needs a client refetch on the first pass.
+    // entry, or a visitor we can actually place, needs a first-pass refetch.
     if (isInitialRender.current && !debouncedQuery) {
       isInitialRender.current = false;
-      return;
+      if (!geo.hasLocation) return;
     }
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchDistricts = async () => {
       setIsLoading(true);
@@ -65,27 +71,34 @@ export function DistrictListClient({ userLat, userLng, locale, initialDistricts,
       if (debouncedQuery) {
         params.set("q", debouncedQuery);
       } else {
-        if (userLat) params.set("lat", String(userLat));
-        if (userLng) params.set("lng", String(userLng));
+        geo.apply(params);
       }
 
       try {
-        const res = await fetch(`/api/search/districts?${params.toString()}`);
+        const res = await fetch(`/api/search/districts?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
+        if (cancelled) return;
         setDistricts(data.rows || []);
         setTotal(data.total || 0);
       } catch (error) {
-        console.error("Failed to fetch districts:", error);
-        setDistricts([]);
-        setTotal(0);
+        if ((error as Error)?.name !== "AbortError" && !cancelled) {
+          console.error("Failed to fetch districts:", error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchDistricts();
-  }, [debouncedQuery, currentPage, perPage, userLat, userLng, locale]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, currentPage, perPage, geo.key, locale]);
 
   // Reset to page 1 when the search text changes (and only then).
   useResetPageOnFilterChange(debouncedQuery, resetPage);

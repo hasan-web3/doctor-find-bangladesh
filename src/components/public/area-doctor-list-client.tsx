@@ -14,6 +14,7 @@ import { getDict } from "@/lib/dict";
 import { t, type Locale } from "@/lib/i18n";
 import type { DoctorCardData, Specialty } from "@/lib/data";
 import { Shimmer } from "@/components/shimmer";
+import { useGeoQuery } from "@/components/public/use-geo-query";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -82,13 +83,20 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
     () => new Map(allSpecialties.map((s) => [s.slug, s.id])),
     [allSpecialties]
   );
-  
+  const geo = useGeoQuery();
+
   useEffect(() => {
     // Skip fetch on initial render if no filters are applied, because we have initial data
     if (isInitialRender.current && currentPage === 1 && !debouncedNameQuery && selectedSpecialtySlugs.length === 0) {
       isInitialRender.current = false;
-      return;
+      // ...unless we can place the visitor. The URL decides WHICH doctors are
+      // listed here, but their coordinates decide the order within the thana,
+      // and the cached HTML was rendered without them.
+      if (!geo.hasLocation) return;
     }
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchDoctors = async () => {
       if (!areaSlug || !districtSlug) return;
@@ -104,24 +112,33 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
       if (selectedSpecialtySlugs.length > 0) {
         apiParams.set("specialty", selectedSpecialtySlugs.join(","));
       }
+      geo.apply(apiParams);
 
       try {
-        const res = await fetch(`/api/area/doctors/${districtSlug}/${areaSlug}?${apiParams.toString()}`);
+        const res = await fetch(`/api/area/doctors/${districtSlug}/${areaSlug}?${apiParams.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch doctors");
         const data = await res.json();
+        if (cancelled) return;
         setDoctors(data.rows || []);
         setTotal(data.total || 0);
       } catch (error) {
-        console.error(error);
-        setDoctors([]);
-        setTotal(0);
+        if ((error as Error)?.name !== "AbortError" && !cancelled) {
+          console.error("Area doctor list refetch failed:", error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchDoctors();
-  }, [districtSlug, areaSlug, locale, currentPage, perPage, debouncedNameQuery, selectedSpecialtySlugs]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [districtSlug, areaSlug, locale, currentPage, perPage, debouncedNameQuery, selectedSpecialtySlugs, geo.key]);
 
   // Reset page when the name or specialty filters change (and only then).
   useResetPageOnFilterChange(

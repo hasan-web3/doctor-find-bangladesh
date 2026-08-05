@@ -1,40 +1,39 @@
 import { NextResponse } from "next/server";
-import { searchAreas, type AreaSearchParams, resolveDisplayDistrict } from "@/lib/data";
-import { detectArea } from "@/lib/geo";
+import { searchAreas, type AreaSearchParams } from "@/lib/data";
+import { geoRankingFromParams } from "@/lib/geo-request";
 import { isLocale, type Locale } from "@/lib/i18n";
 
-export const dynamic = "force-dynamic";
+// Thana index for <AreaListClient>.
+//
+// Location arrives as explicit query params from <LocationProvider> rather than
+// from detectArea() here — see src/lib/geo-request.ts for why.
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  
-  // Extract and validate locale
-  const locale = searchParams.get("locale");
+  const sp = new URL(request.url).searchParams;
+
+  const locale = sp.get("locale");
   if (!isLocale(locale)) {
     return NextResponse.json({ error: "Invalid locale" }, { status: 400 });
   }
 
-  // Resolve the visitor's geo server-side (geo cookie / Vercel edge headers)
-  // so page 2+ is ranked on exactly the same basis as the server-rendered
-  // page 1. Explicit lat/lng in the query still wins if the client sent them.
-  const geo = await detectArea();
-  // Rank by the district the site actually NAMES for this visitor, so a
-  // client refetch cannot reorder the list around their empty district.
-  const display = await resolveDisplayDistrict(geo, locale as Locale);
+  const ranking = await geoRankingFromParams(sp, locale as Locale);
 
   const params: AreaSearchParams = {
-    q: searchParams.get("q") || undefined,
-    page: searchParams.has("page") ? Number(searchParams.get("page")) : 1,
-    perPage: searchParams.has("perPage") ? Number(searchParams.get("perPage")) : 50,
-    preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : geo.lat,
-    preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : geo.lng,
-    preferAreaId: geo.areaId,
-    preferDistrictId: display?.id ?? geo.districtId,
+    q: sp.get("q") || undefined,
+    page: sp.has("page") ? Number(sp.get("page")) : 1,
+    perPage: sp.has("perPage") ? Number(sp.get("perPage")) : 50,
+    preferLat: ranking.preferLat,
+    preferLng: ranking.preferLng,
+    preferAreaId: ranking.preferAreaId,
+    preferDistrictId: ranking.preferDistrictId,
   };
 
   try {
     const { rows, total } = await searchAreas(params, locale as Locale);
-    return NextResponse.json({ rows, total });
+    return NextResponse.json(
+      { rows, total },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
+    );
   } catch (error) {
     console.error("Area search API error:", error);
     return NextResponse.json({ error: "An internal server error occurred." }, { status: 500 });

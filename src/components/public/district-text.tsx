@@ -31,7 +31,10 @@ export function DistrictText({
   locale: Locale;
   possessive?: boolean;
   className?: string;
-  as?: "span" | "p" | "div";
+  /** Headings are included so a page title can follow the list under it. The
+   *  server still renders the canonical district into the tag, so the <h1> a
+   *  crawler sees is complete and identical for everyone. */
+  as?: "span" | "p" | "div" | "h1" | "h2" | "h3";
 }) {
   const { name } = useShownDistrict();
   const Tag = as;

@@ -52,6 +52,12 @@ export type LocationContextValue = {
   setDistrict: (slug: string) => void;
   /** Forget the stored answer and fall back to the IP guess. */
   clearDistrict: () => void;
+  /**
+   * Coordinates for any district we serve. The server already ships this list
+   * inside the cached HTML, so a consumer that needs to point at a district on
+   * a map costs no request and no extra bytes.
+   */
+  districtCoords: (slug: string | null) => { lat: number; lng: number } | null;
 };
 
 const LocationContext = createContext<LocationContextValue>({
@@ -59,6 +65,7 @@ const LocationContext = createContext<LocationContextValue>({
   ready: false,
   setDistrict: () => {},
   clearDistrict: () => {},
+  districtCoords: () => null,
 });
 
 export function useLocation(): LocationContextValue {
@@ -89,6 +96,11 @@ export function LocationProvider({
 }) {
   const [location, setLocation] = useState<ClientLocation>(EMPTY_LOCATION);
   const [ready, setReady] = useState(false);
+  // Bumped to force the resolve effect to run again. `clearDistrict` used to
+  // delete the cookie and flip `ready` back and forth, but neither of the
+  // effect's dependencies changed, so tier 2/3 never re-ran and the visitor was
+  // left with no location at all until they reloaded the page by hand.
+  const [resolveNonce, setResolveNonce] = useState(0);
 
   const fromDistrictSlug = useCallback(
     (slug: string): ClientLocation | null => {
@@ -163,7 +175,7 @@ export function LocationProvider({
     return () => {
       cancelled = true;
     };
-  }, [fromDistrictSlug, locale]);
+  }, [fromDistrictSlug, locale, resolveNonce]);
 
   const setDistrict = useCallback(
     (slug: string) => {
@@ -184,16 +196,29 @@ export function LocationProvider({
 
   const clearDistrict = useCallback(() => {
     deleteCookie(DISTRICT_COOKIE);
+    deleteCookie(AREA_COOKIE);
     clearCachedIpLocation();
     setLocation(EMPTY_LOCATION);
+    // Back to "resolving": the bump below re-enters the effect, which walks
+    // tiers 1-3 again and sets `ready` when it lands. Flipping `ready` true
+    // here instead is what used to strand the visitor with an empty location.
     setReady(false);
-    // Re-run tier 2/3 on the next effect pass.
-    setReady(true);
+    setResolveNonce((n) => n + 1);
   }, []);
 
+  const districtCoords = useCallback(
+    (slug: string | null) => {
+      if (!slug) return null;
+      const hit = districts.find((x) => x.slug === slug);
+      if (!hit || hit.lat === null || hit.lng === null) return null;
+      return { lat: hit.lat, lng: hit.lng };
+    },
+    [districts]
+  );
+
   const value = useMemo<LocationContextValue>(
-    () => ({ location, ready, setDistrict, clearDistrict }),
-    [location, ready, setDistrict, clearDistrict]
+    () => ({ location, ready, setDistrict, clearDistrict, districtCoords }),
+    [location, ready, setDistrict, clearDistrict, districtCoords]
   );
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;

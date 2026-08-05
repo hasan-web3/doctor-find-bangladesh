@@ -25,6 +25,13 @@ export const AREA_COOKIE = "db_area";
 export const IP_CACHE_KEY = "db_ip_location";
 export const IP_CACHE_TTL_MS = 30 * 60 * 1000;
 
+// Bumped whenever the SERVER's detection changes shape or accuracy. Without it
+// a visitor who was mislocated before a fix kept being served the wrong answer
+// out of their own localStorage for another half hour, with no way to clear it
+// except waiting — the fix shipped and nothing visibly changed for them.
+// Entries stamped with anything other than the current version are a miss.
+export const IP_CACHE_VERSION = 2;
+
 export type LocationSource =
   /** The visitor picked a district themselves. Outranks everything. */
   | "manual"
@@ -112,8 +119,20 @@ export function readCachedIpLocation(): ClientLocation | null {
   try {
     const raw = window.localStorage.getItem(IP_CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { value: ClientLocation; expires: number };
+    const parsed = JSON.parse(raw) as { value: ClientLocation; expires: number; v?: number };
+    // A missing or older `v` is an answer from a build whose detection we no
+    // longer trust. Drop it and ask again rather than replaying it.
+    if (parsed?.v !== IP_CACHE_VERSION) {
+      window.localStorage.removeItem(IP_CACHE_KEY);
+      return null;
+    }
     if (!parsed?.expires || parsed.expires <= Date.now()) {
+      window.localStorage.removeItem(IP_CACHE_KEY);
+      return null;
+    }
+    // A cached "we don't know" is not worth replaying either: it suppresses the
+    // one request that could resolve it, for half an hour, on every page view.
+    if (!parsed.value || parsed.value.source === "none") {
       window.localStorage.removeItem(IP_CACHE_KEY);
       return null;
     }
@@ -124,10 +143,13 @@ export function readCachedIpLocation(): ClientLocation | null {
 }
 
 export function writeCachedIpLocation(value: ClientLocation) {
+  // Never park an empty answer (see readCachedIpLocation): the next navigation
+  // should get a fresh chance at the lookup.
+  if (value.source === "none") return;
   try {
     window.localStorage.setItem(
       IP_CACHE_KEY,
-      JSON.stringify({ value, expires: Date.now() + IP_CACHE_TTL_MS })
+      JSON.stringify({ value, expires: Date.now() + IP_CACHE_TTL_MS, v: IP_CACHE_VERSION })
     );
   } catch {
     /* storage unavailable — we simply ask again next visit */

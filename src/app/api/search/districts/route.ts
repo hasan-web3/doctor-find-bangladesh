@@ -1,37 +1,38 @@
 import { NextResponse } from "next/server";
-import { searchDistricts, type DistrictSearchParams, resolveDisplayDistrict } from "@/lib/data";
-import { detectArea } from "@/lib/geo";
+import { searchDistricts, type DistrictSearchParams } from "@/lib/data";
+import { geoRankingFromParams } from "@/lib/geo-request";
 import { isLocale, type Locale } from "@/lib/i18n";
 
-export const dynamic = "force-dynamic";
+// District index for <DistrictListClient>.
+//
+// Location arrives as explicit query params from <LocationProvider> rather than
+// from detectArea() here — see src/lib/geo-request.ts for why.
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  
-  // Extract and validate locale
-  const locale = searchParams.get("locale");
+  const sp = new URL(request.url).searchParams;
+
+  const locale = sp.get("locale");
   if (!isLocale(locale)) {
     return NextResponse.json({ error: "Invalid locale" }, { status: 400 });
   }
 
-  // Same-basis ranking for page 2+ as the server-rendered first page.
-  const geo = await detectArea();
-  // Rank by the district the site actually NAMES for this visitor, so a
-  // client refetch cannot reorder the list around their empty district.
-  const display = await resolveDisplayDistrict(geo, locale as Locale);
+  const ranking = await geoRankingFromParams(sp, locale as Locale);
 
   const params: DistrictSearchParams = {
-    q: searchParams.get("q") || undefined,
-    page: searchParams.has("page") ? Number(searchParams.get("page")) : 1,
-    perPage: searchParams.has("perPage") ? Number(searchParams.get("perPage")) : 24,
-    preferLat: searchParams.has("lat") ? Number(searchParams.get("lat")) : geo.lat,
-    preferLng: searchParams.has("lng") ? Number(searchParams.get("lng")) : geo.lng,
-    preferDistrictId: display?.id ?? geo.districtId,
+    q: sp.get("q") || undefined,
+    page: sp.has("page") ? Number(sp.get("page")) : 1,
+    perPage: sp.has("perPage") ? Number(sp.get("perPage")) : 24,
+    preferLat: ranking.preferLat,
+    preferLng: ranking.preferLng,
+    preferDistrictId: ranking.preferDistrictId,
   };
 
   try {
     const { rows, total } = await searchDistricts(params, locale as Locale);
-    return NextResponse.json({ rows, total });
+    return NextResponse.json(
+      { rows, total },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
+    );
   } catch (error) {
     console.error("District search API error:", error);
     return NextResponse.json({ error: "An internal server error occurred." }, { status: 500 });

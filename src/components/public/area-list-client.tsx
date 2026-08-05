@@ -12,6 +12,7 @@ import { localeHref, num, type Locale } from "@/lib/i18n";
 import type { Area } from "@/lib/data";
 import Link from "next/link";
 import { Shimmer } from "@/components/shimmer";
+import { useGeoQuery } from "@/components/public/use-geo-query";
 
 // A simple debounce hook
 function useDebounce(value: string, delay: number): string {
@@ -28,14 +29,17 @@ function useDebounce(value: string, delay: number): string {
 }
 
 type Props = {
-  userLat: number | null;
-  userLng: number | null;
   locale: Locale;
   initialAreas: Area[];
   initialTotal: number;
 };
 
-export function AreaListClient({ userLat, userLng, locale, initialAreas, initialTotal }: Props) {
+// Coordinates used to come in as props from the server, but the page is static
+// ISR so they were read off STATIC_GEO and were therefore always null — the
+// "nearest thana first" ordering this list advertises never actually ran for
+// anybody. They come from <LocationProvider> now, which is the only place on a
+// cached page that knows where the visitor is.
+export function AreaListClient({ locale, initialAreas, initialTotal }: Props) {
   const [areas, setAreas] = useState<Area[]>(initialAreas);
   const [total, setTotal] = useState(initialTotal);
   const [query, setQuery] = useState("");
@@ -46,16 +50,21 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
   const isInitialRender = useRef(true);
+  const geo = useGeoQuery();
 
   const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
     // The server already rendered whatever ?page= asked for, so the first pass
-    // never needs to refetch — only a client-only search box entry does.
+    // never needs to refetch — only a search box entry, or a visitor we can
+    // actually place, does.
     if (isInitialRender.current && !debouncedQuery) {
       isInitialRender.current = false;
-      return;
+      if (!geo.hasLocation) return;
     }
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchAreas = async () => {
       setIsLoading(true);
@@ -67,28 +76,36 @@ export function AreaListClient({ userLat, userLng, locale, initialAreas, initial
       if (debouncedQuery) {
         params.set("q", debouncedQuery);
       } else {
-        // Only use location for subsequent empty searches (e.g. after clearing a query)
-        if (userLat) params.set("lat", String(userLat));
-        if (userLng) params.set("lng", String(userLng));
+        // A text search is the visitor telling us what they want; proximity
+        // ordering only applies to the unfiltered list.
+        geo.apply(params);
       }
 
       try {
-        const res = await fetch(`/api/search/areas?${params.toString()}`);
+        const res = await fetch(`/api/search/areas?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
+        if (cancelled) return;
         setAreas(data.rows || []);
         setTotal(data.total || 0);
       } catch (error) {
-        console.error("Failed to fetch areas:", error);
-        setAreas([]);
-        setTotal(0);
+        if ((error as Error)?.name !== "AbortError" && !cancelled) {
+          console.error("Failed to fetch areas:", error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchAreas();
-  }, [debouncedQuery, currentPage, perPage, userLat, userLng, locale]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, currentPage, perPage, geo.key, locale]);
 
   // Reset to page 1 when the search text changes (and only then).
   useResetPageOnFilterChange(debouncedQuery, resetPage);

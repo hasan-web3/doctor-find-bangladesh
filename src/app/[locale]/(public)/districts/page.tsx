@@ -61,9 +61,7 @@ export default async function DistrictsPage({ params }: Props) {
       <h1 className="mb-1.5 font-heading text-[clamp(26px,4vw,34px)] font-bold text-ink">{d.sec_district_title || "Doctors by District"}</h1>
       <p className="mb-8 text-base text-ink-mute">{districtSub}</p>
 
-      <DistrictListClient 
-        userLat={geo.lat}
-        userLng={geo.lng}
+      <DistrictListClient
         locale={locale}
         initialDistricts={initialDistrictsData.rows}
         initialTotal={initialDistrictsData.total}

@@ -12,6 +12,7 @@ import type { Hospital } from "@/lib/data";
 import type { Dict } from "@/lib/dict";
 import { Pagination } from "@/components/public/pagination";
 import { Shimmer } from "@/components/shimmer";
+import { useGeoQuery } from "@/components/public/use-geo-query";
 
 type Props = {
   pageTitle: string;
@@ -27,13 +28,22 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
   const [isLoading, setIsLoading] = useState(false);
   const { page: currentPage, perPage } = usePageParams(12);
   const isInitialRender = useRef(true);
+  // The server renders one nearest-nothing order for everybody, because the
+  // page is cached. Once the browser knows where the visitor is, the list is
+  // re-fetched nearest-first — the same handoff /doctors already used.
+  const geo = useGeoQuery();
 
   useEffect(() => {
-    // Server already rendered the slice named by ?page=.
+    // Server already rendered the slice named by ?page=...
     if (isInitialRender.current) {
       isInitialRender.current = false;
-      return;
+      // ...but that render had no location, so a visitor we CAN place still
+      // needs one requery to get their own ordering.
+      if (!geo.hasLocation) return;
     }
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchHospitals = async () => {
       setIsLoading(true);
@@ -42,24 +52,35 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
         page: String(currentPage),
         perPage: String(perPage),
       });
+      geo.apply(apiParams);
 
       try {
-        const res = await fetch(`/api/hospitals?${apiParams.toString()}`);
+        const res = await fetch(`/api/hospitals?${apiParams.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch hospitals");
         const data = await res.json();
+        if (cancelled) return;
         setHospitals(data.rows || []);
         setTotal(data.total || 0);
       } catch (error) {
-        console.error(error);
-        setHospitals([]);
-        setTotal(0);
+        // Aborts are routine when the visitor pages quickly. Anything else
+        // leaves the cards already on screen, which beats blanking the page.
+        if ((error as Error)?.name !== "AbortError" && !cancelled) {
+          console.error("Hospital list refetch failed:", error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchHospitals();
-  }, [locale, currentPage, perPage]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale, currentPage, perPage, geo.key]);
 
   const totalPages = Math.ceil(total / perPage);
 

@@ -13,6 +13,8 @@ import { getDict } from "@/lib/dict";
 import { t, isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
+import { ShownDistrictProvider } from "@/components/public/shown-district-context";
+import { DistrictText } from "@/components/public/district-text";
 
 // ISR: hub; on-demand revalidated on mutation.
 export const revalidate = 21600;
@@ -103,19 +105,33 @@ export default async function SpecialtyPage({ params }: Props) {
 
   const suggestedSpecialties = allSpecialties.filter((s) => s.id !== spec.id);
 
-  const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
-  const isIpDetected = geo.source === "ip-name" || geo.source === "ip-nearest";
+  const display = await resolveDisplayDistrict(geo, locale);
+  const districtName = display?.name ?? null;
 
-  const pageTitle = isIpDetected
-    ? (locale === "bn" ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors Near You`)
-    : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
+  // Both headings name a district and the list under them re-ranks for the
+  // visitor after hydration, so the copy has to move with it — otherwise a
+  // Dhaka visitor reads a Khulna heading over a grid of Dhaka doctors. The
+  // server still renders the canonical name into the tags, so the <h1> in the
+  // cached HTML is complete for crawlers and for first paint.
+  const titleTpl = locale === "bn"
+    ? `{d} সেরা ${spec.name} ডাক্তার`
+    : `Best ${spec.name} Doctors in {d}`;
+  const titleFallback = locale === "bn"
+    ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার`
+    : `Best ${spec.name} Doctors Near You`;
 
-  const listTitle = locale === "bn"
-    ? `${bnPossessive(districtName)} ${spec.name} ডাক্তারদের তালিকা`
-    : `List of ${spec.name} Doctors in ${districtName}`;
+  const listTpl = locale === "bn"
+    ? `{d} ${spec.name} ডাক্তারদের তালিকা`
+    : `List of ${spec.name} Doctors in {d}`;
+  const listFallback = locale === "bn"
+    ? `আপনার এলাকার ${spec.name} ডাক্তারদের তালিকা`
+    : `List of ${spec.name} Doctors Near You`;
 
   return (
-    <div>
+    // Every district name on this page is read from here. The doctor list is
+    // the only thing that queries doctors, so it publishes the district those
+    // doctors are actually in and both headings follow it.
+    <ShownDistrictProvider initialName={districtName} initialSlug={display?.slug ?? null}>
       {faqs.length > 0 && <JsonLd data={ldFaq(faqs)} />}
 
       <div className="[background:linear-gradient(180deg,#F0FDFA,#F8FAFC)]">
@@ -128,7 +144,13 @@ export default async function SpecialtyPage({ params }: Props) {
               { name: spec.name },
             ]}
           />
-          <h1 className="mb-3.5 font-heading text-[clamp(28px,4.5vw,40px)] font-bold text-ink">{pageTitle}</h1>
+          <DistrictText
+            as="h1"
+            className="mb-3.5 font-heading text-[clamp(28px,4.5vw,40px)] font-bold text-ink"
+            locale={locale}
+            template={titleTpl}
+            fallback={titleFallback}
+          />
           {spec.intro && (
             <p className="m-0 max-w-[760px] text-base leading-[1.8] text-ink-mute">{spec.intro}</p>
           )}
@@ -136,7 +158,13 @@ export default async function SpecialtyPage({ params }: Props) {
       </div>
 
       <div className="mx-auto max-w-site px-5 pb-5 pt-9">
-        <h2 className="mb-5 mt-0 font-heading text-2xl font-bold text-ink">{listTitle}</h2>
+        <DistrictText
+          as="h2"
+          className="mb-5 mt-0 font-heading text-2xl font-bold text-ink"
+          locale={locale}
+          template={listTpl}
+          fallback={listFallback}
+        />
         <SpecialtyDoctorListClient
           locale={locale}
           settings={settings}
@@ -169,6 +197,6 @@ export default async function SpecialtyPage({ params }: Props) {
           </div>
         </div>
       )}
-    </div>
+    </ShownDistrictProvider>
   );
 }

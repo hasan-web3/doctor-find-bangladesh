@@ -100,44 +100,78 @@ function withArea(area: GeoArea, source: GeoResult["source"], ipLat: number | nu
 export { haversineKm } from "./location";
 import { haversineKm } from "./location";
 
-function matchByName(areas: GeoArea[], city: string): GeoArea | null {
-  const needle = city.toLowerCase();
+// ---------------------------------------------------------------------------
+// Resolving a raw IP answer to somewhere we actually serve
+// ---------------------------------------------------------------------------
+// DISTRICT granularity, always. This used to match against the 600+ thana list,
+// where a substring test on the city name ("Dhaka") picked whichever thana
+// happened to sort first — "Airport (Dhaka)" / বিমানবন্দর — and then presented
+// it as the visitor's town. An IP tells you a city at best; inventing a thana
+// from it is false precision, it preselected the wrong chamber filter in the
+// hero search, and it is exactly the kind of over-confident answer the district
+// prompt exists to replace.
+
+// Fold "Khulna Division", "Dhaka District", "Khulna Sadar" and friends down to
+// the bare place name so a provider's phrasing cannot decide whether we match.
+const NAME_NOISE = /\b(division|district|city|sadar|metropolitan|upazila|thana|zila|zilla)\b/g;
+
+function normalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(NAME_NOISE, " ")
+    .replace(/[^a-z0-9ঀ-৿]+/g, " ")
+    .trim();
+}
+
+// Whole-name or whole-word equality only. The old test allowed any substring in
+// either direction, which is what let a three-letter fragment match a district
+// it has nothing to do with.
+function namesMatch(candidate: string, city: string): boolean {
+  const a = normalizeName(candidate);
+  const b = normalizeName(city);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // "khulna" vs "khulna division" (already stripped) or "greater khulna": accept
+  // only when the district name appears as a complete word inside the city
+  // string, never as a fragment of a longer word.
+  if (a.length < 4) return false;
+  return new RegExp(`(^| )${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(b);
+}
+
+function matchDistrictByName(districts: GeoDistrict[], city: string): GeoDistrict | null {
   return (
-    areas.find((a) => {
-      const en = (a.name.en || "").toLowerCase();
-      const bn = a.name.bn || "";
-      return (en && (needle.includes(en) || en.includes(needle))) || (bn && needle.includes(bn));
-    }) || null
+    districts.find((x) => namesMatch(x.name.en || "", city)) ||
+    districts.find((x) => namesMatch(x.name.bn || "", city)) ||
+    null
   );
 }
 
-// Nearest area (by great-circle distance) that has at least one active doctor.
-// If none has a doctor, falls back to the geographically nearest anyway.
-function nearestAreaWithDoctors(
-  areas: GeoArea[],
-  lat: number,
-  lng: number
-): GeoArea | null {
-  const MAX_REASONABLE_KM = 200;
-  const withCoords = areas.filter((a) => a.lat !== null && a.lng !== null);
-  if (withCoords.length === 0) return null;
-  const ranked = withCoords
-    .map((a) => ({ area: a, dist: haversineKm(lat, lng, a.lat!, a.lng!) }))
-    .sort((x, y) => x.dist - y.dist);
+// Nearest district by great-circle distance. Deliberately NOT "nearest district
+// that has doctors": this answers "where is the visitor", and pushing them into
+// a district they are not in to find one with stock would mislabel every
+// heading. When their own district turns out to be empty, <GeoShell> already
+// explains the substitution and the listings already rank around the district
+// whose doctors are shown.
+const MAX_REASONABLE_KM = 200;
 
-  if (ranked.length === 0 || ranked[0].dist > MAX_REASONABLE_KM) {
-    return null;
+function nearestDistrict(districts: GeoDistrict[], lat: number, lng: number): GeoDistrict | null {
+  let best: GeoDistrict | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const x of districts) {
+    if (x.lat === null || x.lng === null) continue;
+    const dist = haversineKm(lat, lng, x.lat, x.lng);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = x;
+    }
   }
-
-  const withDoctor = ranked.find((r) => r.area.doctorCount > 0);
-  return (withDoctor ?? ranked[0]).area;
+  return bestDist <= MAX_REASONABLE_KM ? best : null;
 }
 
 export type IpLocation = { city: string | null; country_code: string | null; lat: number | null; lng: number | null };
 
 // Vercel's edge network sets these headers on every request for free (no
-// external HTTP call, no key). Prefer them whenever they're present so
-// detectArea() never has to reach ip-api / ipinfo on Vercel deployments.
+// external HTTP call, no key), so they stay the first thing we look at.
 function readVercelGeo(h: Headers): IpLocation | null {
   const city = h.get("x-vercel-ip-city");
   const country = h.get("x-vercel-ip-country");
@@ -152,6 +186,43 @@ function readVercelGeo(h: Headers): IpLocation | null {
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Is this answer actually about the visitor, or just about their country?
+// ---------------------------------------------------------------------------
+// Vercel's edge geo is MaxMind-backed, and MaxMind has no city record for a lot
+// of small South Asian ISPs. It does not leave the fields blank when that
+// happens — it answers with the COUNTRY's registered centre and a city name to
+// match. For Bangladesh that point is Dhaka (23.7115, 90.4111), so every
+// visitor on such an ISP was told "Dhaka" with no way to tell that apart from a
+// real Dhaka reading, and the code returned before the admin-configured ip-api
+// / ipinfo integration was ever consulted — making it dead code in production.
+//
+// There is no accuracy header to read, so we compare against the centroids we
+// care about. A genuine Dhaka visitor trips this too; that costs one cached
+// provider lookup which returns Dhaka anyway, so the check is safe in both
+// directions and never makes an answer worse.
+const COUNTRY_CENTROIDS: Record<string, { lat: number; lng: number }> = {
+  BD: { lat: 23.7115, lng: 90.4111 },
+};
+
+// Generous enough to absorb the small differences between MaxMind releases,
+// tight enough that a real reading inside the capital's suburbs is still its
+// own answer once the provider confirms it.
+const CENTROID_TOLERANCE_KM = 10;
+
+function isCountryCentroid(loc: IpLocation): boolean {
+  const centre = loc.country_code ? COUNTRY_CENTROIDS[loc.country_code.toUpperCase()] : undefined;
+  if (!centre || loc.lat === null || loc.lng === null) return false;
+  return haversineKm(loc.lat, loc.lng, centre.lat, centre.lng) <= CENTROID_TOLERANCE_KM;
+}
+
+/** True when the answer names no place at all, or only names the country. */
+function isCoarse(loc: IpLocation | null): boolean {
+  if (!loc) return true;
+  if (!loc.city && loc.lat === null && loc.lng === null) return true;
+  return isCountryCentroid(loc);
 }
 
 // How long an external IP-geo answer stays good for. Only the paid/free
@@ -218,20 +289,60 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
   )();
 }
 
-// Resolve a raw IpLocation to a GeoResult against our known areas.
-function resolveLocation(loc: IpLocation, areas: GeoArea[]): GeoResult {
-  if (loc.city) {
-    const named = matchByName(areas, loc.city);
-    if (named) return withArea(named, "ip-name", loc.lat, loc.lng);
+// Resolve a raw IpLocation to a GeoResult, at district granularity.
+//
+// The returned lat/lng are the IP's OWN coordinates, not the district centre:
+// they are the more precise of the two and every distance ranking downstream
+// wants the finer number. `areaId` stays null on purpose — see the block above
+// matchDistrictByName.
+function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
+  const named = loc.city ? matchDistrictByName(districts, loc.city) : null;
+  if (named) {
+    return { ...withDistrict(named), lat: loc.lat, lng: loc.lng, source: "ip-name" };
   }
   if (loc.lat !== null && loc.lng !== null) {
-    const near = nearestAreaWithDoctors(areas, loc.lat, loc.lng);
-    if (near) return withArea(near, "ip-nearest", loc.lat, loc.lng);
+    const near = nearestDistrict(districts, loc.lat, loc.lng);
+    if (near) {
+      return { ...withDistrict(near), lat: loc.lat, lng: loc.lng, source: "ip-nearest" };
+    }
   }
   return { ...EMPTY, lat: loc.lat, lng: loc.lng };
 }
 
-// Header-only detection: Vercel edge geo first, external IP-geo as fallback.
+function clientIpFrom(h: Headers): string {
+  return h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+}
+
+function isUsableIp(ip: string): boolean {
+  return Boolean(ip) && ip !== "::1" && !ip.startsWith("127.") && !ip.startsWith("192.168.") && !ip.startsWith("10.");
+}
+
+// The network's best guess at where the visitor is, as a raw IpLocation.
+//
+// Order:
+//   1. Vercel edge headers, when they name a real place. Free, no round trip.
+//   2. The configured ip-api / ipinfo provider, when tier 1 is missing or only
+//      resolved to the country centre (see isCoarse). Cached 30 minutes per IP,
+//      so a busy site pays for one lookup per visitor network per half hour.
+//   3. Whatever tier 1 gave us, even if coarse — a country-level guess still
+//      orders the district picker better than nothing does.
+async function lookupNetworkLocation(h: Headers): Promise<IpLocation | null> {
+  const vercelLoc = readVercelGeo(h);
+  if (vercelLoc && !isCoarse(vercelLoc)) return vercelLoc;
+
+  const ip = clientIpFrom(h);
+  if (isUsableIp(ip)) {
+    const providerLoc = await lookupIp(ip);
+    if (!isCoarse(providerLoc)) return providerLoc;
+    // Both are coarse. Prefer the provider only when it named something and
+    // Vercel did not, so we never trade a real answer for an empty one.
+    if (!vercelLoc && (providerLoc.city || providerLoc.lat !== null)) return providerLoc;
+  }
+
+  return vercelLoc;
+}
+
+// Header-only detection.
 //
 // Deliberately reads NO cookies, so it is safe to call from a route handler
 // that must not depend on the visitor's stored answer — /api/user/location is
@@ -239,31 +350,18 @@ function resolveLocation(loc: IpLocation, areas: GeoArea[]): GeoResult {
 // resolved on the client, which already has the cookie and the district list
 // and therefore needs no round trip at all.
 export async function detectAreaFromHeaders(h: Headers): Promise<GeoResult> {
-  const areas = (await getAreasForGeo()) as GeoArea[];
-
-  // Fast path — Vercel edge already told us where the visitor is, for free.
-  const vercelLoc = readVercelGeo(h);
-  if (vercelLoc) {
-    const resolved = resolveLocation(vercelLoc, areas);
-    if (resolved.areaSlug) return resolved;
-    if (vercelLoc.lat !== null || vercelLoc.city) return resolved;
-  }
-
-  // Local dev / non-Vercel host — fall back to the paid/free IP-geo provider.
-  const ip = h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  if (ip) return detectAreaByIp(ip);
-
-  return EMPTY;
+  const loc = await lookupNetworkLocation(h);
+  if (!loc) return EMPTY;
+  const districts = (await getDistrictsForGeo()) as GeoDistrict[];
+  return resolveLocation(loc, districts);
 }
 
 // Non-cached IP lookup helper (kept for callers that only have a raw IP).
 export async function detectAreaByIp(ip: string): Promise<GeoResult> {
-  if (!ip || ip === "::1" || ip.startsWith("127.") || ip.startsWith("192.168.")) {
-    return EMPTY;
-  }
+  if (!isUsableIp(ip)) return EMPTY;
   const loc = await lookupIp(ip);
-  const areas = (await getAreasForGeo()) as GeoArea[];
-  return resolveLocation(loc, areas);
+  const districts = (await getDistrictsForGeo()) as GeoDistrict[];
+  return resolveLocation(loc, districts);
 }
 
 // Visitor's served area. Preference order:
@@ -273,16 +371,13 @@ export async function detectAreaByIp(ip: string): Promise<GeoResult> {
 //      this exists we stop asking the network where they are entirely: a
 //      stated district beats an inferred one even when the IP disagrees,
 //      which is exactly the case this tier is here to fix.
-//   3. Vercel edge headers (`x-vercel-ip-*`) — free and sub-millisecond, so
-//      they are read fresh on every request. Deliberately NOT cached in a
-//      cookie: that only bought stale coordinates once the visitor changed
-//      network, VPN or city, and cost Cookie/Set-Cookie bytes on every hit.
-//   4. External IP-geo provider — only reachable when the Vercel headers are
-//      absent (local dev / self-hosted). That call IS cached for 30 minutes
-//      per IP inside lookupIp(), since it is the expensive one.
+//   3. The network's guess, via lookupNetworkLocation() — Vercel edge headers
+//      when they name a real place, the configured ip-api / ipinfo provider
+//      when they only resolve to the country centre. District granularity
+//      only; an IP cannot honestly name a thana.
 //
-// Tiers 3–4 are now only a *hint*: they order the district prompt and drive
-// the "you seem to be browsing from…" strip until the visitor answers.
+// Tier 3 is only a *hint*: it orders the district prompt and drives the "you
+// seem to be browsing from…" strip until the visitor answers.
 //
 // Wrapped in React `cache` so multiple calls inside the same request (e.g.
 // generateMetadata + page component) share one result. IP-geo can't run in
@@ -307,23 +402,5 @@ export const detectArea = cache(async (): Promise<GeoResult> => {
   }
 
   const h = await headers();
-
-  // Fast path — Vercel edge already told us where the visitor is.
-  const vercelLoc = readVercelGeo(h);
-  if (vercelLoc) {
-    const resolved = resolveLocation(vercelLoc, areas);
-    if (resolved.areaSlug) return resolved;
-    // If Vercel gave us coords but no area match, we still return what we know
-    // — no external fetch will improve it.
-    if (vercelLoc.lat !== null || vercelLoc.city) return resolved;
-  }
-
-  // Local dev / non-Vercel host — fall back to the paid/free IP-geo provider.
-  const ip = h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  if (ip) {
-    const geo = await detectAreaByIp(ip);
-    if (geo.areaSlug) return geo;
-  }
-
-  return EMPTY;
+  return detectAreaFromHeaders(h);
 });

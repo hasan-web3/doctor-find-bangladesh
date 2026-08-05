@@ -164,7 +164,11 @@ export default async function HomePage({ params }: Props) {
   }
   const displayedHospitals = sortedHospitals.slice(0, 6);
 
-  // Find approximate coordinates of the matched area, defaulting to Khulna city center
+  // Neutral fallback centre for the homepage map, baked into the cached HTML.
+  // `geo` is STATIC_GEO here, so this resolves to the site default for every
+  // visitor and for Googlebot — deliberately, because a per-visitor centre in
+  // this document would make the route dynamic. <AreaMap> re-centres itself
+  // after hydration from <LocationProvider>.
   const matchedArea = geo.areaId ? areas.find((a) => a.id === geo.areaId) : null;
   const initialLat = matchedArea?.lat ?? 22.8456;
   const initialLng = matchedArea?.lng ?? 89.5403;
@@ -193,6 +197,17 @@ export default async function HomePage({ params }: Props) {
       : busiestAreas.find(
           (b) => b.district_slug === preselectDistrictSlug && b.doctor_count > 0
         )?.slug ?? geo.areaSlug;
+
+  // The same "busiest town" rule, for every district rather than just the one
+  // this document names. IP geo answers at district level only, so once
+  // <LocationProvider> resolves a different district on the client the search
+  // bar needs a town for it too — and asking the server for one would mean a
+  // per-visitor render, which is exactly what ISR forbids. It is a doctor
+  // count, identical for every visitor, so it ships in the cached HTML.
+  const busiestThanaByDistrict: Record<string, string> = {};
+  for (const b of busiestAreas) {
+    if (b.doctor_count > 0 && b.district_slug) busiestThanaByDistrict[b.district_slug] = b.slug;
+  }
 
   const STEPS = [
     { no: num(1, locale), title: d.step1_title, text: d.step1_text, icon: "search" },
@@ -270,6 +285,7 @@ export default async function HomePage({ params }: Props) {
               d={d}
               preselectDistrictSlug={preselectDistrictSlug}
               preselectThanaSlug={preselectThanaSlug}
+              busiestThanaByDistrict={busiestThanaByDistrict}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 min-[900px]:col-start-1 min-[900px]:row-start-3 min-[900px]:mt-[18px]">

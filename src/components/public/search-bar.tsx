@@ -53,6 +53,7 @@ export function SearchBar({
   d,
   preselectDistrictSlug = null,
   preselectThanaSlug = null,
+  busiestThanaByDistrict,
 }: {
   districts: DistrictOpt[];
   thanas: ThanaOpt[];
@@ -62,6 +63,18 @@ export function SearchBar({
   };
   preselectDistrictSlug?: string | null;
   preselectThanaSlug?: string | null;
+  /**
+   * Busiest thana per district slug. Visitor-independent (it is a doctor count,
+   * not a location), so it ships inside the cached HTML.
+   *
+   * Needed because IP geo now answers at district level only: it can no longer
+   * hand us a thana, and without this the town dropdown would sit empty for
+   * every visitor we located by IP. Picking by doctor count rather than by
+   * distance is deliberate and unchanged — the nearest town to an IP centroid
+   * is regularly one with no chambers, so preselecting it makes the visitor's
+   * first search return nothing.
+   */
+  busiestThanaByDistrict?: Record<string, string>;
 }) {
   const router = useRouter();
   const { location } = useLocation();
@@ -101,7 +114,12 @@ export function SearchBar({
   // supplies the real one after hydration. Falling back to the prop keeps the
   // dropdown sensibly filled for a first-time visitor and for crawlers.
   const effectiveDistrictSlug = location.districtSlug ?? preselectDistrictSlug;
-  const effectiveThanaSlug = location.districtSlug ? location.areaSlug : preselectThanaSlug;
+  // `location.areaSlug` is only ever set when the visitor named the town
+  // themselves, so it still wins. Everything else falls back to the district's
+  // busiest town, then to the server's preselect.
+  const effectiveThanaSlug = location.districtSlug
+    ? location.areaSlug ?? busiestThanaByDistrict?.[location.districtSlug] ?? null
+    : preselectThanaSlug;
 
   const appliedPreselect = useRef(`${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`);
   useEffect(() => {

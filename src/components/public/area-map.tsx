@@ -3,13 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GoogleMap, useJsApiLoader, MarkerF } from "@react-google-maps/api";
 import { Shimmer } from "@/components/shimmer";
+import { useLocation } from "@/components/public/location-provider";
+import { useShownDistrict } from "@/components/public/shown-district-context";
 
 type Props = {
   apiKey: string;
-  // Initial center, from server-side IP lookup. This is the ONLY source of
-  // location — we intentionally do not call navigator.geolocation because the
-  // site Permissions-Policy blocks it (see next.config.ts) and IP-based geo
-  // is already accurate enough for the decorative map on the homepage.
+  // The neutral fallback centre baked into the cached HTML. The page is static
+  // ISR — one document serves everybody — so the server cannot know where the
+  // visitor is and must not try; this pair is the site's default view.
+  //
+  // The real centre arrives after hydration from <LocationProvider>, which is
+  // where the visitor's chosen district or the IP guess lives. We still do not
+  // call navigator.geolocation: the site Permissions-Policy allows it (see
+  // next.config.ts) but a permission prompt for a decorative homepage map is
+  // not a trade worth making.
   initialLat: number;
   initialLng: number;
 };
@@ -58,16 +65,48 @@ export function AreaMap({ apiKey, initialLat, initialLng }: Props) {
   );
 }
 
+// Where the map should point, resolved entirely in the browser.
+//
+// Order, and why:
+//   1. The visitor's own coordinates. For a district they picked themselves
+//      that is the district centre; for an IP guess it is the finer point the
+//      provider returned, which is better than any centre we could look up.
+//   2. The district the page is actually SHOWING. When the visitor's own
+//      district has no doctors, every heading and every thana chip on this
+//      section names the substituted district, and a map pointing somewhere
+//      else would be the one element contradicting them.
+//   3. The server's neutral fallback, which is what crawlers and first paint
+//      always see.
+function useMapCenter(initialLat: number, initialLng: number) {
+  const { location, ready, districtCoords } = useLocation();
+  const { slug: shownSlug } = useShownDistrict();
+
+  return useMemo(() => {
+    if (ready && location.lat !== null && location.lng !== null) {
+      return { lat: location.lat, lng: location.lng };
+    }
+    const shown = districtCoords(shownSlug);
+    if (shown) return shown;
+    return { lat: initialLat, lng: initialLng };
+  }, [ready, location.lat, location.lng, districtCoords, shownSlug, initialLat, initialLng]);
+}
+
 function MapInner({ apiKey, initialLat, initialLng }: Props) {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey: apiKey,
   });
 
-  const center = useMemo(
-    () => ({ lat: initialLat, lng: initialLng }),
-    [initialLat, initialLng]
-  );
+  const center = useMapCenter(initialLat, initialLng);
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Once the map exists, move it rather than re-mounting it: panTo glides to
+  // the new location instead of jumping. `center` is memoised on its own
+  // coordinates, so an unrelated re-render produces the same object and this
+  // effect does not fire — the visitor's own panning survives.
+  useEffect(() => {
+    mapRef.current?.panTo(center);
+  }, [center]);
 
   if (!isLoaded) {
     return <Shimmer className="aspect-square w-full max-w-[420px] rounded-3xl" />;
@@ -79,6 +118,12 @@ function MapInner({ apiKey, initialLat, initialLng }: Props) {
         mapContainerStyle={{ width: "100%", height: "100%" }}
         center={center}
         zoom={11}
+        onLoad={(map) => {
+          mapRef.current = map;
+        }}
+        onUnmount={() => {
+          mapRef.current = null;
+        }}
         options={{
           disableDefaultUI: true,
           zoomControl: true,

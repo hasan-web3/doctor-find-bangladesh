@@ -24,10 +24,10 @@ export async function GET(request: Request) {
     const h = await headers();
     const geo = await detectAreaFromHeaders(h);
 
-    // detectAreaFromHeaders resolves to a thana; the district name it carries
-    // is whatever that thana belongs to. When only coordinates came back we
-    // still try to name a district so the prompt can say "আপনি কি খুলনা থেকে
-    // দেখছেন?" rather than showing an unnamed guess.
+    // detectAreaFromHeaders resolves at DISTRICT granularity — an IP cannot
+    // honestly name a thana, so `areaSlug` is always null here and the client
+    // never preselects a town the visitor did not choose. The lookup below is
+    // the belt-and-braces path for a result that carried an id but no name.
     let districtName = geo.districtName ? t(geo.districtName, locale) : null;
     if (!districtName && geo.districtId) {
       const districts = await getDistrictsForGeo();

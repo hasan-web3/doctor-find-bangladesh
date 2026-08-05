@@ -13,6 +13,8 @@ import { getDict } from "@/lib/dict";
 import { type Locale } from "@/lib/i18n";
 import type { DoctorCardData } from "@/lib/data";
 import { Shimmer } from "@/components/shimmer";
+import { useGeoQuery } from "@/components/public/use-geo-query";
+import { useShownDistrict } from "@/components/public/shown-district-context";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -50,13 +52,24 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
   const { page: currentPage, perPage, resetPage } = usePageParams(12);
 
   const debouncedNameQuery = useDebounce(nameQuery, 300);
+  // Same handoff as /doctors: the cached HTML holds the canonical order, and
+  // the visitor's own ordering is applied once the browser knows where they
+  // are. This list is the whole point of the page, so it was the most visible
+  // place still showing everybody the same ranking.
+  const geo = useGeoQuery();
+  const { set: setShownDistrict } = useShownDistrict();
 
   useEffect(() => {
-    // Server already rendered the slice named by ?page=.
+    // Server already rendered the slice named by ?page=...
     if (isInitialRender.current && !debouncedNameQuery) {
       isInitialRender.current = false;
-      return;
+      // ...but with no location, so a visitor we CAN place still needs one
+      // requery to get their own ordering.
+      if (!geo.hasLocation) return;
     }
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchDoctors = async () => {
       if (!specialtySlug) return;
@@ -69,24 +82,40 @@ export function SpecialtyDoctorListClient({ locale, settings, initialDoctors, in
       if (debouncedNameQuery) {
         apiParams.set("q", debouncedNameQuery);
       }
+      geo.apply(apiParams);
 
       try {
-        const res = await fetch(`/api/specialties/${specialtySlug}/doctors?${apiParams.toString()}`);
+        const res = await fetch(`/api/specialties/${specialtySlug}/doctors?${apiParams.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch doctors");
         const data = await res.json();
+        if (cancelled) return;
         setDoctors(data.rows || []);
         setTotal(data.total || 0);
+        // Name the district these cards are actually in, so the heading above
+        // them cannot claim a different one. Nulls fall back to the server's
+        // canonical name rather than blanking it.
+        setShownDistrict({
+          name: data.rows?.[0]?.district ?? null,
+          slug: data.rows?.[0]?.district_slug ?? null,
+        });
       } catch (error) {
-        console.error(error);
-        setDoctors([]);
-        setTotal(0);
+        if ((error as Error)?.name !== "AbortError" && !cancelled) {
+          console.error("Specialty doctor list refetch failed:", error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchDoctors();
-  }, [specialtySlug, locale, currentPage, perPage, debouncedNameQuery]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specialtySlug, locale, currentPage, perPage, debouncedNameQuery, geo.key, setShownDistrict]);
 
   // Reset page when the name filter changes (and only then).
   useResetPageOnFilterChange(debouncedNameQuery, resetPage);
