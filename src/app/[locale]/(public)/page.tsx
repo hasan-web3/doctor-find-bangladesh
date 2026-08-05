@@ -9,6 +9,9 @@ import { JsonLd } from "@/components/json-ld";
 import { HeroSlider } from "@/components/public/hero-slider";
 import { SearchBar } from "@/components/public/search-bar";
 import { HomeDoctorRail } from "@/components/public/home-doctor-rail";
+import { HomeAreaChips } from "@/components/public/home-area-chips";
+import { DistrictText } from "@/components/public/district-text";
+import { ShownDistrictProvider } from "@/components/public/shown-district-context";
 import { getEnabledConfig } from "@/lib/integrations";
 
 // Below-the-fold client components — split into their own chunks so they don't
@@ -114,39 +117,9 @@ export default async function HomePage({ params }: Props) {
   const displayDistrict = await resolveDisplayDistrict(geo, locale);
   const geoDistrictName = displayDistrict?.name ?? null;
 
-  const heroBadgeText = geoDistrictName
-    ? (locale === "bn"
-        ? `${bnPossessive(geoDistrictName)} #১ ডাক্তার ডিরেক্টরি`
-        : `${geoDistrictName}'s #1 Doctor Directory`)
-    : (locale === "bn"
-        ? "আপনার এলাকার #১ ডাক্তার ডিরেক্টরি"
-        : "Your Area's #1 Doctor Directory");
 
-  const heroSub = geoDistrictName
-    ? (locale === "bn"
-        ? `${bnPossessive(geoDistrictName)} সেরা বিশেষজ্ঞ ডাক্তার খুঁজুন, সহজে অ্যাপয়েন্টমেন্ট নিন।`
-        : `Find the best specialist doctors in ${geoDistrictName} and book appointments easily.`)
-    : (locale === "bn"
-        ? "আপনার এলাকার সেরা বিশেষজ্ঞ ডাক্তার খুঁজুন, সহজে অ্যাপয়েন্টমেন্ট নিন।"
-        : "Find the best specialist doctors in your area and book appointments easily.");
 
-  const areaSectionSub = geoDistrictName
-    ? (locale === 'bn'
-        ? `${bnPossessive(geoDistrictName)} প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।`
-        : `Verified doctor and chamber information for every area of ${geoDistrictName}.`
-      )
-    : (locale === 'bn'
-        ? "আপনার এলাকার প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।"
-        : "Verified doctor and chamber information for every area in your location."
-      );
 
-  const fordocSub = geoDistrictName
-    ? (locale === "bn"
-        ? `প্রতিদিন ${bnPossessive(geoDistrictName)} হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।`
-        : `Thousands of patients in ${geoDistrictName} search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them.`)
-    : (locale === "bn"
-        ? "প্রতিদিন আপনার এলাকার হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
-        : "Thousands of patients in your area search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them.");
 
   // Thanas of the district this page NAMES, ordered doctors-first then
   // nearest. getNearbyAreas already encodes exactly that ranking (and counts
@@ -244,7 +217,12 @@ export default async function HomePage({ params }: Props) {
   const helplineDisplay = locale === "bn" ? settings.helpline_bn : settings.helpline;
 
   return (
-    <>
+    // Every place name on this page is read from here. <HomeDoctorRail> is the
+    // only component that queries doctors, so it publishes the district those
+    // doctors are actually in, and the hero copy, area section and chips follow
+    // it. Seeded with the server's canonical district so the cached HTML is
+    // complete for crawlers and for first paint.
+    <ShownDistrictProvider initialName={geoDistrictName} initialSlug={displayDistrict?.slug ?? null}>
       {faqs.length > 0 && <JsonLd data={ldFaq(faqs)} />}
 
       {/* ===== HERO =====
@@ -260,12 +238,26 @@ export default async function HomePage({ params }: Props) {
           <div className="relative z-20 min-[900px]:col-start-1 min-[900px]:row-start-1">
             <div className="mb-[18px] inline-flex items-center gap-2 rounded-full border border-brand-100 bg-white px-3.5 py-1.5 text-[13px] font-semibold text-brand-700 shadow-[0_2px_8px_rgba(13,148,136,0.08)]">
               <span className="inline-block h-2 w-2 rounded-full bg-accent" />
-              {heroBadgeText}
+              <DistrictText
+                locale={locale}
+                template={locale === "bn" ? "{d} #১ ডাক্তার ডিরেক্টরি" : "{d}'s #1 Doctor Directory"}
+                fallback={locale === "bn" ? "আপনার এলাকার #১ ডাক্তার ডিরেক্টরি" : "Your Area's #1 Doctor Directory"}
+              />
             </div>
             <h1 className="mb-3.5 font-heading text-[clamp(30px,5vw,46px)] font-bold leading-[1.25] text-ink">
               {d.hero_title_1} <span className="text-brand-600">{d.hero_title_2}</span>
             </h1>
-            <p className="max-w-[520px] text-[17px] text-ink-mute min-[900px]:mb-[26px]">{heroSub}</p>
+            <DistrictText
+              as="p"
+              className="max-w-[520px] text-[17px] text-ink-mute min-[900px]:mb-[26px]"
+              locale={locale}
+              template={locale === "bn"
+                ? "{d} সেরা বিশেষজ্ঞ ডাক্তার খুঁজুন, সহজে অ্যাপয়েন্টমেন্ট নিন।"
+                : "Find the best specialist doctors in {d} and book appointments easily."}
+              fallback={locale === "bn"
+                ? "আপনার এলাকার সেরা বিশেষজ্ঞ ডাক্তার খুঁজুন, সহজে অ্যাপয়েন্টমেন্ট নিন।"
+                : "Find the best specialist doctors in your area and book appointments easily."}
+            />
           </div>
           <div className="min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:row-span-3">
             <HeroSlider slides={slides} verifiedLabel={d.verified_doctor} />
@@ -344,19 +336,18 @@ export default async function HomePage({ params }: Props) {
           <Reveal>
             <div className="mb-2 text-sm font-bold text-brand-600">{d.sec_area_eyebrow}</div>
             <h2 className="mb-3 font-heading text-[clamp(26px,3.5vw,32px)] font-bold text-ink">{d.sec_area_title}</h2>
-            <p className="mb-[22px] max-w-[460px] text-base text-ink-mute">{areaSectionSub}</p>
-            <div className="flex flex-wrap gap-[9px]">
-              {displayedAreas.map((a) => (
-                <Link
-                  key={a.id}
-                  href={L(`/area/doctors/${a.district_slug}/${a.slug}`)}
-                  className="flex items-center gap-1.5 rounded-full border border-brand-100 bg-white px-4 py-[9px] text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-600 hover:text-white"
-                >
-                  <span className="text-xs">◉</span>
-                  {a.name}
-                </Link>
-              ))}
-            </div>
+            <DistrictText
+              as="p"
+              className="mb-[22px] max-w-[460px] text-base text-ink-mute"
+              locale={locale}
+              template={locale === "bn"
+                ? "{d} প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।"
+                : "Verified doctor and chamber information for every area of {d}."}
+              fallback={locale === "bn"
+                ? "আপনার এলাকার প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।"
+                : "Verified doctor and chamber information for every area in your location."}
+            />
+            <HomeAreaChips initialAreas={displayedAreas} locale={locale} />
           </Reveal>
           <Reveal className="flex items-center justify-center">
             {mapsConfig?.api_key ? (
@@ -560,7 +551,15 @@ export default async function HomePage({ params }: Props) {
                 {d.fordoc_badge}
               </div>
               <h2 className="mb-3 font-heading text-[clamp(24px,3.4vw,30px)] font-bold text-white">{d.fordoc_title}</h2>
-              <p className="mb-[22px] max-w-[520px] text-base text-[#CBD5E1]">{fordocSub}</p>
+              <p className="mb-[22px] max-w-[520px] text-base text-[#CBD5E1]"><DistrictText
+                locale={locale}
+                template={locale === "bn"
+                  ? "প্রতিদিন {d} হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
+                  : "Thousands of patients in {d} search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them."}
+                fallback={locale === "bn"
+                  ? "প্রতিদিন আপনার এলাকার হাজারো রোগী ডক্টরস ফাইন্ড বাংলাদেশতে ডাক্তার খোঁজেন। আপনার প্রোফাইল ভেরিফায়েড ও ফিচার্ড করে বেশি রোগীর কাছে পৌঁছান।"
+                  : "Thousands of patients in your area search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them."}
+              /></p>
               <div className="flex flex-wrap gap-3">
                 <Link href={L("/for-doctors")} className="rounded-[11px] bg-accent px-6 py-[13px] text-[15px] font-bold text-white transition-colors hover:bg-accent-hover">
                   {d.fordoc_cta}
@@ -616,6 +615,6 @@ export default async function HomePage({ params }: Props) {
           </div>
         </div>
       </div>
-    </>
+    </ShownDistrictProvider>
   );
 }

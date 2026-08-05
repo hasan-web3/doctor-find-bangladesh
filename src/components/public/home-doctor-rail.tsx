@@ -6,6 +6,7 @@ import { DoctorCard } from "@/components/public/doctor-card";
 import { Reveal } from "@/components/reveal";
 import { Shimmer } from "@/components/shimmer";
 import { useLocation } from "@/components/public/location-provider";
+import { useShownDistrict } from "@/components/public/shown-district-context";
 import { withPossessive } from "@/lib/bn";
 import { localeHref, type Locale } from "@/lib/i18n";
 import type { DoctorCardData } from "@/lib/data";
@@ -43,13 +44,18 @@ export function HomeDoctorRail({
   helpline: string;
 }) {
   const { location, ready } = useLocation();
+  // This rail is the only component on the homepage that actually queries
+  // doctors, so it is the one that knows which district the page is really
+  // showing. It publishes that to the shared context; the hero copy, the area
+  // section and the chips all read it back, which is what keeps every place
+  // name on the page agreeing with the cards.
+  //
+  // Never set from `location` directly: when the visitor's district turns out
+  // to have no doctors we keep the canonical cards, and the copy has to keep
+  // naming the canonical district with them. Deriving it straight from
+  // `location` printed "ঢাকার জনপ্রিয় ডাক্তার" over Khulna cards.
+  const { name: shownDistrictName, set: setShownDistrict } = useShownDistrict();
   const [doctors, setDoctors] = useState<DoctorCardData[]>(initialDoctors);
-  // The district the CARDS currently belong to. Kept in lockstep with `doctors`
-  // and never set from `location` directly: when the visitor's district turns
-  // out to have no doctors we keep the canonical cards, and the heading has to
-  // keep naming the canonical district with them. Deriving the name straight
-  // from `location` would print "ঢাকার জনপ্রিয় ডাক্তার" over Khulna cards.
-  const [shownDistrictName, setShownDistrictName] = useState<string | null>(canonicalDistrictName);
   const [loading, setLoading] = useState(false);
   const lastFetched = useRef<string | null>(null);
 
@@ -91,7 +97,10 @@ export function HomeDoctorRail({
           // Bagerhat visitor gets Khulna doctors ordered by proximity, so
           // naming Bagerhat would caption Khulna cards with the wrong district.
           // Same rule resolveDisplayDistrict applies on the server.
-          setShownDistrictName(data.rows[0]?.district || canonicalDistrictName);
+          setShownDistrict({
+            name: data.rows[0]?.district ?? null,
+            slug: data.rows[0]?.district_slug ?? null,
+          });
         }
       } catch (err) {
         // Aborted requests are routine; anything else leaves the existing cards
@@ -108,9 +117,9 @@ export function HomeDoctorRail({
       cancelled = true;
       controller.abort();
     };
-  }, [districtSlug, location.lat, location.lng, location.districtName, canonicalDistrictName, locale, initialDoctors.length]);
+  }, [districtSlug, location.lat, location.lng, locale, initialDoctors.length, setShownDistrict]);
 
-  const districtName = shownDistrictName;
+  const districtName = shownDistrictName ?? canonicalDistrictName;
 
   const title = districtName
     ? locale === "bn"

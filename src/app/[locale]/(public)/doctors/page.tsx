@@ -102,7 +102,7 @@ export default async function DoctorsPage({ params }: Props) {
       {/* The heading names the district of the cards actually on screen. It sits
           above the filter grid while the cards sit inside it, so the value
           travels between them through this provider. */}
-      <ShownDistrictProvider initial={geoDistrictName}>
+      <ShownDistrictProvider initialName={geoDistrictName}>
       <DoctorsPageHeading
         canonicalDistrictName={geoDistrictName}
         total={total}

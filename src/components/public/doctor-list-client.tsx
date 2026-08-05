@@ -50,7 +50,7 @@ export function DoctorListClient({
 }) {
   const params = useUrlSearchParams();
   const { location, ready } = useLocation();
-  const { setName: setShownDistrict } = useShownDistrict();
+  const { set: setShownDistrict } = useShownDistrict();
 
   const [rows, setRows] = useState<DoctorCardData[]>(initialDoctors);
   const [total, setTotal] = useState(initialTotal);
@@ -99,10 +99,13 @@ export function DoctorListClient({
         if (!cancelled) {
           setRows(data.rows);
           setTotal(data.total);
-          // Tell the heading which district these cards are in. Null when the
+          // Tell the heading which district these cards are in. Nulls when the
           // result set is empty, so the heading falls back to the canonical
           // name rather than captioning nothing.
-          setShownDistrict(data.rows[0]?.district ?? null);
+          setShownDistrict({
+            name: data.rows[0]?.district ?? null,
+            slug: data.rows[0]?.district_slug ?? null,
+          });
         }
       } catch (err) {
         // An aborted request is the expected outcome when the visitor keeps
