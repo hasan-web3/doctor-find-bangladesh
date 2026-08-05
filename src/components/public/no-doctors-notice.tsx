@@ -27,6 +27,14 @@ export function NoDoctorsNotice({
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
+    // A new district pair is a NEW message, so start from a clean slate. The
+    // parent keeps this component mounted when the visitor switches from one
+    // empty district to another, so without this reset the fresh notice
+    // inherits `leaving` from the previous dismissal and renders permanently
+    // transparent — present in the DOM, invisible on screen.
+    setLeaving(false);
+    setVisible(false);
+
     let dismissed: string[] = [];
     try {
       dismissed = JSON.parse(window.localStorage.getItem(KEY) || "[]");
