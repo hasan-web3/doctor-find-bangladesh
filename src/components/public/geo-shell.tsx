@@ -35,8 +35,7 @@ export function GeoShell({
   locale: Locale;
   d: Pick<
     Dict,
-    | "geo_viewing_from"
-    | "geo_viewing_suffix"
+    | "geo_viewing_tpl"
     | "geo_change"
     | "geo_unknown"
     | "geo_choose_district"
@@ -74,11 +73,16 @@ export function GeoShell({
       }));
   }, [districts, location.source, location.lat, location.lng]);
 
-  // The visitor picked a district that has no doctors yet, so every list on the
+  // The district we are resolving to has no doctors yet, so every list on the
   // site is quietly showing another district's. Name the nearest district that
   // actually has doctors — that is where the substituted results come from.
+  //
+  // Fires for an IP guess as well as a manual pick. The mismatch is arguably
+  // more confusing when the visitor never chose anything: the strip says
+  // "আপনি সম্ভবত চট্টগ্রাম থেকে দেখছেন" while every card below is a Khulna
+  // doctor, and without this notice nothing on the page explains why.
   const substitution = useMemo(() => {
-    if (location.source !== "manual" || !location.districtSlug) return null;
+    if (location.source === "none" || !location.districtSlug) return null;
     const own = districts.find((x) => x.slug === location.districtSlug);
     if (!own || own.doctorCount > 0) return null;
 
@@ -96,8 +100,12 @@ export function GeoShell({
             )[0] ?? withDoctors[0]
         : withDoctors[0];
 
-    return { chosen: own.name, shown: nearest.name, shownSlug: nearest.slug };
-  }, [districts, location.source, location.districtSlug]);
+    // `name` is the Bangla label the (Bangla-only) picker renders. This notice
+    // is bilingual, so on /en it has to fall back to the English name — without
+    // this the English sentence read "No doctors have been added in চট্টগ্রাম".
+    const label = (x: GeoShellDistrict) => (locale === "en" ? x.nameEn ?? x.name : x.name);
+    return { chosen: label(own), shown: label(nearest), shownSlug: nearest.slug };
+  }, [districts, location.source, location.districtSlug, locale]);
 
   // Nothing renders until resolution finishes: the server HTML contains neither
   // the prompt nor the notice, so painting either before `ready` would be a

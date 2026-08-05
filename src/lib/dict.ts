@@ -22,8 +22,8 @@ const bn = {
   whatsapp: "হোয়াটসঅ্যাপ",
 
   // geo banner
-  geo_viewing_from: "আপনি সম্ভবত",
-  geo_viewing_suffix: "থেকে দেখছেন, আপনার এলাকার ডাক্তার আগে দেখানো হচ্ছে।",
+  // {d} is replaced by the district name, rendered bold.
+  geo_viewing_tpl: "আপনি সম্ভবত {d} থেকে দেখছেন, আপনার এলাকার ডাক্তার আগে দেখানো হচ্ছে।",
   geo_change: "পরিবর্তন করুন",
   geo_pick_area: "শহর / গ্রাম বাছাই করুন",
   // Shown instead of the "browsing from X" line when IP geo told us nothing —
@@ -327,8 +327,7 @@ const en: typeof bn = {
   call_short: "Call",
   whatsapp: "WhatsApp",
 
-  geo_viewing_from: "You seem to be browsing from",
-  geo_viewing_suffix: ", showing doctors in your area first.",
+  geo_viewing_tpl: "You seem to be browsing from {d}, showing doctors in your area first.",
   geo_change: "Change",
   geo_pick_area: "Pick your Town / Village",
   geo_unknown: "Choose your district to see the nearest doctors first.",

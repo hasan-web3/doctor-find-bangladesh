@@ -93,7 +93,7 @@ export function GeoPrompt({
   districts: DistrictOption[];
   d: Pick<
     Dict,
-    "geo_viewing_from" | "geo_viewing_suffix" | "geo_change" | "geo_unknown" | "geo_choose_district"
+    "geo_viewing_tpl" | "geo_change" | "geo_unknown" | "geo_choose_district"
   >;
 }) {
   // Both start closed so the server-rendered markup and the first client paint

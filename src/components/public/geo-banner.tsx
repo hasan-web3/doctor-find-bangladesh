@@ -46,7 +46,7 @@ export function GeoBanner({
   onDismiss: () => void;
   d: Pick<
     Dict,
-    "geo_viewing_from" | "geo_viewing_suffix" | "geo_change" | "geo_unknown" | "geo_choose_district"
+    "geo_viewing_tpl" | "geo_change" | "geo_unknown" | "geo_choose_district"
   >;
 }) {
   const [mode, setMode] = useState<Mode>("full");
@@ -126,10 +126,21 @@ export function GeoBanner({
         <span>
           <span className="mr-1">◉</span>
           {districtName ? (
-            <>
-              {d.geo_viewing_from} <b>{districtName}</b>
-              {d.geo_viewing_suffix}
-            </>
+            // Split on the placeholder rather than concatenating two dict
+            // fragments: JSX drops the whitespace around a newline, which is
+            // what glued "চট্টগ্রাম" to "থেকে". Splitting keeps exactly the
+            // spacing each translation was written with — Bangla wants a space
+            // before "থেকে", English wants none before its comma.
+            (() => {
+              const [before, after] = d.geo_viewing_tpl.split("{d}");
+              return (
+                <>
+                  {before}
+                  <b>{districtName}</b>
+                  {after}
+                </>
+              );
+            })()
           ) : (
             d.geo_unknown
           )}
