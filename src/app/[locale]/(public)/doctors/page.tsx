@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { DoctorCard } from "@/components/public/doctor-card";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
-import { Pagination } from "@/components/public/pagination";
 import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/listing-filters";
 import { DoctorListClient } from "@/components/public/doctor-list-client";
-import { AnimatedGrid } from "@/components/animated-grid";
+import { DoctorsPageHeading } from "@/components/public/doctors-page-heading";
+import { ShownDistrictProvider } from "@/components/public/shown-district-context";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict, geoSearchPrefs,
@@ -16,7 +15,7 @@ import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
-import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
+import { isLocale, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
 // ISR: highest-traffic listing.
@@ -78,9 +77,6 @@ export default async function DoctorsPage({ params }: Props) {
   const hospitals = hospitalData.rows;
 
   const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
-  const pageTitle = geoDistrictName
-    ? (locale === "bn" ? `${bnPossessive(geoDistrictName)} ডাক্তারদের তালিকা` : `Doctors in ${geoDistrictName}`)
-    : (locale === "bn" ? "আপনার এলাকার ডাক্তারদের তালিকা" : "Doctors in Your Area");
 
   const geoPrefs = await geoSearchPrefs(geo, locale);
 
@@ -100,20 +96,19 @@ export default async function DoctorsPage({ params }: Props) {
 
   const { rows, total } = await searchDoctors(query, locale);
 
-  const pageSub = total > 0
-  ? (geoDistrictName
-    ? (locale === "bn"
-      ? `${num(total, locale)} জন যাচাইকৃত ডাক্তারের মধ্যে থেকে ${bnPossessive(geoDistrictName)} সেরা ডাক্তারদের বেছে নিন।`
-      : `Choose from ${num(total, locale)} verified doctors in ${geoDistrictName}.`)
-    : `${num(total, locale)} ${d.listing_sub_prefix}`)
-  : d.listing_sub_empty;
-
-
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
       <Breadcrumbs locale={locale} items={[{ name: d.breadcrumb_home, path: "/" }, { name: d.breadcrumb_doctors }]} />
-      <h1 className="mb-1.5 font-heading text-[clamp(26px,4vw,34px)] font-bold text-ink">{pageTitle}</h1>
-      <p className="mb-6 text-base text-ink-mute">{pageSub}</p>
+      {/* The heading names the district of the cards actually on screen. It sits
+          above the filter grid while the cards sit inside it, so the value
+          travels between them through this provider. */}
+      <ShownDistrictProvider initial={geoDistrictName}>
+      <DoctorsPageHeading
+        canonicalDistrictName={geoDistrictName}
+        total={total}
+        locale={locale}
+        d={d}
+      />
 
       <div className="grid grid-cols-1 gap-6 min-[900px]:grid-cols-[260px_1fr]">
         <Suspense>
@@ -159,6 +154,7 @@ export default async function DoctorsPage({ params }: Props) {
           />
         </div>
       </div>
+      </ShownDistrictProvider>
     </div>
   );
 }

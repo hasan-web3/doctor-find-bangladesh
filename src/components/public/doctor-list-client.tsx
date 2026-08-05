@@ -7,6 +7,7 @@ import { AnimatedGrid } from "@/components/animated-grid";
 import { Shimmer } from "@/components/shimmer";
 import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { useLocation } from "@/components/public/location-provider";
+import { useShownDistrict } from "@/components/public/shown-district-context";
 import type { DoctorCardData } from "@/lib/data";
 import type { Dict } from "@/lib/dict";
 import type { Locale } from "@/lib/i18n";
@@ -49,6 +50,7 @@ export function DoctorListClient({
 }) {
   const params = useUrlSearchParams();
   const { location, ready } = useLocation();
+  const { setName: setShownDistrict } = useShownDistrict();
 
   const [rows, setRows] = useState<DoctorCardData[]>(initialDoctors);
   const [total, setTotal] = useState(initialTotal);
@@ -97,6 +99,10 @@ export function DoctorListClient({
         if (!cancelled) {
           setRows(data.rows);
           setTotal(data.total);
+          // Tell the heading which district these cards are in. Null when the
+          // result set is empty, so the heading falls back to the canonical
+          // name rather than captioning nothing.
+          setShownDistrict(data.rows[0]?.district ?? null);
         }
       } catch (err) {
         // An aborted request is the expected outcome when the visitor keeps
@@ -117,7 +123,7 @@ export function DoctorListClient({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, geoKey, locale]);
+  }, [queryKey, geoKey, locale, setShownDistrict]);
 
   const totalPages = Math.ceil(total / perPage);
 

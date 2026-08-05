@@ -1552,10 +1552,25 @@ export const getNearbyAreas = async (
   }
 
   // Fallback path: If no location is detected, show the most popular areas site-wide.
+  //
+  // Counts a doctor as belonging to a thana the same two ways the rest of the
+  // site does — a visible chamber here, OR their linked hospital sits here.
+  // Chambers alone returns zero for every thana on a dataset where doctors are
+  // attached through hospitals, and the `doctorCount > 0` filter below then
+  // emptied the entire footer column.
   const doctorCount = sql<number>`(
-      SELECT COUNT(DISTINCT c.doctor_id)::int FROM chambers c
-      JOIN doctors d ON d.id = c.doctor_id AND d.active
-      WHERE c.area_id = "areas"."id" AND c.visible
+      SELECT COUNT(DISTINCT doc.id)::int
+      FROM doctors doc
+      WHERE doc.active AND (
+        EXISTS (
+          SELECT 1 FROM chambers c
+          WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = "areas"."id"
+        )
+        OR EXISTS (
+          SELECT 1 FROM hospitals h
+          WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+        )
+      )
     )`.as("doctor_count");
 
   const popularAreas = await db

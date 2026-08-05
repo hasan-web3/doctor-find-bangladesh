@@ -6,9 +6,9 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { JsonLd } from "@/components/json-ld";
-import { DoctorCard } from "@/components/public/doctor-card";
 import { HeroSlider } from "@/components/public/hero-slider";
 import { SearchBar } from "@/components/public/search-bar";
+import { HomeDoctorRail } from "@/components/public/home-doctor-rail";
 import { getEnabledConfig } from "@/lib/integrations";
 
 // Below-the-fold client components — split into their own chunks so they don't
@@ -139,14 +139,6 @@ export default async function HomePage({ params }: Props) {
         ? "আপনার এলাকার প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।"
         : "Verified doctor and chamber information for every area in your location."
       );
-
-  const featuredSectionTitle = geoDistrictName
-    ? (locale === "bn"
-        ? `${bnPossessive(geoDistrictName)} জনপ্রিয় ও যাচাইকৃত ডাক্তার`
-        : `Popular & verified doctors in ${geoDistrictName}`)
-    : (locale === "bn"
-        ? "আপনার এলাকার জনপ্রিয় ও যাচাইকৃত ডাক্তার"
-        : "Popular & verified doctors in your area");
 
   const fordocSub = geoDistrictName
     ? (locale === "bn"
@@ -386,36 +378,18 @@ export default async function HomePage({ params }: Props) {
         </div>
       </div>
 
-      {/* ===== FEATURED DOCTORS ===== */}
-      <div className="mx-auto max-w-site px-5 py-16">
-        <Reveal>
-          <div className="mb-[30px] flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="mb-2 text-sm font-bold text-brand-600">{d.sec_featured_eyebrow}</div>
-              <h2 className="m-0 font-heading text-[clamp(26px,3.5vw,32px)] font-bold text-ink">{featuredSectionTitle}</h2>
-            </div>
-            <Link
-              href={L("/doctors")}
-              className="rounded-[10px] border-[1.5px] border-brand-600 bg-white px-[18px] py-2.5 text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
-            >
-              {d.view_all_doctors}
-            </Link>
-          </div>
-        </Reveal>
-        {doctorsForHomepage.length > 0 ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 min-[1000px]:grid-cols-4">
-            {doctorsForHomepage.map((doc, i) => (
-              <Reveal key={doc.id} delay={Math.min(i * 60, 240)}>
-                <DoctorCard doctor={doc} helpline={settings.helpline} locale={locale} d={d} />
-              </Reveal>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-line bg-white p-10 text-center text-ink-faint">
-            {d.no_doctors_yet}
-          </div>
-        )}
-      </div>
+      {/* ===== FEATURED DOCTORS =====
+          Heading + cards both live in <HomeDoctorRail>, which re-queries
+          /api/doctors once LocationProvider knows the visitor's district. The
+          server still renders the canonical list into the HTML, so this section
+          is never empty for a crawler or on first paint. */}
+      <HomeDoctorRail
+        initialDoctors={doctorsForHomepage}
+        canonicalDistrictName={geoDistrictName}
+        locale={locale}
+        d={d}
+        helpline={settings.helpline}
+      />
 
       {/* ===== HOW IT WORKS ===== */}
       <div className="border-y border-line bg-page">
