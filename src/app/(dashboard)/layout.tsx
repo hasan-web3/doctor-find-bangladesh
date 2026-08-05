@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getSettings } from "@/lib/settings";
 import { fontVariables } from "@/lib/fonts";
 import "../globals.css";
 
@@ -18,12 +19,30 @@ import "../globals.css";
 // than a client transition. That is the documented trade-off of multiple root
 // layouts and is irrelevant here — nobody hops between the two in a session.
 
-export const metadata: Metadata = {
-  title: "ড্যাশবোর্ড",
-  // The dashboard must never be indexed, and it is not covered by any
-  // public-facing robots rule since it lives outside the [locale] tree.
-  robots: { index: false, follow: false },
-};
+// The favicon has to be declared HERE as well as in [locale]/layout.tsx.
+//
+// It used to be declared once, in the single root layout that covered the whole
+// app. Splitting that into two root layouts (public + dashboard) to get the
+// locale out of headers() moved the declaration into the public half only, so
+// the dashboard silently fell back to the file-convention /icon.svg and the
+// admin-uploaded icon stopped appearing on /admin tabs.
+//
+// Same rule as the public side: point at our OWN /favicon.ico route, which
+// proxies the uploaded image, rather than the raw R2 URL — and when nothing has
+// been uploaded, omit `icons` entirely so Next falls back to /icon.svg exactly
+// as before.
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  return {
+    title: "ড্যাশবোর্ড",
+    // The dashboard must never be indexed, and it is not covered by any
+    // public-facing robots rule since it lives outside the [locale] tree.
+    robots: { index: false, follow: false },
+    ...(settings.favicon_url
+      ? { icons: { icon: "/favicon.ico", shortcut: "/favicon.ico", apple: "/favicon.ico" } }
+      : {}),
+  };
+}
 
 export default function DashboardRootLayout({ children }: { children: React.ReactNode }) {
   return (

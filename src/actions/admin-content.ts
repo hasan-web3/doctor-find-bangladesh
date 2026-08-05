@@ -119,9 +119,13 @@ export async function saveSpecialty(payload: unknown): Promise<ActionResult> {
 
 export async function deleteSpecialty(id: number): Promise<ActionResult> {
   await requireSession();
+  // Read the slug BEFORE the row goes away — after the delete there is nothing
+  // left to derive the URL from, and /specialties/<slug> would keep serving its
+  // cached 200 until the 6-hour ISR window expired.
+  const [existing] = await db.select({ slug: specialties.slug }).from(specialties).where(eq(specialties.id, id)).limit(1);
   await db.delete(specialties).where(eq(specialties.id, id));
   await audit("delete", "specialties", id);
-  revalidatePublic(["specialties"]);
+  revalidateSpecialty({ slug: existing?.slug });
   return { ok: true, message: "বিভাগ মুছে ফেলা হয়েছে" };
 }
 
@@ -188,9 +192,10 @@ export async function saveDistrict(payload: unknown): Promise<ActionResult> {
 
 export async function deleteDistrict(id: number): Promise<ActionResult> {
   await requireSession();
+  const [existing] = await db.select({ slug: districts.slug }).from(districts).where(eq(districts.id, id)).limit(1);
   await db.delete(districts).where(eq(districts.id, id));
   await audit("delete", "districts", id);
-  revalidatePublic(["districts", "areas"]);
+  revalidateDistrict({ slug: existing?.slug });
   return { ok: true, message: "জেলা মুছে ফেলা হয়েছে" };
 }
 
@@ -279,9 +284,17 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
 
 export async function deleteArea(id: number): Promise<ActionResult> {
   await requireSession();
+  // The thana URL is /area/doctors/<district>/<area>, so the parent district's
+  // slug has to come along or the deleted page cannot be addressed for purging.
+  const [existing] = await db
+    .select({ slug: areas.slug, districtSlug: districts.slug })
+    .from(areas)
+    .leftJoin(districts, eq(districts.id, areas.districtId))
+    .where(eq(areas.id, id))
+    .limit(1);
   await db.delete(areas).where(eq(areas.id, id));
   await audit("delete", "areas", id);
-  revalidatePublic(["areas"]);
+  revalidateArea({ slug: existing?.slug, districtSlug: existing?.districtSlug });
   return { ok: true, message: "থানা / উপজেলা মুছে ফেলা হয়েছে" };
 }
 
@@ -426,14 +439,14 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
 
 export async function deleteHospital(id: number): Promise<ActionResult> {
   await requireSession();
-  const [h] = await db.select({ imageKey: hospitals.imageKey, gallery: hospitals.gallery }).from(hospitals).where(eq(hospitals.id, id)).limit(1);
+  const [h] = await db.select({ slug: hospitals.slug, imageKey: hospitals.imageKey, gallery: hospitals.gallery }).from(hospitals).where(eq(hospitals.id, id)).limit(1);
   if (h) {
     await destroyImage(h.imageKey);
     for (const g of h.gallery ?? []) await destroyImage(g.key);
   }
   await db.delete(hospitals).where(eq(hospitals.id, id));
   await audit("delete", "hospitals", id);
-  revalidatePublic(["hospitals"]);
+  revalidateHospital({ slug: h?.slug });
   return { ok: true, message: "হাসপাতাল মুছে ফেলা হয়েছে" };
 }
 
@@ -518,11 +531,11 @@ export async function saveBlogPost(payload: unknown): Promise<ActionResult> {
 
 export async function deleteBlogPost(id: number): Promise<ActionResult> {
   await requireSession();
-  const [p] = await db.select({ coverKey: blogPosts.coverKey }).from(blogPosts).where(eq(blogPosts.id, id)).limit(1);
+  const [p] = await db.select({ slug: blogPosts.slug, coverKey: blogPosts.coverKey }).from(blogPosts).where(eq(blogPosts.id, id)).limit(1);
   if (p) await destroyImage(p.coverKey);
   await db.delete(blogPosts).where(eq(blogPosts.id, id));
   await audit("delete", "blog_posts", id);
-  revalidatePublic(["blog"]);
+  revalidateBlogPost({ slug: p?.slug });
   return { ok: true, message: "আর্টিকেল মুছে ফেলা হয়েছে" };
 }
 

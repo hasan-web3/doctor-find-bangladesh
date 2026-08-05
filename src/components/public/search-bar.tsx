@@ -126,6 +126,13 @@ export function SearchBar({
       return;
     }
 
+    // Debouncing thins the requests out; it does not order them. Two calls can
+    // still be in flight after a pause mid-word, and if the earlier one lands
+    // last the visitor sees suggestions for a prefix they already finished
+    // typing. Aborting the previous request makes the newest query the only one
+    // that can write state.
+    const controller = new AbortController();
+
     const fetchSuggestions = async () => {
       setIsSuggestionsLoading(true);
       setIsSuggestionsOpen(true);
@@ -135,19 +142,28 @@ export function SearchBar({
       // every keystroke.
       if (location.districtSlug) params.set("preferDistrict", location.districtSlug);
       try {
-        const res = await fetch(`/api/search/suggestions?${params.toString()}`);
+        const res = await fetch(`/api/search/suggestions?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
         setSuggestions(data || []);
       } catch (error) {
+        // An abort is the expected outcome of typing another character — it is
+        // not a failure and must not clear the list, or the dropdown would
+        // flicker empty between keystrokes.
+        if ((error as Error)?.name === "AbortError") return;
         console.error(error);
         setSuggestions([]);
       } finally {
-        setIsSuggestionsLoading(false);
+        // Guard this too: the aborted run's `finally` would otherwise switch the
+        // spinner off while its replacement is still loading.
+        if (!controller.signal.aborted) setIsSuggestionsLoading(false);
       }
     };
 
     fetchSuggestions();
+    return () => controller.abort();
   }, [debouncedQ, locale, location.districtSlug]);
   
   // --- Close suggestions when clicking outside ---

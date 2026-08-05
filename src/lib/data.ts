@@ -387,9 +387,25 @@ export const getAreasForGeo = unstable_cache(
         COALESCE(a.lat, d.lat) AS lat,
         COALESCE(a.lng, d.lng) AS lng,
         (
-          SELECT COUNT(DISTINCT c.doctor_id)::int
-          FROM chambers c JOIN doctors dr ON dr.id = c.doctor_id
-          WHERE c.area_id = a.id AND c.visible AND dr.active
+          -- A doctor belongs to this thana in EITHER of two ways: a visible
+          -- chamber here, or their linked hospital sits here. Counting only
+          -- chambers reported zero for every thana on datasets where doctors
+          -- are attached through hospitals, which silently emptied the picker,
+          -- the "nearest area with doctors" fallback in geo.ts, and the
+          -- prerender list built from this reader.
+          -- Same rule as getBusiestAreaByDistrict and searchDoctors' area filter.
+          SELECT COUNT(DISTINCT doc.id)::int
+          FROM doctors doc
+          WHERE doc.active AND (
+            EXISTS (
+              SELECT 1 FROM chambers c
+              WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM hospitals h
+              WHERE h.id = doc.hospital_id AND h.area_id = a.id
+            )
+          )
         ) AS "doctorCount"
       FROM areas a
       LEFT JOIN districts d ON d.id = a.district_id
@@ -398,7 +414,10 @@ export const getAreasForGeo = unstable_cache(
     `);
     return res.rows;
   },
-  ["geo-areas-v4"],
+  // Key bumped (v4 -> v5): the count query changed, and unstable_cache is keyed
+  // by this string, so reusing it would keep serving the old chamber-only
+  // numbers until something happened to revalidate the tag.
+  ["geo-areas-v5"],
   // Same reasoning as getSpecialties above: this feeds the district/area picker
   // rendered in the shared layout, so tagging it "doctors" would let a single
   // doctor edit purge every cached page. The doctor counts shown in the picker
@@ -423,11 +442,25 @@ export const getDistrictsForGeo = unstable_cache(
         d.lat,
         d.lng,
         (
-          SELECT COUNT(DISTINCT c.doctor_id)::int
-          FROM chambers c
-          JOIN doctors dr ON dr.id = c.doctor_id
-          JOIN areas a ON a.id = c.area_id
-          WHERE a.district_id = d.id AND c.visible AND dr.active
+          -- Chamber-in-this-district OR hospital-in-this-district, the same
+          -- two-way rule getAreasForGeo uses. Chamber-only counting showed "0
+          -- জন ডাক্তার" against every district in the picker whenever doctors
+          -- were linked through hospitals, and made the no-doctors substitution
+          -- notice fire for districts that do in fact have doctors.
+          SELECT COUNT(DISTINCT doc.id)::int
+          FROM doctors doc
+          WHERE doc.active AND (
+            EXISTS (
+              SELECT 1 FROM chambers c
+              JOIN areas ca ON ca.id = c.area_id
+              WHERE c.doctor_id = doc.id AND c.visible AND ca.district_id = d.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM hospitals h
+              JOIN areas ha ON ha.id = h.area_id
+              WHERE h.id = doc.hospital_id AND ha.district_id = d.id
+            )
+          )
         ) AS "doctorCount"
       FROM districts d
       WHERE d.active
@@ -435,7 +468,8 @@ export const getDistrictsForGeo = unstable_cache(
     `);
     return res.rows;
   },
-  ["geo-districts-v1"],
+  // Key bumped (v1 -> v2) for the same reason as geo-areas above.
+  ["geo-districts-v2"],
   // Not tagged "doctors" — this is the district list the shared layout hands to
   // <LocationProvider>/<GeoShell>, so a "doctors" tag here would make one doctor
   // edit invalidate every cached page. See getSpecialties for the full argument.
@@ -1866,8 +1900,12 @@ export const getAllDistrictSlugs = unstable_cache(
  * them. An empty thana still resolves on demand (dynamicParams is true) and
  * starts being prebuilt automatically as soon as it gains a doctor.
  *
- * Reuses getAreasForGeo(), which already carries the doctor count through the
- * chamber-then-hospital chain, so this adds no extra query.
+ * Reuses getAreasForGeo(), which counts a doctor through EITHER a visible
+ * chamber in the thana or a hospital located in it, so this adds no extra
+ * query. That two-way rule matters here specifically: while that reader counted
+ * chambers only, every thana on a hospital-linked dataset reported zero and
+ * this list came back empty — meaning no thana page was prerendered at all and
+ * all of them fell back to rendering per request.
  */
 export const getAllAreaSlugPairs = unstable_cache(
   async () => {
@@ -1876,6 +1914,7 @@ export const getAllAreaSlugPairs = unstable_cache(
       .filter((a) => a.doctorCount > 0 && a.slug && a.district_slug)
       .map((a) => ({ area: a.slug, district: a.district_slug as string }));
   },
-  ["all-area-slug-pairs"],
+  // Bumped alongside geo-areas-v5 — this list is derived from those counts.
+  ["all-area-slug-pairs-v2"],
   { tags: ["areas", "districts", "doctors"] }
 );

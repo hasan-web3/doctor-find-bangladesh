@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { NotificationBell, NotificationsProvider } from "@/components/admin/notifications";
 import { getSession } from "@/lib/auth";
@@ -12,6 +13,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // first paint; the provider keeps them current after that (this layout does
   // not re-run on soft navigation between admin pages).
   const [session, notificationState] = await Promise.all([getSession(), getNotificationState()]);
+
+  // Defence in depth. The middleware already redirects unauthenticated /admin
+  // requests, but authorization must not rest on it alone: middleware runs on a
+  // matcher, and a matcher is one regex edit away from silently un-guarding
+  // this tree. Without this check a request that reached the layout would
+  // render the full dashboard shell — sidebar, notification counts and all —
+  // with the name falling back to "অ্যাডমিন".
+  //
+  // Individual mutations are still protected by requireSession() inside each
+  // server action; this closes the gap for the rendered page itself.
+  if (!session) redirect("/admin-login");
 
   return (
     <NotificationsProvider initial={notificationState}>
