@@ -34,16 +34,10 @@ export function Pagination({ page, totalPages, perPage, locale = "bn", showPerPa
   const pathname = usePathname();
   const params = useUrlSearchParams();
 
-  // This component can't render if it's not needed
-  if (totalPages <= 1 && (!showPerPageSelector || (perPage || 12) >= totalPages * (perPage || 12))) {
-    if (totalPages <= 1 && !showPerPageSelector) return null;
-  }
-
-  const pages: number[] = [];
-  const start = Math.max(1, page - 2);
-  const end = Math.min(totalPages, start + 4);
-  for (let i = start; i <= end; i++) pages.push(i);
-  
+  // Every hook has to run before the early return below, or the hook count
+  // changes between renders the moment totalPages drops to 1 (a filter that
+  // narrows the list to a single page) and React throws "rendered fewer hooks
+  // than expected".
   const makeHref = useCallback((p: number) => {
     const next = new URLSearchParams(params.toString());
     // Page 1 is the bare path, never ?page=1 — otherwise /areas and
@@ -54,6 +48,14 @@ export function Pagination({ page, totalPages, perPage, locale = "bn", showPerPa
     const qs = next.toString();
     return qs ? `${pathname}?${qs}` : pathname;
   }, [pathname, params]);
+
+  // Nothing to render: one page of results and no per-page selector to offer.
+  if (totalPages <= 1 && !showPerPageSelector) return null;
+
+  const pages: number[] = [];
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, start + 4);
+  for (let i = start; i <= end; i++) pages.push(i);
 
   // next/link, so this stays a client-side navigation: no full page reload, no
   // white flash, and `scroll={false}` keeps the viewport where it was, exactly

@@ -164,6 +164,12 @@ function shardSlice<T>(rows: T[], page: number): T[] {
 // URL along it appears on the next revalidation. Nothing to maintain by hand.
 // ---------------------------------------------------------------------------
 
+// Which thana a doctor belongs to, and it is exactly ONE rule everywhere on the
+// site: their visible chambers, and ONLY if they have none, their linked
+// hospital. The second branch is a FALLBACK, not an alternative — without the
+// NOT EXISTS guard a doctor with a Dhaka chamber and a Khulna hospital was
+// listed under both thanas, so the sitemap advertised URLs whose pages did not
+// actually contain that doctor once the listing filter disagreed.
 const DOCTOR_AREA = sql`
   doctor_area AS (
     SELECT DISTINCT c.doctor_id, c.area_id
@@ -174,6 +180,10 @@ const DOCTOR_AREA = sql`
       FROM doctors d
       JOIN hospitals h ON h.id = d.hospital_id
      WHERE h.area_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM chambers cx
+          WHERE cx.doctor_id = d.id AND cx.visible AND cx.area_id IS NOT NULL
+       )
   )`;
 
 // Every coverage query returns the same shape: the slugs that build the URL,

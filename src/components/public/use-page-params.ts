@@ -23,6 +23,14 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 // router.push/replace ultimately call history.pushState/replaceState, which
 // fire no event of their own — so we patch them once to emit one. Without the
 // patch, clicking to page 2 would change the URL and nothing would re-render.
+//
+// The dispatch MUST be deferred to a microtask. Next's App Router calls
+// pushState from inside a useInsertionEffect; dispatching synchronously there
+// notifies useSyncExternalStore subscribers mid-insertion-phase, which React
+// rejects ("useInsertionEffect must not schedule updates") and drops on the
+// floor — the URL changed but the list did not re-render until some unrelated
+// event happened to schedule the next render, seconds later. A microtask lands
+// after the insertion phase, so the update is a normal one.
 
 const NAV_EVENT = "app:urlchange";
 let historyPatched = false;
@@ -37,7 +45,7 @@ function patchHistoryOnce() {
       ...args: Parameters<History[typeof method]>
     ) {
       const result = original.apply(this, args);
-      window.dispatchEvent(new Event(NAV_EVENT));
+      queueMicrotask(() => window.dispatchEvent(new Event(NAV_EVENT)));
       return result;
     };
   }

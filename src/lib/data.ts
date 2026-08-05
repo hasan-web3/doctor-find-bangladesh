@@ -401,9 +401,16 @@ export const getAreasForGeo = unstable_cache(
               SELECT 1 FROM chambers c
               WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
             )
-            OR EXISTS (
-              SELECT 1 FROM hospitals h
-              WHERE h.id = doc.hospital_id AND h.area_id = a.id
+            OR (
+              -- Hospital is a FALLBACK, not an alternative: it only applies to
+              -- a doctor with no visible chamber anywhere. Without this guard a
+              -- doctor with a Dhaka chamber and a Khulna hospital counted for
+              -- both districts, while their card said Dhaka.
+              NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+              AND EXISTS (
+                SELECT 1 FROM hospitals h
+                WHERE h.id = doc.hospital_id AND h.area_id = a.id
+              )
             )
           )
         ) AS "doctorCount"
@@ -417,7 +424,7 @@ export const getAreasForGeo = unstable_cache(
   // Key bumped (v4 -> v5): the count query changed, and unstable_cache is keyed
   // by this string, so reusing it would keep serving the old chamber-only
   // numbers until something happened to revalidate the tag.
-  ["geo-areas-v5"],
+  ["geo-areas-v6"],
   // Same reasoning as getSpecialties above: this feeds the district/area picker
   // rendered in the shared layout, so tagging it "doctors" would let a single
   // doctor edit purge every cached page. The doctor counts shown in the picker
@@ -455,10 +462,14 @@ export const getDistrictsForGeo = unstable_cache(
               JOIN areas ca ON ca.id = c.area_id
               WHERE c.doctor_id = doc.id AND c.visible AND ca.district_id = d.id
             )
-            OR EXISTS (
-              SELECT 1 FROM hospitals h
-              JOIN areas ha ON ha.id = h.area_id
-              WHERE h.id = doc.hospital_id AND ha.district_id = d.id
+            OR (
+              -- Fallback only; see getAreasForGeo above.
+              NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+              AND EXISTS (
+                SELECT 1 FROM hospitals h
+                JOIN areas ha ON ha.id = h.area_id
+                WHERE h.id = doc.hospital_id AND ha.district_id = d.id
+              )
             )
           )
         ) AS "doctorCount"
@@ -469,7 +480,7 @@ export const getDistrictsForGeo = unstable_cache(
     return res.rows;
   },
   // Key bumped (v1 -> v2) for the same reason as geo-areas above.
-  ["geo-districts-v2"],
+  ["geo-districts-v3"],
   // Not tagged "doctors" — this is the district list the shared layout hands to
   // <LocationProvider>/<GeoShell>, so a "doctors" tag here would make one doctor
   // edit invalidate every cached page. See getSpecialties for the full argument.
@@ -501,9 +512,16 @@ export const getBusiestAreaByDistrict = unstable_cache(
               SELECT 1 FROM chambers c
               WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
             )
-            OR EXISTS (
-              SELECT 1 FROM hospitals h
-              WHERE h.id = doc.hospital_id AND h.area_id = a.id
+            OR (
+              -- Hospital is a FALLBACK, not an alternative: it only applies to
+              -- a doctor with no visible chamber anywhere. Without this guard a
+              -- doctor with a Dhaka chamber and a Khulna hospital counted for
+              -- both districts, while their card said Dhaka.
+              NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+              AND EXISTS (
+                SELECT 1 FROM hospitals h
+                WHERE h.id = doc.hospital_id AND h.area_id = a.id
+              )
             )
           )
         ) AS doctor_count
@@ -516,7 +534,7 @@ export const getBusiestAreaByDistrict = unstable_cache(
     // driver-level change can never turn this into a silent no-match.
     return res.rows.map((r) => ({ ...r, district_id: Number(r.district_id) }));
   },
-  ["busiest-area-by-district-v1"],
+  ["busiest-area-by-district-v2"],
   { tags: ["areas", "doctors", "hospitals", "districts"] }
 );
 
@@ -837,7 +855,12 @@ export type DoctorSearchParams = {
 const searchDoctorsCached = unstable_cache(
   async (paramsJson: string, locale: Locale) =>
     searchDoctorsUncached(JSON.parse(paramsJson) as DoctorSearchParams, locale),
-  ["search-doctors"],
+  // Version suffix, and it must be bumped whenever the SQL below changes.
+  // Next persists the Data Cache across builds and across Vercel deployments,
+  // so an unchanged key keeps serving answers computed by the OLD query: after
+  // the chamber-first fix, /districts/dhaka/doctors still rendered 0 doctors
+  // from a pre-fix entry while a fresh param combination returned 1.
+  ["search-doctors-v2"],
   { tags: ["doctors"] }
 );
 
@@ -897,14 +920,17 @@ async function searchDoctorsUncached(
     if (params.area && params.area.length > 0) {
       const ars = Array.isArray(params.area) ? params.area : [params.area];
       const list = sql.join(ars.map((s) => sql`${s}`), sql`, `);
-      // Include doctors linked to this thana either through a visible chamber
-      // OR through their profile hospital — mirror of the district filter so
-      // the "must have a chamber" rule doesn't hide hospital-only doctors.
+      // A doctor belongs to this thana through their visible chambers, and ONLY
+      // if they have none, through their profile hospital. Chamber-first with a
+      // hospital fallback — the same priority the card display uses
+      // (COALESCE(chamber_area, hospital_area) in cardFrom), so the list a
+      // doctor appears in always agrees with the address printed on their card.
       conditions.push(sql`(
         EXISTS (SELECT 1 FROM chambers c3 JOIN areas a3 ON a3.id = c3.area_id
                 WHERE c3.doctor_id = d.id AND c3.visible AND a3.slug IN (${list}))
-        OR EXISTS (SELECT 1 FROM hospitals ha JOIN areas aa ON aa.id = ha.area_id
-                   WHERE ha.id = d.hospital_id AND aa.slug IN (${list}))
+        OR (NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = d.id AND cx.visible)
+            AND EXISTS (SELECT 1 FROM hospitals ha JOIN areas aa ON aa.id = ha.area_id
+                        WHERE ha.id = d.hospital_id AND aa.slug IN (${list})))
       )`);
     }
     if (params.district && params.district.length > 0) {
@@ -914,9 +940,10 @@ async function searchDoctorsUncached(
         EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id
                 JOIN districts dd ON dd.id = ad.district_id
                 WHERE cd.doctor_id = d.id AND cd.visible AND dd.slug IN (${list}))
-        OR EXISTS (SELECT 1 FROM hospitals hd JOIN areas hda ON hda.id = hd.area_id
-                   JOIN districts hdd ON hdd.id = hda.district_id
-                   WHERE hd.id = d.hospital_id AND hdd.slug IN (${list}))
+        OR (NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = d.id AND cx.visible)
+            AND EXISTS (SELECT 1 FROM hospitals hd JOIN areas hda ON hda.id = hd.area_id
+                        JOIN districts hdd ON hdd.id = hda.district_id
+                        WHERE hd.id = d.hospital_id AND hdd.slug IN (${list})))
       )`);
     }
     if (params.hospital && params.hospital.length > 0) {
@@ -1504,9 +1531,13 @@ export const getNearbyAreas = async (
           SELECT 1 FROM chambers c
           WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = "areas"."id"
         )
-        OR EXISTS (
-          SELECT 1 FROM hospitals h
-          WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+        OR (
+          -- Fallback only; see getAreasForGeo.
+          NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+          AND EXISTS (
+            SELECT 1 FROM hospitals h
+            WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+          )
         )
       )
     )`.as("doctor_count");
@@ -1566,9 +1597,13 @@ export const getNearbyAreas = async (
           SELECT 1 FROM chambers c
           WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = "areas"."id"
         )
-        OR EXISTS (
-          SELECT 1 FROM hospitals h
-          WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+        OR (
+          -- Fallback only; see getAreasForGeo.
+          NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+          AND EXISTS (
+            SELECT 1 FROM hospitals h
+            WHERE h.id = doc.hospital_id AND h.area_id = "areas"."id"
+          )
         )
       )
     )`.as("doctor_count");
@@ -1644,9 +1679,13 @@ export async function searchAreas(
         SELECT 1 FROM chambers c
         WHERE c.doctor_id = doc.id AND c.visible AND c.area_id = a.id
       )
-      OR EXISTS (
-        SELECT 1 FROM hospitals h
-        WHERE h.id = doc.hospital_id AND h.area_id = a.id
+      OR (
+        -- Fallback only, which is what the comment above always described.
+        NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = doc.id AND cx.visible)
+        AND EXISTS (
+          SELECT 1 FROM hospitals h
+          WHERE h.id = doc.hospital_id AND h.area_id = a.id
+        )
       )
     )
   )`;
@@ -1801,10 +1840,14 @@ export async function searchDistricts(
         JOIN ${areasT} a ON a.id = c.area_id
         WHERE c.doctor_id = doc.id AND c.visible AND a.district_id = districts.id
       )
-      OR EXISTS (
-        SELECT 1 FROM ${hospitalsT} h
-        JOIN ${areasT} a2 ON a2.id = h.area_id
-        WHERE h.id = doc.hospital_id AND a2.district_id = districts.id
+      OR (
+        -- Fallback only, which is what the comment above always described.
+        NOT EXISTS (SELECT 1 FROM ${chambersT} cx WHERE cx.doctor_id = doc.id AND cx.visible)
+        AND EXISTS (
+          SELECT 1 FROM ${hospitalsT} h
+          JOIN ${areasT} a2 ON a2.id = h.area_id
+          WHERE h.id = doc.hospital_id AND a2.district_id = districts.id
+        )
       )
     )
   )`;
@@ -1930,6 +1973,6 @@ export const getAllAreaSlugPairs = unstable_cache(
       .map((a) => ({ area: a.slug, district: a.district_slug as string }));
   },
   // Bumped alongside geo-areas-v5 — this list is derived from those counts.
-  ["all-area-slug-pairs-v2"],
+  ["all-area-slug-pairs-v3"],
   { tags: ["areas", "districts", "doctors"] }
 );
