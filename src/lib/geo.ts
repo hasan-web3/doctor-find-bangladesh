@@ -188,42 +188,12 @@ function readVercelGeo(h: Headers): IpLocation | null {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Is this answer actually about the visitor, or just about their country?
-// ---------------------------------------------------------------------------
-// Vercel's edge geo is MaxMind-backed, and MaxMind has no city record for a lot
-// of small South Asian ISPs. It does not leave the fields blank when that
-// happens — it answers with the COUNTRY's registered centre and a city name to
-// match. For Bangladesh that point is Dhaka (23.7115, 90.4111), so every
-// visitor on such an ISP was told "Dhaka" with no way to tell that apart from a
-// real Dhaka reading, and the code returned before the admin-configured ip-api
-// / ipinfo integration was ever consulted — making it dead code in production.
-//
-// There is no accuracy header to read, so we compare against the centroids we
-// care about. A genuine Dhaka visitor trips this too; that costs one cached
-// provider lookup which returns Dhaka anyway, so the check is safe in both
-// directions and never makes an answer worse.
-const COUNTRY_CENTROIDS: Record<string, { lat: number; lng: number }> = {
-  BD: { lat: 23.7115, lng: 90.4111 },
-};
-
-// Generous enough to absorb the small differences between MaxMind releases,
-// tight enough that a real reading inside the capital's suburbs is still its
-// own answer once the provider confirms it.
-const CENTROID_TOLERANCE_KM = 10;
-
-function isCountryCentroid(loc: IpLocation): boolean {
-  const centre = loc.country_code ? COUNTRY_CENTROIDS[loc.country_code.toUpperCase()] : undefined;
-  if (!centre || loc.lat === null || loc.lng === null) return false;
-  return haversineKm(loc.lat, loc.lng, centre.lat, centre.lng) <= CENTROID_TOLERANCE_KM;
-}
-
-/** True when the answer names no place at all, or only names the country. */
-function isCoarse(loc: IpLocation | null): boolean {
-  if (!loc) return true;
-  if (!loc.city && loc.lat === null && loc.lng === null) return true;
-  return isCountryCentroid(loc);
-}
+// A country-centroid heuristic used to live here, to spot Vercel answering with
+// the country's registered centre instead of a real city. It is gone on
+// purpose: it was an attempt to judge a single answer's quality from its
+// contents, and that cannot work — the wrong answers arrived as ordinary,
+// precise-looking city readings. The fix was to stop asking the party that
+// cannot see the visitor (see lookupNetworkLocation), not to grade its replies.
 
 // How long an external IP-geo answer stays good for. Only the paid/free
 // provider path is cached — Vercel's own headers are free to read, so caching
@@ -317,7 +287,12 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
 function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
   const named = loc.city ? matchDistrictByName(districts, loc.city) : null;
   if (named) {
-    return { ...withDistrict(named), lat: loc.lat, lng: loc.lng, source: "ip-name" };
+    // Cloudflare's transform can be configured to send the city without the
+    // coordinate pair. Falling back to the matched district's own centre keeps
+    // nearest-first ranking working instead of silently switching it off.
+    const lat = loc.lat ?? named.lat;
+    const lng = loc.lng ?? named.lng;
+    return { ...withDistrict(named), lat, lng, source: "ip-name" };
   }
   if (loc.lat !== null && loc.lng !== null) {
     const near = nearestDistrict(districts, loc.lat, loc.lng);
@@ -345,18 +320,61 @@ function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
 // giving. Reordering the providers did not help because the provider was being
 // handed Cloudflare's address and answering about it perfectly correctly.
 //
-// `cf-connecting-ip` is the only header here that carries the visitor. It is
-// set by Cloudflare on every proxied request and cannot be forged through
-// Cloudflare (it overwrites whatever the client sent). Someone hitting the
-// Vercel origin directly could spoof it, which would give them the wrong
-// nearby-doctor ordering and nothing else — no access decision reads this.
+// `cf-connecting-ip` would carry the visitor — but on THIS deployment it does
+// not survive to the function: a live `?debug=1` shows it null while
+// `x-forwarded-for` and `x-real-ip` both hold `172.68.231.150`, a Cloudflare
+// address. So there is no visitor IP available here at all, and the ONLY
+// trustworthy signal is what Cloudflare tells us directly (see
+// readCloudflareGeo). The list below still leads with the proxy-set headers for
+// deployments where they do arrive.
+//
+// Header names are matched case-insensitively by the Headers API, so
+// `CF-Connecting-IP` and `cf-connecting-ip` are the same lookup — no casing
+// variants are needed.
 const IP_HEADERS = [
-  "cf-connecting-ip",  // Cloudflare: the real visitor. Must come first.
+  "cf-connecting-ip",  // Cloudflare: the real visitor, when it reaches us.
   "true-client-ip",    // Cloudflare Enterprise / Akamai equivalent.
   "x-client-ip",       // Our own middleware, forwarded from the above.
   "x-real-ip",         // Generic reverse proxies; on Vercel this is the peer.
   "x-forwarded-for",   // Last resort: a comma-separated chain, client first.
 ] as const;
+
+// Cloudflare's published IPv4 ranges. An address in here is a CDN edge, never a
+// visitor, and geolocating it is what produced "Dhaka" and "Chattogram".
+//
+// This is a belt-and-braces guard on top of the cf-ray check: it catches the
+// case where the Cloudflare marker headers are missing but the connection still
+// came through the CDN, which is exactly how this bug hid for so long.
+const CLOUDFLARE_V4_RANGES: ReadonlyArray<readonly [string, number]> = [
+  ["173.245.48.0", 20], ["103.21.244.0", 22], ["103.22.200.0", 22],
+  ["103.31.4.0", 22], ["141.101.64.0", 18], ["108.162.192.0", 18],
+  ["190.93.240.0", 20], ["188.114.96.0", 20], ["197.234.240.0", 22],
+  ["198.41.128.0", 17], ["162.158.0.0", 15], ["104.16.0.0", 13],
+  ["104.24.0.0", 14], ["172.64.0.0", 13], ["131.0.72.0", 22],
+];
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let out = 0;
+  for (const part of parts) {
+    const n = Number(part);
+    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+    out = (out << 8) | n;
+  }
+  return out >>> 0;
+}
+
+function isCloudflareIp(ip: string): boolean {
+  const addr = ipv4ToInt(ip);
+  if (addr === null) return false;
+  return CLOUDFLARE_V4_RANGES.some(([base, bits]) => {
+    const baseInt = ipv4ToInt(base);
+    if (baseInt === null) return false;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    return (addr & mask) === (baseInt & mask);
+  });
+}
 
 // "[2001:db8::1]:443" / "1.2.3.4:5678" / "::ffff:1.2.3.4" all have to come out
 // as a bare address, or the provider URL is malformed and the lookup fails —
@@ -418,6 +436,9 @@ function isUsableIp(ip: string): boolean {
   if (/^169\.254\./.test(ip)) return false;         // link-local
   if (/^(fc|fd)/i.test(ip)) return false;           // IPv6 unique-local
   if (/^fe80:/i.test(ip)) return false;             // IPv6 link-local
+  // A CDN edge is infrastructure, not a person. Asking a geo provider about it
+  // returns a confident, precise, completely wrong city.
+  if (isCloudflareIp(ip)) return false;
   return true;
 }
 
@@ -429,18 +450,29 @@ function isUsableIp(ip: string): boolean {
  * source of the wrong answer, not a fallback from it.
  */
 function isProxiedByCloudflare(h: Headers): boolean {
-  return Boolean(h.get("cf-connecting-ip") || h.get("cf-ray"));
+  if (h.get("cf-connecting-ip") || h.get("cf-ray")) return true;
+  // No marker headers, but the address we would otherwise geolocate belongs to
+  // Cloudflare — so the connection came through the CDN and Vercel's geo
+  // headers describe the PoP just the same. Without this, a stripped cf-ray
+  // would quietly put us back on the wrong city.
+  return isCloudflareIp(getClientIp(h));
 }
 
-// Cloudflare's own visitor geo, when the zone has the "Add visitor location
-// headers" managed transform switched on (Cloudflare dashboard → Rules →
-// Settings). Unlike Vercel's headers on this deployment, these are derived from
-// the VISITOR's address, not from the PoP that happened to take the connection,
-// so they are a real backup rather than a source of wrong answers.
+// Cloudflare's own visitor geo, from the "Add visitor location headers" managed
+// transform (Cloudflare dashboard → Rules → Settings).
 //
-// Off by default, so this simply returns null until it is enabled — worth
-// turning on, because it makes the free path correct again and takes load off
-// the rate-limited ip-api tier.
+// This is the BEST source available on this deployment, not a fallback:
+//
+//   • Cloudflare computes it from the visitor's real address, which it has and
+//     we do not — `cf-connecting-ip` never reaches the function here.
+//   • It is already in the request. No outbound call, no round trip, no
+//     timeout, no rate limit. Reading it costs microseconds.
+//   • It is verifiably right for this network: the live debug output shows
+//     `cf-ipcity: "Khulna"` in the same request where `x-vercel-ip-city` said
+//     "Dhaka" and ip-api (handed Cloudflare's own 172.68.231.150) said "Dhaka".
+//
+// Returns null when the transform is off, which is why the provider tiers below
+// still exist.
 function readCloudflareGeo(h: Headers): IpLocation | null {
   const city = h.get("cf-ipcity");
   const country = h.get("cf-ipcountry");
@@ -476,15 +508,22 @@ export function describeGeoHeaders(h: Headers): Record<string, unknown> {
     behindCloudflare: isProxiedByCloudflare(h),
     cfRay: h.get("cf-ray"),
     headers: Object.fromEntries(
-      [...IP_HEADERS, "x-vercel-ip-city", "x-vercel-ip-country", "cf-ipcity", "cf-ipcountry"].map(
-        (name) => [name, h.get(name)]
-      )
+      [
+        ...IP_HEADERS,
+        "cf-ipcity", "cf-ipcountry", "cf-iplatitude", "cf-iplongitude", "cf-region",
+        "x-vercel-ip-city", "x-vercel-ip-country",
+      ].map((name) => [name, h.get(name)])
     ),
-    // Which header set is eligible as the backup tier. See
-    // lookupNetworkLocation() for why Vercel's are excluded behind Cloudflare.
-    backupTier: isProxiedByCloudflare(h)
-      ? (readCloudflareGeo(h) ? "cloudflare-visitor-geo" : "none (enable Cloudflare visitor location headers)")
-      : "vercel-edge-geo",
+    // Which tier actually answered — the one thing that was impossible to see
+    // from the outside while this was broken.
+    tierUsed: namesAPlace(readCloudflareGeo(h))
+      ? "1: cloudflare-visitor-geo (no outbound call)"
+      : isUsableIp(getClientIp(h))
+        ? "2: ip-geo provider"
+        : isProxiedByCloudflare(h)
+          ? "none — behind Cloudflare with no visitor geo and no client IP; enable the 'Add visitor location headers' managed transform"
+          : "3: vercel-edge-geo",
+    clientIpLooksLikeCloudflare: isCloudflareIp(getClientIp(h)),
   };
 }
 
@@ -496,67 +535,55 @@ function namesAPlace(loc: IpLocation | null): boolean {
 // The network's best guess at where the visitor is, as a raw IpLocation.
 //
 // ---------------------------------------------------------------------------
-// Why the configured provider goes FIRST
+// Whoever already knows the answer goes first
 // ---------------------------------------------------------------------------
-// Vercel's edge geo is read for free from request headers, so it looked like
-// the obvious fast path, and it was tried first with a fall-through for
-// "obviously useless" answers (country centroid, or no place at all).
+// The rule this settled on: prefer the party that can see the visitor's real
+// address. Behind a CDN that is the CDN itself, not us and not an IP-geo API we
+// can only feed the CDN's own address to.
 //
-// That fall-through does not fire often enough to matter. Vercel is
-// MaxMind-backed, and for an ISP MaxMind cannot place, it does not answer with
-// the centroid every time — it answers with a plausible-looking city-level
-// reading in the country's largest city. From Khulna, live on Vercel, that is a
-// confident "Dhaka" at ordinary Dhaka coordinates, indistinguishable from a
-// real Dhaka visitor. No heuristic reading a single answer can catch that, so
-// the provider was still never consulted and the admin's ip_geo integration
-// stayed effectively dead in production.
+// Tiers, in order:
 //
-// The configured provider is the one that is actually right here: both ip-api
-// and ipinfo place this network in Khulna. So it leads, and Vercel becomes the
-// backup for the cases the provider cannot serve.
+//   1. Cloudflare visitor geo headers (`cf-ipcity` / `cf-iplatitude` /
+//      `cf-iplongitude`). Present on every request once the managed transform
+//      is on, computed by Cloudflare from the visitor's true address, and
+//      already verified correct for this network ("Khulna") in the same request
+//      where every other signal said "Dhaka". Costs a header read: no outbound
+//      call, no round trip, no timeout, no rate limit.
 //
-// Behind Cloudflare there is no usable backup at all: the Vercel headers then
-// describe the Cloudflare PoP, so falling back to them means answering "Dhaka"
-// or "Chattogram" depending on which data centre took the connection. Better
-// to admit we do not know and let the visitor tell us.
+//   2. The configured ip-api / ipinfo provider — but ONLY with a real visitor
+//      address. `isUsableIp` now rejects Cloudflare's own ranges, so this tier
+//      simply does not run behind a CDN that hides the client. Feeding it the
+//      proxy address is what produced "Dhaka" and "Chattogram"; a wrong answer
+//      is worse than no answer, because it silently overrides a right one.
 //
-// Cost of leading with it is bounded by two caches that were already in place:
-//   • the browser parks the answer in localStorage for 30 minutes, so a visitor
-//     hits /api/user/location at most twice an hour, not once per page;
-//   • lookupIp() wraps the call in unstable_cache keyed by IP, so ALL visitors
-//     behind one IP share a single provider request per 30 minutes.
-// A visitor who has chosen a district never reaches this code at all.
+//   3. Vercel edge geo headers — only when NOT behind Cloudflare. On this
+//      deployment they describe whichever PoP took the connection (`CF-RAY`
+//      alternates DAC/CGP, which is exactly the pair of wrong cities), so they
+//      are excluded rather than used as a fallback.
 //
-// Order:
-//   1. The configured ip-api / ipinfo provider.
-//   2. Vercel edge headers, when the provider is unavailable (not configured,
-//      rate-limited, timed out, or a private/local IP) or when the provider
-//      only resolved to the country centre and Vercel did better.
+// Nothing else is left, and returning "unknown" is the honest outcome: the
+// district prompt then asks, and a stated district beats every inferred one.
+//
+// Performance: tier 1 is pure header parsing, so the common path makes no
+// network call at all. On top of that, the browser parks the result in
+// localStorage for 30 minutes and a visitor who has chosen a district never
+// reaches this code.
 async function lookupNetworkLocation(h: Headers): Promise<IpLocation | null> {
-  // The backup tier. Behind Cloudflare, Vercel's headers describe the proxy, so
-  // Cloudflare's own visitor geo takes their place — when it is enabled. When
-  // it is not, there is no backup and we would rather say "unknown" than name
-  // the data centre's city.
-  const vercelLoc = isProxiedByCloudflare(h) ? readCloudflareGeo(h) : readVercelGeo(h);
-  const ip = getClientIp(h);
+  const behindCloudflare = isProxiedByCloudflare(h);
 
+  // --- tier 1: Cloudflare already worked it out, from the real client -------
+  const cloudflareLoc = readCloudflareGeo(h);
+  if (namesAPlace(cloudflareLoc)) return cloudflareLoc;
+
+  // --- tier 2: the configured provider, if we have a real address ----------
+  const ip = getClientIp(h);
   if (isUsableIp(ip)) {
     const providerLoc = await lookupIp(ip);
-    // A real place from the provider wins outright.
-    if (!isCoarse(providerLoc)) return providerLoc;
-    // Provider could only manage the country centre. If Vercel did better,
-    // take it — that is the one case where the header is the sharper answer.
-    if (!isCoarse(vercelLoc)) return vercelLoc;
-    // Both vague: still prefer the provider if it named anything.
     if (namesAPlace(providerLoc)) return providerLoc;
   }
 
-  // No usable client IP (local dev, private network), or the provider gave us
-  // nothing. A failed provider call is cached as empty for the same 30 minutes,
-  // which doubles as a circuit breaker: a rate-limited or down provider is not
-  // re-hammered once per visitor, we simply run on Vercel's headers until the
-  // window rolls over.
-  return vercelLoc;
+  // --- tier 3: Vercel's headers, off-Cloudflare only -----------------------
+  return behindCloudflare ? null : readVercelGeo(h);
 }
 
 // Header-only detection.
