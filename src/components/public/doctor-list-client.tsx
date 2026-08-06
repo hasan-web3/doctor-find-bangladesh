@@ -39,6 +39,7 @@ export function DoctorListClient({
   helpline,
   helplineBn,
   defaultPerPage = 12,
+  lockedDistrictSlug = null,
 }: {
   initialDoctors: DoctorCardData[];
   initialTotal: number;
@@ -47,6 +48,16 @@ export function DoctorListClient({
   helpline: string;
   helplineBn: string | null;
   defaultPerPage?: number;
+  /**
+   * For a page that IS a district (/districts/<slug>/doctors). The slug lives
+   * in the path, not the query, and <ListingFilters> hides its own district
+   * selector when it is locked — so it has to be added to every request here.
+   *
+   * It also pins the curated order: someone on /districts/khulna/doctors is
+   * asking about Khulna, whatever their own district is. Their coordinates
+   * still rank the results within it.
+   */
+  lockedDistrictSlug?: string | null;
 }) {
   const params = useUrlSearchParams();
   const { location, ready } = useLocation();
@@ -91,6 +102,11 @@ export function DoctorListClient({
       if (location.districtSlug) qs.set("preferDistrict", location.districtSlug);
       if (location.lat !== null) qs.set("preferLat", String(location.lat));
       if (location.lng !== null) qs.set("preferLng", String(location.lng));
+      // Last, so it wins over anything the URL happened to carry.
+      if (lockedDistrictSlug) {
+        qs.set("district", lockedDistrictSlug);
+        qs.set("priorityDistrict", lockedDistrictSlug);
+      }
 
       try {
         const res = await fetch(`/api/doctors?${qs.toString()}`, { signal: controller.signal });
@@ -126,7 +142,7 @@ export function DoctorListClient({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, geoKey, locale, setShownDistrict]);
+  }, [queryKey, geoKey, locale, setShownDistrict, lockedDistrictSlug]);
 
   const totalPages = Math.ceil(total / perPage);
 

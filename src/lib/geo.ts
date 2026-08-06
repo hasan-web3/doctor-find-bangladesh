@@ -231,17 +231,28 @@ function isCoarse(loc: IpLocation | null): boolean {
 // switches network, VPN, or town.
 const IP_GEO_TTL_SECONDS = 60 * 30;
 
+// This call now sits in front of every first-time visitor rather than behind
+// Vercel's headers, so a provider having a bad day must not become the site
+// having a bad day. Past this budget we give up and fall back to the headers.
+const IP_GEO_TIMEOUT_MS = 2500;
+
 // The raw provider call. No DB reads and no caching in here so it is safe to
 // wrap in unstable_cache (which forbids cookies()/headers() inside).
+//
+// Every failure path returns `empty` rather than throwing: the caller reads
+// that as "provider unavailable" and uses Vercel's headers instead. A 429 from
+// ip-api's free tier is the most likely one in production and is handled by
+// exactly the same path.
 async function fetchIpLocation(
   ip: string,
   provider: string | null,
   apiKey: string | null,
 ): Promise<IpLocation> {
   const empty: IpLocation = { city: null, country_code: null, lat: null, lng: null };
+  const signal = AbortSignal.timeout(IP_GEO_TIMEOUT_MS);
   try {
     if (provider === "ipinfo" && apiKey) {
-      const res = await fetch(`https://ipinfo.io/${ip}?token=${apiKey}`);
+      const res = await fetch(`https://ipinfo.io/${ip}?token=${apiKey}`, { signal });
       if (!res.ok) return empty;
       const data = await res.json();
       // ipinfo returns "loc": "22.8098,89.5551".
@@ -255,8 +266,13 @@ async function fetchIpLocation(
         lng: Number.isFinite(lng) ? lng : null,
       };
     }
-    // Free default: ip-api.com — no key needed, returns city + coords.
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,countryCode,city,regionName,lat,lon`);
+    // Free default: ip-api.com — no key needed, returns city + coords. Its free
+    // tier is rate limited per calling IP and, on Vercel, that IP is shared, so
+    // treat a non-200 as "unavailable" and let the caller fall back.
+    const res = await fetch(
+      `http://ip-api.com/json/${ip}?fields=status,countryCode,city,regionName,lat,lon`,
+      { signal }
+    );
     if (!res.ok) return empty;
     const data = await res.json();
     if (data.status !== "success") return empty;
@@ -317,28 +333,65 @@ function isUsableIp(ip: string): boolean {
   return Boolean(ip) && ip !== "::1" && !ip.startsWith("127.") && !ip.startsWith("192.168.") && !ip.startsWith("10.");
 }
 
+/** Did this answer name a place at all, coarse or not? */
+function namesAPlace(loc: IpLocation | null): boolean {
+  return Boolean(loc && (loc.city || (loc.lat !== null && loc.lng !== null)));
+}
+
 // The network's best guess at where the visitor is, as a raw IpLocation.
 //
+// ---------------------------------------------------------------------------
+// Why the configured provider goes FIRST
+// ---------------------------------------------------------------------------
+// Vercel's edge geo is read for free from request headers, so it looked like
+// the obvious fast path, and it was tried first with a fall-through for
+// "obviously useless" answers (country centroid, or no place at all).
+//
+// That fall-through does not fire often enough to matter. Vercel is
+// MaxMind-backed, and for an ISP MaxMind cannot place, it does not answer with
+// the centroid every time — it answers with a plausible-looking city-level
+// reading in the country's largest city. From Khulna, live on Vercel, that is a
+// confident "Dhaka" at ordinary Dhaka coordinates, indistinguishable from a
+// real Dhaka visitor. No heuristic reading a single answer can catch that, so
+// the provider was still never consulted and the admin's ip_geo integration
+// stayed effectively dead in production.
+//
+// The configured provider is the one that is actually right here: both ip-api
+// and ipinfo place this network in Khulna. So it leads, and Vercel becomes the
+// backup for the cases the provider cannot serve.
+//
+// Cost of leading with it is bounded by two caches that were already in place:
+//   • the browser parks the answer in localStorage for 30 minutes, so a visitor
+//     hits /api/user/location at most twice an hour, not once per page;
+//   • lookupIp() wraps the call in unstable_cache keyed by IP, so ALL visitors
+//     behind one IP share a single provider request per 30 minutes.
+// A visitor who has chosen a district never reaches this code at all.
+//
 // Order:
-//   1. Vercel edge headers, when they name a real place. Free, no round trip.
-//   2. The configured ip-api / ipinfo provider, when tier 1 is missing or only
-//      resolved to the country centre (see isCoarse). Cached 30 minutes per IP,
-//      so a busy site pays for one lookup per visitor network per half hour.
-//   3. Whatever tier 1 gave us, even if coarse — a country-level guess still
-//      orders the district picker better than nothing does.
+//   1. The configured ip-api / ipinfo provider.
+//   2. Vercel edge headers, when the provider is unavailable (not configured,
+//      rate-limited, timed out, or a private/local IP) or when the provider
+//      only resolved to the country centre and Vercel did better.
 async function lookupNetworkLocation(h: Headers): Promise<IpLocation | null> {
   const vercelLoc = readVercelGeo(h);
-  if (vercelLoc && !isCoarse(vercelLoc)) return vercelLoc;
-
   const ip = clientIpFrom(h);
+
   if (isUsableIp(ip)) {
     const providerLoc = await lookupIp(ip);
+    // A real place from the provider wins outright.
     if (!isCoarse(providerLoc)) return providerLoc;
-    // Both are coarse. Prefer the provider only when it named something and
-    // Vercel did not, so we never trade a real answer for an empty one.
-    if (!vercelLoc && (providerLoc.city || providerLoc.lat !== null)) return providerLoc;
+    // Provider could only manage the country centre. If Vercel did better,
+    // take it — that is the one case where the header is the sharper answer.
+    if (!isCoarse(vercelLoc)) return vercelLoc;
+    // Both vague: still prefer the provider if it named anything.
+    if (namesAPlace(providerLoc)) return providerLoc;
   }
 
+  // No usable client IP (local dev, private network), or the provider gave us
+  // nothing. A failed provider call is cached as empty for the same 30 minutes,
+  // which doubles as a circuit breaker: a rate-limited or down provider is not
+  // re-hammered once per visitor, we simply run on Vercel's headers until the
+  // window rolls over.
   return vercelLoc;
 }
 
@@ -371,10 +424,9 @@ export async function detectAreaByIp(ip: string): Promise<GeoResult> {
 //      this exists we stop asking the network where they are entirely: a
 //      stated district beats an inferred one even when the IP disagrees,
 //      which is exactly the case this tier is here to fix.
-//   3. The network's guess, via lookupNetworkLocation() — Vercel edge headers
-//      when they name a real place, the configured ip-api / ipinfo provider
-//      when they only resolve to the country centre. District granularity
-//      only; an IP cannot honestly name a thana.
+//   3. The network's guess, via lookupNetworkLocation() — the configured
+//      ip-api / ipinfo provider first, Vercel's edge headers as the backup.
+//      District granularity only; an IP cannot honestly name a thana.
 //
 // Tier 3 is only a *hint*: it orders the district prompt and drives the "you
 // seem to be browsing from…" strip until the visitor answers.

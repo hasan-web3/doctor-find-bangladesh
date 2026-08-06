@@ -31,11 +31,22 @@ export async function GET(req: Request) {
   try {
     // The visitor's district, as resolved client-side. Translated to an id here
     // because searchDoctors ranks by id, and the client only knows the slug.
+    //
+    // `priorityDistrict` is the separate "this page IS a district" case: a
+    // district listing pins its own curated order regardless of where the
+    // visitor is. Both slugs resolve from one cached read.
     const preferDistrictSlug = sp.get("preferDistrict");
+    const priorityDistrictSlug = sp.get("priorityDistrict");
     let preferDistrictId: number | null = null;
-    if (preferDistrictSlug) {
+    let pinnedDistrictId: number | null = null;
+    if (preferDistrictSlug || priorityDistrictSlug) {
       const districts = await getDistrictsForGeo();
-      preferDistrictId = districts.find((x) => x.slug === preferDistrictSlug)?.id ?? null;
+      preferDistrictId = preferDistrictSlug
+        ? districts.find((x) => x.slug === preferDistrictSlug)?.id ?? null
+        : null;
+      pinnedDistrictId = priorityDistrictSlug
+        ? districts.find((x) => x.slug === priorityDistrictSlug)?.id ?? null
+        : null;
     }
 
     const lat = sp.get("preferLat");
@@ -62,7 +73,7 @@ export async function GET(req: Request) {
       preferLng: !sort && lng ? Number(lng) : null,
       // Unconditional: an explicit filter narrows *which* doctors are listed,
       // it does not mean the admin's curated order stops applying.
-      priorityDistrictId: preferDistrictId,
+      priorityDistrictId: pinnedDistrictId ?? preferDistrictId,
     };
 
     const results = await searchDoctors(params, locale);

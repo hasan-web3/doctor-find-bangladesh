@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { DoctorCard } from "@/components/public/doctor-card";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
-import { Pagination } from "@/components/public/pagination";
 import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/listing-filters";
-import { AnimatedGrid } from "@/components/animated-grid";
+import { DoctorListClient } from "@/components/public/doctor-list-client";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch,
@@ -101,7 +99,6 @@ export default async function DistrictDoctorsPage({ params }: Props) {
   };
 
   const { rows, total } = await searchDoctors(query, locale);
-  const totalPages = Math.ceil(total / (query.perPage || 12));
 
   const pageTitle = locale === 'bn' ? `${district.name} জেলার ডাক্তারগণ` : `Doctors in ${district.name} District`;
   const pageSub = total > 0
@@ -156,27 +153,22 @@ export default async function DistrictDoctorsPage({ params }: Props) {
               <SortSelect d={d} />
             </Suspense>
           </div>
-          {rows.length > 0 ? (
-            <AnimatedGrid className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 min-[1100px]:grid-cols-3 min-[1400px]:grid-cols-4">
-              {rows.map((doc) => (
-                <DoctorCard key={doc.id} doctor={doc} helpline={settings.helpline} locale={locale} d={d} />
-              ))}
-            </AnimatedGrid>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-line bg-white p-12 text-center">
-              <div className="mb-2 font-heading text-lg font-bold text-ink">{d.no_doctors_found}</div>
-              <p className="text-sm text-ink-faint">
-                {d.no_doctors_found_sub} {locale === "bn" ? settings.helpline_bn : settings.helpline}
-              </p>
-            </div>
-          )}
-
-          <Pagination
-            page={query.page || 1}
-            totalPages={totalPages}
+          {/* The grid and its pagination used to be rendered here on the
+              server, from a query that never read searchParams — so the
+              filters, the sort control and the pager above all wrote to the
+              URL and nothing responded. This route cannot read searchParams
+              without losing ISR, so the client applies them instead, exactly
+              as /doctors does. `rows` stays the canonical first page inside
+              the cached HTML for crawlers and first paint. */}
+          <DoctorListClient
+            initialDoctors={rows}
+            initialTotal={total}
             locale={locale}
-            perPage={sanitizedPerPage}
-            showPerPageSelector
+            d={d}
+            helpline={settings.helpline}
+            helplineBn={settings.helpline_bn}
+            defaultPerPage={sanitizedPerPage}
+            lockedDistrictSlug={slug}
           />
         </div>
       </div>

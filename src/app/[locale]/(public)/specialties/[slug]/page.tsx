@@ -10,7 +10,7 @@ import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
-import { t, isLocale, localeHref, type Locale } from "@/lib/i18n";
+import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
 import { ShownDistrictProvider } from "@/components/public/shown-district-context";
@@ -44,16 +44,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
   const isIpDetected = geo.source === "ip-name" || geo.source === "ip-nearest";
-
-  const title = spec.meta_title ? ml(spec.meta_title, locale) :
+  // getSpecialties() already localizes these to plain strings (see the
+  // projection in src/lib/data.ts). Passing one back through ml() localizes it
+  // a SECOND time, and t() given a string instead of an MLText object returns
+  // "" — which is why every specialty page fell back to the site default title.
+  // Every other public page (area, blog, doctor, hospital, district) reads the
+  // field directly; this one was the outlier.
+  // Parenthesised: `a || b ? x : y` binds as `(a || b) ? x : y`, which would
+  // hand every specialty the "near you" wording as soon as an override existed.
+  const title = spec.meta_title || (
     isIpDetected
       ? (locale === "bn" ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors Near You`)
-      : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`);
+      : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`)
+  );
   
-  const description = spec.meta_description ? ml(spec.meta_description, locale) :
+  const description = spec.meta_description || (
     isIpDetected
       ? (locale === "bn" ? `আপনার সবচেয়ে কাছের অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists near you with chamber addresses, schedules and visit fees.`)
-      : (locale === "bn" ? `${bnPossessive(districtName)} অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`);
+      : (locale === "bn" ? `${bnPossessive(districtName)} অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`)
+  );
 
   // Specialty hub with no doctors yet — thin. Matches the sitemap's rule.
   const doctorCount = await countDoctorsFor({ specialty: spec.slug });
@@ -69,7 +78,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 }
 
-const ml = (v: any, locale: Locale) => t(v, locale);
 
 export default async function SpecialtyPage({ params }: Props) {
   const { locale: raw, slug } = await params;
