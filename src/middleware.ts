@@ -160,9 +160,9 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   // this site sits behind Cloudflare, so `x-forwarded-for` as Vercel presents
   // it is the Cloudflare PoP, not the visitor. `cf-connecting-ip` is the only
   // header here that carries the person.
+  // `true-client-ip` is not listed: Cloudflare only sends it on Enterprise.
   const clientIp =
     req.headers.get("cf-connecting-ip")?.trim() ||
-    req.headers.get("true-client-ip")?.trim() ||
     req.headers.get("x-real-ip")?.trim() ||
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "";

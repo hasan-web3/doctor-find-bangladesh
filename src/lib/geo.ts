@@ -278,6 +278,44 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
   )();
 }
 
+// ---------------------------------------------------------------------------
+// Coordinates have to agree with the city, or they are not coordinates
+// ---------------------------------------------------------------------------
+// A city name and a lat/lng that contradict each other means one of the two is
+// about something other than the visitor — the exact failure that produced
+// "Khulna" in `cf-ipcity` while every coordinate on the request pointed at
+// Dhaka. Ranking is driven by the coordinates, so a bad pair silently orders
+// the whole site around the wrong place while the heading still reads "খুলনা".
+//
+// So the NAME decides the district, and the coordinates only survive if they
+// land near it. Anything further away is dropped in favour of the district's
+// own centre, which is exactly what we would use if no coordinates had arrived.
+//
+// 50km is judged against a district centroid, and Bangladesh's districts are
+// mostly 30–80km across, so a genuine reading from the far edge of a large hill
+// district can trip this. That costs sub-district precision and nothing else:
+// the fallback is the same centre that a city-only header already gives us, and
+// the district — which is what every heading and filter keys off — is unchanged.
+const MAX_CITY_COORD_MISMATCH_KM = 50;
+
+function coordsForNamedDistrict(
+  loc: IpLocation,
+  district: GeoDistrict
+): { lat: number | null; lng: number | null } {
+  const centre = { lat: district.lat, lng: district.lng };
+
+  // No coordinates on the request: the district centre is the whole answer.
+  if (loc.lat === null || loc.lng === null) return centre;
+  // No centre to check against: nothing to do but trust what we were sent.
+  if (district.lat === null || district.lng === null) return { lat: loc.lat, lng: loc.lng };
+
+  const drift = haversineKm(loc.lat, loc.lng, district.lat, district.lng);
+  if (drift > MAX_CITY_COORD_MISMATCH_KM) return centre;
+
+  // Agreed — keep the finer reading.
+  return { lat: loc.lat, lng: loc.lng };
+}
+
 // Resolve a raw IpLocation to a GeoResult, at district granularity.
 //
 // The returned lat/lng are the IP's OWN coordinates, not the district centre:
@@ -287,11 +325,7 @@ export async function lookupIp(ip: string): Promise<IpLocation> {
 function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
   const named = loc.city ? matchDistrictByName(districts, loc.city) : null;
   if (named) {
-    // Cloudflare's transform can be configured to send the city without the
-    // coordinate pair. Falling back to the matched district's own centre keeps
-    // nearest-first ranking working instead of silently switching it off.
-    const lat = loc.lat ?? named.lat;
-    const lng = loc.lng ?? named.lng;
+    const { lat, lng } = coordsForNamedDistrict(loc, named);
     return { ...withDistrict(named), lat, lng, source: "ip-name" };
   }
   if (loc.lat !== null && loc.lng !== null) {
@@ -331,10 +365,13 @@ function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
 // Header names are matched case-insensitively by the Headers API, so
 // `CF-Connecting-IP` and `cf-connecting-ip` are the same lookup — no casing
 // variants are needed.
+//
+// `true-client-ip` is deliberately absent: Cloudflare only sends it on
+// Enterprise plans, so on this zone it is guaranteed null and listing it just
+// implies a source that does not exist.
 const IP_HEADERS = [
-  "cf-connecting-ip",  // Cloudflare: the real visitor, when it reaches us.
-  "true-client-ip",    // Cloudflare Enterprise / Akamai equivalent.
-  "x-client-ip",       // Our own middleware, forwarded from the above.
+  "cf-connecting-ip",  // Cloudflare Free and up: the real visitor, when it reaches us.
+  "x-client-ip",       // Our own middleware's copy of the above, for non-API routes.
   "x-real-ip",         // Generic reverse proxies; on Vercel this is the peer.
   "x-forwarded-for",   // Last resort: a comma-separated chain, client first.
 ] as const;
@@ -473,19 +510,35 @@ function isProxiedByCloudflare(h: Headers): boolean {
 //
 // Returns null when the transform is off, which is why the provider tiers below
 // still exist.
+// Cloudflare's managed transform emits `cf-iplatitude` / `cf-iplongitude`. The
+// shorter names are accepted too, because a hand-written transform rule can
+// pick its own header names and the cost of looking for both is nothing.
+const CF_LAT_HEADERS = ["cf-iplatitude", "cf-latitude"] as const;
+const CF_LNG_HEADERS = ["cf-iplongitude", "cf-longitude"] as const;
+
+function firstNumericHeader(h: Headers, names: readonly string[]): number | null {
+  for (const name of names) {
+    const raw = h.get(name);
+    if (!raw) continue;
+    const value = Number(raw.trim());
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 function readCloudflareGeo(h: Headers): IpLocation | null {
   const city = h.get("cf-ipcity");
   const country = h.get("cf-ipcountry");
-  const latS = h.get("cf-iplatitude");
-  const lngS = h.get("cf-iplongitude");
-  if (!city && !latS && !lngS) return null;
-  const lat = latS ? Number(latS) : NaN;
-  const lng = lngS ? Number(lngS) : NaN;
+  const lat = firstNumericHeader(h, CF_LAT_HEADERS);
+  const lng = firstNumericHeader(h, CF_LNG_HEADERS);
+  if (!city && lat === null && lng === null) return null;
   return {
     city: city || null,
+    // "XX" is Cloudflare's "could not determine", not a country.
     country_code: country && country !== "XX" ? country : null,
-    lat: Number.isFinite(lat) ? lat : null,
-    lng: Number.isFinite(lng) ? lng : null,
+    // A lone coordinate is not a position; both or neither.
+    lat: lat !== null && lng !== null ? lat : null,
+    lng: lat !== null && lng !== null ? lng : null,
   };
 }
 
@@ -510,10 +563,19 @@ export function describeGeoHeaders(h: Headers): Record<string, unknown> {
     headers: Object.fromEntries(
       [
         ...IP_HEADERS,
-        "cf-ipcity", "cf-ipcountry", "cf-iplatitude", "cf-iplongitude", "cf-region",
+        "cf-ipcity", "cf-ipcountry", "cf-region",
+        ...CF_LAT_HEADERS, ...CF_LNG_HEADERS,
         "x-vercel-ip-city", "x-vercel-ip-country",
       ].map((name) => [name, h.get(name)])
     ),
+    // The raw pair before the mismatch guardrail. Compare against `lat`/`lng`
+    // in the response body: if they differ, the coordinates disagreed with the
+    // city by more than MAX_CITY_COORD_MISMATCH_KM and were dropped in favour
+    // of the district centre.
+    cloudflareCoords: (() => {
+      const cf = readCloudflareGeo(h);
+      return cf && cf.lat !== null ? { lat: cf.lat, lng: cf.lng } : null;
+    })(),
     // Which tier actually answered — the one thing that was impossible to see
     // from the outside while this was broken.
     tierUsed: namesAPlace(readCloudflareGeo(h))
