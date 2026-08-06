@@ -11,6 +11,22 @@ const FOCUS_MS = 5000;
 const SCROLL_EPSILON = 6;
 // Above this the page counts as "at the top", where the strip is always solid.
 const TOP_ZONE = 8;
+// How far the page must travel in ONE direction before the strip changes state.
+//
+// This is what stops the strip blinking on a phone. A touch fling is not
+// monotonic: momentum and rubber-banding make the scroll position wobble
+// backwards for a frame or two on the way up. Switching on the raw per-event
+// direction meant every one of those wobbles collapsed the strip and the next
+// frame re-opened it — measured at 8 collapse/expand flips inside a single
+// upward fling. A mouse wheel moves in big monotonic jumps, which is why it
+// only ever showed up in the mobile view. 40px is far more than any wobble and
+// far less than a deliberate gesture.
+const DIRECTION_THRESHOLD = 40;
+// Must match the CSS transition below. The strip is `sticky`, i.e. it holds its
+// place in normal flow, so collapsing it moves the rest of the page up by its
+// own height (80px on mobile, where the line wraps). That shift can itself
+// register as scrolling, so we stop listening while our own animation runs.
+const TRANSITION_MS = 300;
 
 type Mode = "full" | "faint" | "collapsed";
 
@@ -54,7 +70,19 @@ export function GeoBanner({
   // instead of behind it (the navbar sits at a higher z-index).
   const [top, setTop] = useState(0);
   const focusUntil = useRef(0);
-  const lastY = useRef(0);
+  // Mirrors `mode` for the scroll handler, which runs outside React's render
+  // cycle and must know the CURRENT mode to tell a real change from a no-op.
+  const modeRef = useRef<Mode>("full");
+  // While an open/close animation is playing, scrolling is ignored: the strip
+  // is in normal flow, so its own collapse moves the page under the reader.
+  const lockedUntil = useRef(0);
+
+  const applyMode = useCallback((next: Mode) => {
+    if (modeRef.current === next) return;
+    modeRef.current = next;
+    lockedUntil.current = Date.now() + TRANSITION_MS;
+    setMode(next);
+  }, []);
 
   useEffect(() => {
     const measure = () => {
@@ -67,38 +95,75 @@ export function GeoBanner({
   }, []);
 
   useEffect(() => {
-    lastY.current = window.scrollY;
+    let lastY = window.scrollY;
+    // Signed distance travelled since the last direction change. Positive is
+    // downward. Reset whenever the direction reverses, so only sustained
+    // movement one way reaches DIRECTION_THRESHOLD.
+    let travel = 0;
+    let frame = 0;
 
-    const onScroll = () => {
+    // One read per animation frame instead of one per event: a touch fling
+    // fires scroll far faster than the strip can animate, and every extra read
+    // was another chance to flip.
+    const settle = () => {
+      frame = 0;
       const y = window.scrollY;
-      const delta = y - lastY.current;
-      if (Math.abs(delta) < SCROLL_EPSILON) return;
-      lastY.current = y;
+      const now = Date.now();
 
+      // The top of the page is unambiguous, so it is decided before anything
+      // else can swallow it — including the lock below. A fling that reaches
+      // the top inside one animation used to leave the strip sitting faint,
+      // because the frame carrying y=0 was the one being dropped.
       if (y <= TOP_ZONE) {
-        setMode("full");
+        lastY = y;
+        travel = 0;
+        applyMode("full");
         return;
       }
+
+      // Inside our own animation: re-baseline and drop the frame, so the page
+      // shift the animation causes is never mistaken for a gesture.
+      if (now < lockedUntil.current) {
+        lastY = y;
+        travel = 0;
+        return;
+      }
+
+      const delta = y - lastY;
+      lastY = y;
+      if (Math.abs(delta) < SCROLL_EPSILON) return;
+
       // A held focus survives scrolling — the visitor asked to see it.
-      if (Date.now() < focusUntil.current) return;
-      setMode(delta > 0 ? "collapsed" : "faint");
+      if (now < focusUntil.current) return;
+
+      travel = (travel > 0) === (delta > 0) ? travel + delta : delta;
+      if (Math.abs(travel) < DIRECTION_THRESHOLD) return;
+      applyMode(travel > 0 ? "collapsed" : "faint");
+      travel = 0;
+    };
+
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(settle);
     };
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [applyMode]);
 
   // Any deliberate contact makes it fully legible for a few seconds, then it
   // fades back rather than snapping — snapping mid-read is jarring.
   const hold = useCallback(() => {
     focusUntil.current = Date.now() + FOCUS_MS;
-    setMode("full");
+    applyMode("full");
     window.setTimeout(() => {
       if (Date.now() >= focusUntil.current) {
-        setMode(window.scrollY <= TOP_ZONE ? "full" : "faint");
+        applyMode(window.scrollY <= TOP_ZONE ? "full" : "faint");
       }
     }, FOCUS_MS);
-  }, []);
+  }, [applyMode]);
 
   const collapsed = mode === "collapsed";
 
@@ -108,7 +173,12 @@ export function GeoBanner({
       onMouseEnter={hold}
       onFocusCapture={hold}
       onTouchStart={hold}
-      className={`sticky z-40 overflow-hidden border-b border-brand-100 bg-brand-50 transition-all duration-300 ease-out motion-reduce:transition-none ${
+      // Only the three properties that actually animate. `transition-all` also
+      // covered `top`, which is set from the navbar's measured height and gets
+      // re-measured on every resize — and a phone fires resize each time the
+      // browser's URL bar slides in or out, which animated the strip's sticky
+      // offset for no reason.
+      className={`sticky z-40 overflow-hidden border-b border-brand-100 bg-brand-50 transition-[max-height,opacity,transform] duration-300 ease-out motion-reduce:transition-none ${
         collapsed
           ? "max-h-0 -translate-y-1 opacity-0"
           : mode === "faint"
