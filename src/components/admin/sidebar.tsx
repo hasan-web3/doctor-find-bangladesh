@@ -56,7 +56,7 @@ export function AdminSidebar() {
           const segment = segmentOf(item.href);
           const active = isActive(item.href);
           return (
-            <Link
+            <Link prefetch={false}
               key={item.href}
               href={item.href}
               className={cn(

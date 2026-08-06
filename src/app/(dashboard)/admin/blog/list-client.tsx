@@ -121,7 +121,7 @@ export function BlogList({
                             >
                                 এডিট
                             </button>
-                            <Link
+                            <Link prefetch={false}
                                 href={`/blog/${p.slug}`}
                                 target="_blank"
                                 className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] text-ink-mute"

@@ -43,7 +43,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
 
       <div className="mb-[18px] flex flex-wrap gap-2">
         {TABS.map(([value, label]) => (
-          <Link
+          <Link prefetch={false}
             key={value}
             href={`/admin/leads${value ? `?status=${value}` : ""}`}
             className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
@@ -54,7 +54,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
           </Link>
         ))}
         <span className="mx-1 w-px bg-line" />
-        <Link
+        <Link prefetch={false}
           href="/admin/leads?type=patient"
           className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
             sp.type === "patient" ? "border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]" : "border-line bg-white text-ink-mute"
@@ -62,7 +62,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
         >
           রোগী সহায়তা
         </Link>
-        <Link
+        <Link prefetch={false}
           href="/admin/leads?type=doctor"
           className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
             sp.type === "doctor" ? "border-warm-text bg-warm-soft text-warm-text" : "border-line bg-white text-ink-mute"

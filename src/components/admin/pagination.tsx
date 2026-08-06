@@ -55,7 +55,7 @@ export function Pagination({ page, totalPages, perPage, locale = "bn", onPageCha
       );
     }
     return (
-      <Link href={makeHref(p)} className={className} scroll={false}>
+      <Link prefetch={false} href={makeHref(p)} className={className} scroll={false}>
         {children}
       </Link>
     );

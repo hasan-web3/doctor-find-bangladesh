@@ -149,7 +149,7 @@ export function DoctorsList({
         <DebouncedSearch initial={q} placeholder="ডাক্তার খুঁজুন / Search doctors" />
         <div className="flex gap-2">
           {[["", "সব"], ["inactive", "নিষ্ক্রিয়"]].map(([value, label]) => (
-            <Link
+            <Link prefetch={false}
               key={value}
               href={`/admin/doctors${value ? `?filter=${value}` : ""}`}
               className={`rounded-full border px-3.5 py-2 text-[13px] font-semibold ${
@@ -246,7 +246,7 @@ export function DoctorsList({
                     >
                       এডিট
                     </button>
-                    <Link
+                    <Link prefetch={false}
                       href={`/doctors/${d.slug}`}
                       target="_blank"
                       className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] text-ink-mute"

@@ -56,7 +56,7 @@ export default async function AdminAppointmentsPage({ searchParams }: { searchPa
 
       <div className="mb-[18px] flex flex-wrap items-center gap-2">
         {TABS.map(([value, label]) => (
-          <Link
+          <Link prefetch={false}
             key={value}
             href={`/admin/appointments${value ? `?status=${value}` : ""}`}
             className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${

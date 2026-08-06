@@ -10,7 +10,7 @@ import { getDistrictsForGeo } from "@/lib/data";
 import { type GeoDistrict } from "@/lib/geo";
 import { getRecaptchaSiteKey } from "@/lib/recaptcha";
 import { JsonLd } from "@/components/json-ld";
-import { ldOrganization, ldWebsite } from "@/lib/seo-utils";
+import { ldOrganization, ldWebsite, brandIdentity } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { t, isLocale, type Locale } from "@/lib/i18n";
 import { BookingProvider } from "@/components/public/booking-context";
@@ -45,6 +45,9 @@ export default async function PublicLayout({
   ]);
   const d = getDict(locale);
   const brand = t(settings.brand_name, locale);
+  // Site identity for search engines — same on every page and in both locales,
+  // unlike `brand` which is on-page copy. See brandIdentity() in seo-utils.ts.
+  const identity = brandIdentity(settings.site_name, settings.brand_name);
 
   // One shared, visitor-independent projection of the district list. The
   // browser re-orders it by proximity once it knows where the visitor is; the
@@ -73,8 +76,8 @@ export default async function PublicLayout({
         <div className="min-h-screen bg-page">
           <JsonLd
             data={[
-              ldOrganization({ brandName: brand, helpline: settings.helpline, logoUrl: settings.logo_url }),
-              ldWebsite(brand, locale),
+              ldOrganization({ identity, helpline: settings.helpline, logoUrl: settings.logo_url }),
+              ldWebsite(identity, locale),
             ]}
           />
           <Navbar

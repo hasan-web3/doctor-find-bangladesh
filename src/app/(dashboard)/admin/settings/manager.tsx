@@ -7,7 +7,12 @@ import { Field, inputCls, Toast, MLInput, Toggle, ImageUpload } from "@/componen
 import { type ML } from "@/lib/utils";
 
 type Basic = {
-  brand_name: ML; helpline: string; helpline_bn: string; whatsapp: string; email: string;
+  brand_name: ML;
+  // Site name for search engines — Google prints this above the page title in
+  // results. Separate from brand_name so header/footer copy can change without
+  // disturbing the site's identity in Google's index.
+  site_name: ML;
+  helpline: string; helpline_bn: string; whatsapp: string; email: string;
   address: ML; facebook: string; youtube: string; instagram: string;
   // Legacy single logo URL — kept for back-compat; new fields below take priority.
   logo_url: string;
@@ -58,6 +63,13 @@ export function SettingsManager({
         <div className="mb-4 font-heading text-base font-bold text-ink">সাধারণ তথ্য</div>
         <div className="flex flex-col gap-4">
           <MLInput label="ব্র্যান্ড নাম" required value={form.brand_name} onChange={(v) => setForm({ ...form, brand_name: v })} />
+          <MLInput
+            label="সাইটের নাম (গুগল সার্চে)"
+            required
+            hint="সার্চ রেজাল্টে লিংকের উপরে এই নামটি দেখায়। ছোট ও স্থির রাখুন, ট্যাগলাইন নয়। যেমন: Doctors Find Bangladesh"
+            value={form.site_name}
+            onChange={(v) => setForm({ ...form, site_name: v })}
+          />
           <MLInput label="ঠিকানা" value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="ইমেইল">

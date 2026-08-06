@@ -1,4 +1,4 @@
-import { localeHref, type Locale } from "./i18n";
+import { localeHref, type Locale, type MLText } from "./i18n";
 import type { DoctorFull } from "./data";
 
 export function siteUrl(path = ""): string {
@@ -13,11 +13,41 @@ export function siteUrl(path = ""): string {
 // ---------- JSON-LD builders (values arrive already localized) ----------
 type JsonLd = Record<string, unknown>;
 
-export function ldOrganization(input: { brandName: string; helpline: string; logoUrl: string }): JsonLd {
+// Stable node ids so Organization and WebSite reference one entity across every
+// page instead of Google seeing two unrelated blobs per URL.
+const ORG_ID = () => siteUrl("/#organization");
+const SITE_ID = () => siteUrl("/#website");
+
+// The SERP "site name" (the line above the blue title) is NOT localized on
+// purpose. Google picks ONE name per domain from the homepage's WebSite JSON-LD
+// `name`, `og:site_name` and <title>, and falls back to the bare domain
+// ("doctorsfindbd.com") when those candidates disagree — which is exactly what
+// happened while bn pages advertised "ডক্টরস ফাইন্ড বাংলাদেশ" and en pages
+// "Doctors Find Bangladesh". So every page now declares the Latin brand (it
+// also visibly matches the domain, another signal Google weighs) and the Bangla
+// name rides along as `alternateName`. Titles, descriptions and all on-page
+// copy stay bilingual as before — this only affects the site's identity fields.
+// `fallback` covers an admin blanking the SEO site name: an empty site name is
+// worse than an imperfect one, so we drop back to the brand name rather than
+// emit name:"".
+export type BrandIdentity = { name: string; alternateName: string[] };
+
+export function brandIdentity(brand: MLText, fallback?: MLText): BrandIdentity {
+  const pick = (b: MLText) => ({ en: (b?.en || "").trim(), bn: (b?.bn || "").trim() });
+  let { en, bn } = pick(brand);
+  if (!en && !bn && fallback) ({ en, bn } = pick(fallback));
+  const name = en || bn;
+  return { name, alternateName: bn && bn !== name ? [bn] : [] };
+}
+
+export function ldOrganization(input: { identity: BrandIdentity; helpline: string; logoUrl: string }): JsonLd {
+  const { name, alternateName } = input.identity;
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: input.brandName,
+    "@id": ORG_ID(),
+    name,
+    ...(alternateName.length > 0 ? { alternateName } : {}),
     url: siteUrl("/"),
     logo: input.logoUrl || siteUrl("/icon.svg"),
     contactPoint: {
@@ -30,12 +60,18 @@ export function ldOrganization(input: { brandName: string; helpline: string; log
   };
 }
 
-export function ldWebsite(brandName: string, locale: Locale): JsonLd {
+export function ldWebsite(identity: BrandIdentity, locale: Locale): JsonLd {
+  const { name, alternateName } = identity;
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: brandName,
-    url: siteUrl(localeHref(locale, "/")),
+    "@id": SITE_ID(),
+    name,
+    ...(alternateName.length > 0 ? { alternateName } : {}),
+    // Must be the domain root, never the /en variant: Google only accepts the
+    // site-name signal from a WebSite whose `url` is the homepage of the site.
+    url: siteUrl("/"),
+    publisher: { "@id": ORG_ID() },
     potentialAction: {
       "@type": "SearchAction",
       target: {
@@ -149,8 +185,12 @@ export function ldFaq(faqs: { question: string; answer: string }[]): JsonLd {
 export function ldArticle(post: {
   title: string; slug: string; excerpt: string; cover_url: string | null;
   published_at: string | Date | null; updated_at: string | Date;
-}, brandName: string, locale: Locale): JsonLd {
+}, identity: BrandIdentity, locale: Locale): JsonLd {
   const url = siteUrl(localeHref(locale, `/blog/${post.slug}`));
+  // Publisher/author point at the one Organization node (same @id, same name)
+  // so article pages reinforce the site identity instead of introducing a
+  // second, locale-specific publisher name.
+  const publisher = { "@type": "Organization", "@id": ORG_ID(), name: identity.name };
   return {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -162,7 +202,7 @@ export function ldArticle(post: {
     datePublished: post.published_at ? new Date(post.published_at).toISOString() : undefined,
     dateModified: new Date(post.updated_at).toISOString(),
     inLanguage: locale,
-    publisher: { "@type": "Organization", name: brandName },
-    author: { "@type": "Organization", name: brandName },
+    publisher,
+    author: publisher,
   };
 }

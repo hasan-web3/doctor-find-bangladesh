@@ -7,10 +7,10 @@ import { JsonLd } from "@/components/json-ld";
 import { getBlogPostBySlug, getAllBlogSlugs } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
-import { ldArticle } from "@/lib/seo-utils";
+import { ldArticle, brandIdentity } from "@/lib/seo-utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { getDict } from "@/lib/dict";
-import { t, isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
+import { isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
 
 // ISR: detail; purged by path on edit.
 export const revalidate = 43200;
@@ -73,7 +73,7 @@ export default async function ArticlePage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
-      <JsonLd data={ldArticle(post, t(settings.brand_name, locale), locale)} />
+      <JsonLd data={ldArticle(post, brandIdentity(settings.site_name, settings.brand_name), locale)} />
       <Breadcrumbs
         locale={locale}
         items={[{ name: d.breadcrumb_home, path: "/" }, { name: d.nav_blog, path: "/blog" }, { name: post.title }]}

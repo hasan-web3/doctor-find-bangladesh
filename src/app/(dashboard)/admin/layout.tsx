@@ -32,7 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <div className="flex min-w-0 flex-col">
         {/* topbar */}
         <div className="sticky top-0 z-20 flex items-center gap-4 border-b border-line bg-white px-[22px] py-3">
-          <Link href="/" className="whitespace-nowrap text-[13.5px] font-semibold text-brand-600">
+          <Link prefetch={false} href="/" className="whitespace-nowrap text-[13.5px] font-semibold text-brand-600">
             ← সাইটে ফিরুন
           </Link>
           <div className="flex-1" />

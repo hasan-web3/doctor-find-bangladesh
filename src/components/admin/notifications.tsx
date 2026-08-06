@@ -347,7 +347,7 @@ export function NotificationBell() {
                 </div>
               )}
               {items.map((n) => (
-                <Link
+                <Link prefetch={false}
                   key={n.id}
                   href={n.href || `/admin/${n.panel}`}
                   // Jump to the panel but leave the notification unread, so the

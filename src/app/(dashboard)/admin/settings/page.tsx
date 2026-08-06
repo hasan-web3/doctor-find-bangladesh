@@ -13,6 +13,7 @@ export default async function AdminSettingsPage() {
       <SettingsManager
         initial={{
           brand_name: toML(settings.brand_name),
+          site_name: toML(settings.site_name),
           helpline: settings.helpline,
           helpline_bn: settings.helpline_bn,
           whatsapp: settings.whatsapp,

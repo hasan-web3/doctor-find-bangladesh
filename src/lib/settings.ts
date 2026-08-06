@@ -16,6 +16,14 @@ export type StatItem = { value: number; suffix: string; label: MLText };
 
 export type SiteSettings = {
   brand_name: MLText;
+  // The site's NAME as an entity — what Google prints above the blue link in
+  // search results, and what goes into og:site_name / WebSite / Organization
+  // JSON-LD. Deliberately separate from `brand_name`, which admins also use for
+  // on-page header/footer copy and had been set to a tagline ("Find The Right
+  // Care Near You Always"); Google can't match a tagline to the domain, so it
+  // fell back to printing "doctorsfindbd.com". Keep this short, stable, and
+  // recognisably related to the domain.
+  site_name: MLText;
   helpline: string;
   helpline_bn: string;
   whatsapp: string;
@@ -47,6 +55,7 @@ export type SiteSettings = {
 
 const DEFAULTS: SiteSettings = {
   brand_name: { bn: "ডক্টরস ফাইন্ড বাংলাদেশ", en: "Doctors Find Bangladesh" },
+  site_name: { bn: "ডক্টরস ফাইন্ড বাংলাদেশ", en: "Doctors Find Bangladesh" },
   helpline: "01774739914",
   helpline_bn: "০১৭৭৪৭৩৯৯১৪",
   whatsapp: "8801774739914",
@@ -82,18 +91,29 @@ const DEFAULTS: SiteSettings = {
   stats: [],
 };
 
-export const getSettings = unstable_cache(
-  async (): Promise<SiteSettings> => {
+// Only the raw DB rows are cached — the DEFAULTS merge happens on every read,
+// below. Caching the *merged* object meant a newly added setting (e.g.
+// `site_name`) stayed `undefined` for as long as the cached entry lived, since
+// the stored blob had been built before the key existed and Vercel's data cache
+// survives deploys. Merging after the read makes new keys work immediately.
+const getSettingRows = unstable_cache(
+  async () => {
     try {
-      const rows = await db.select({ key: siteSettings.key, value: siteSettings.value }).from(siteSettings);
-      const merged: Record<string, unknown> = { ...DEFAULTS };
-      for (const row of rows) merged[row.key] = row.value;
-      return merged as SiteSettings;
+      return await db.select({ key: siteSettings.key, value: siteSettings.value }).from(siteSettings);
     } catch {
       // DB unreachable (e.g. build without .env): fall back so metadata never crashes.
-      return DEFAULTS;
+      return [] as { key: string; value: unknown }[];
     }
   },
-  ["site-settings"],
+  // Cache key deliberately differs from the old "site-settings" entry: that one
+  // holds the merged object, which has an incompatible shape.
+  ["site-settings-rows"],
   { tags: ["settings"] }
 );
+
+export async function getSettings(): Promise<SiteSettings> {
+  const rows = await getSettingRows();
+  const merged: Record<string, unknown> = { ...DEFAULTS };
+  for (const row of rows) merged[row.key] = row.value;
+  return merged as SiteSettings;
+}

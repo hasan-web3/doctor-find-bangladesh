@@ -122,7 +122,7 @@ export function PagesManager({ pages }: { pages: PageDraft[] }) {
               </div>
             )}
           </div>
-          <Link
+          <Link prefetch={false}
             href={publicPath}
             target="_blank"
             className="rounded-[9px] border border-line bg-white px-3.5 py-2 text-[13px] font-semibold text-brand-600 hover:bg-brand-50"

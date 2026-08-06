@@ -5,7 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { db, redirects, seoOverrides } from "@/db";
 import { getSettings } from "./settings";
 import { t, localeHref, ogLocale, type Locale, type MLText } from "./i18n";
-import { siteUrl } from "./seo-utils";
+import { siteUrl, brandIdentity } from "./seo-utils";
 
 const getOverrides = unstable_cache(
   async () => {
@@ -83,6 +83,12 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
   const enUrl = siteUrl(localeHref("en", input.path)) + q;
   const canonical = siteUrl(localeHref(locale, input.path)) + q;
 
+  // og:site_name is one of the candidates Google scores when it decides what to
+  // print above the blue title, so it must say the same thing as the WebSite
+  // JSON-LD on every page — a bn/en split there is what let the domain win.
+  // See brandIdentity() in seo-utils.ts.
+  const siteName = brandIdentity(settings.site_name, settings.brand_name).name;
+
   const ogType = input.ogType || "website";
   const openGraph: Metadata["openGraph"] =
     ogType === "article"
@@ -90,7 +96,7 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
           title,
           description,
           url: canonical,
-          siteName: t(settings.brand_name, locale),
+          siteName,
           locale: ogLocale(locale),
           alternateLocale: locale === "bn" ? "en_US" : "bn_BD",
           type: "article",
@@ -104,7 +110,7 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
           title,
           description,
           url: canonical,
-          siteName: t(settings.brand_name, locale),
+          siteName,
           locale: ogLocale(locale),
           alternateLocale: locale === "bn" ? "en_US" : "bn_BD",
           type: "website",

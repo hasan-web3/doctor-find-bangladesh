@@ -94,7 +94,7 @@ export default async function AdminDashboard() {
       {/* stat cards */}
       <div className="mb-[22px] grid grid-cols-2 gap-4 min-[900px]:grid-cols-4">
         {stats.map((s) => (
-          <Link key={s.label} href={s.href} className="rounded-2xl border border-line bg-white p-5 transition-shadow hover:shadow-card">
+          <Link prefetch={false} key={s.label} href={s.href} className="rounded-2xl border border-line bg-white p-5 transition-shadow hover:shadow-card">
             <div className="mb-3.5 flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: s.bg, color: s.fg }}>
               <Icon name={s.icon} size={22} />
             </div>
@@ -167,7 +167,7 @@ export default async function AdminDashboard() {
       <div className="mb-[22px] overflow-x-auto rounded-2xl border border-line bg-white p-[22px]">
         <div className="mb-4 flex items-center justify-between">
           <div className="font-heading text-base font-bold text-ink">সাম্প্রতিক অ্যাপয়েন্টমেন্ট</div>
-          <Link href="/admin/appointments" className="text-[13px] font-semibold text-brand-600">সব দেখুন →</Link>
+          <Link prefetch={false} href="/admin/appointments" className="text-[13px] font-semibold text-brand-600">সব দেখুন →</Link>
         </div>
         {recentAppts.length > 0 ? (
           <table className="w-full min-w-[520px] border-collapse">
