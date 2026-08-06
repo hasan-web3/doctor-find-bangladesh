@@ -96,7 +96,11 @@ export type DoctorFull = Omit<DoctorCardData, "hospital"> & {
   meta_title: string; meta_description: string;
   // Verified social profiles for JSON-LD `sameAs` (Knowledge Panel eligibility).
   social_links: SocialLinks;
-  specialties: { id: number; slug: string; name: string }[];
+  // Linked taxonomy specialties first, then this doctor's own free-text ones.
+  // A null `slug` marks the free-text entries: they have no page, so the UI
+  // renders them as plain text instead of a link. See DoctorInitial in the
+  // admin doctor form and migrations/011_doctor_custom_specialties.sql.
+  specialties: { id: number | null; slug: string | null; name: string }[];
   hospital: { id: number; slug: string; name: string } | null;
   chambers: {
     id: number; name: string; address: string; fee: number;
@@ -130,11 +134,36 @@ type CardRow = {
 
 const cardSelect = sql`
   d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified,
-  sp.name AS specialty_ml, sp.slug AS specialty_slug,
+  -- Cards print ONE specialty. A doctor whose only specialty is free text has
+  -- no row in doctor_specialties, so fall back to their first custom entry —
+  -- otherwise their card renders with a blank specialty line. The ->0 lookup
+  -- yields the same {bn,en} shape the taxonomy name has, and NULL when the
+  -- array is empty.
+  COALESCE(sp.name, d.custom_specialties->0) AS specialty_ml, sp.slug AS specialty_slug,
   hp.name AS hospital_ml, hp.slug AS hospital_slug,
   ch.name AS chamber_ml,
-  COALESCE(ar.name, har.name) AS area_ml,
-  COALESCE(ar.slug, har.slug) AS area_slug,
+  -- Locality for the card, in the order the admin filled it in:
+  --   1. the chamber's own free-text thana (tested on CONTENT, so a stored {}
+  --      or {"bn":"","en":""} can't beat a real name),
+  --   2. the chamber's linked thana,
+  --   3. the hospital's thana — but ONLY for a doctor with no visible chamber.
+  -- That last guard matters: a chamber that names a district and no thana used
+  -- to borrow the hospital's thana, so the card could read "Khalishpur" (a
+  -- Khulna thana) while the district beside it said "Dhaka". It also matches
+  -- the area filter and getAreasForGeo, which have always treated the hospital
+  -- as a fallback only when no visible chamber exists.
+  CASE
+    WHEN COALESCE(ch.custom_area->>'bn', '') <> '' OR COALESCE(ch.custom_area->>'en', '') <> ''
+      THEN ch.custom_area
+    WHEN ar.name IS NOT NULL THEN ar.name
+    WHEN ch.name IS NULL THEN har.name
+  END AS area_ml,
+  -- Slug tracks the LINKED thana only: free text has no page to point at, and
+  -- the card renders the area as plain text anyway.
+  CASE
+    WHEN ar.slug IS NOT NULL THEN ar.slug
+    WHEN ch.name IS NULL THEN har.slug
+  END AS area_slug,
   dist.name AS district_ml, dist.slug AS district_slug,
   ch.fee,
   chph.phone AS chamber_phone,
@@ -156,7 +185,7 @@ const cardFrom = sql`
   ) sp ON TRUE
   LEFT JOIN hospitals hp ON hp.id = d.hospital_id
   LEFT JOIN LATERAL (
-    SELECT c.name, c.fee, c.area_id FROM chambers c
+    SELECT c.name, c.fee, c.area_id, c.district_id, c.custom_area FROM chambers c
     WHERE c.doctor_id = d.id AND c.visible ORDER BY c.sort LIMIT 1
   ) ch ON TRUE
   -- Contact number shown on the card. Kept as its OWN lateral rather than
@@ -171,7 +200,16 @@ const cardFrom = sql`
   ) chph ON TRUE
   LEFT JOIN areas ar ON ar.id = ch.area_id
   LEFT JOIN areas har ON har.id = hp.area_id
-  LEFT JOIN districts dist ON dist.id = COALESCE(ar.district_id, har.district_id)`;
+  -- ch.district_id sits between the two on purpose: a chamber where the admin
+  -- chose a district but no thana has no area row to derive one from, and
+  -- before it was stored such a doctor rendered with no district at all and
+  -- fell out of that district's listing. The hospital's district stays a
+  -- last resort for doctors with no visible chamber — same guard as area_ml.
+  LEFT JOIN districts dist ON dist.id = COALESCE(
+    ar.district_id,
+    ch.district_id,
+    CASE WHEN ch.name IS NULL THEN har.district_id END
+  )`;
 
 function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
   return {
@@ -458,9 +496,12 @@ export const getDistrictsForGeo = unstable_cache(
           FROM doctors doc
           WHERE doc.active AND (
             EXISTS (
+              -- COALESCE so a chamber saved with a district but no thana counts
+              -- for that district, matching what the district listing returns.
               SELECT 1 FROM chambers c
-              JOIN areas ca ON ca.id = c.area_id
-              WHERE c.doctor_id = doc.id AND c.visible AND ca.district_id = d.id
+              LEFT JOIN areas ca ON ca.id = c.area_id
+              WHERE c.doctor_id = doc.id AND c.visible
+                AND COALESCE(ca.district_id, c.district_id) = d.id
             )
             OR (
               -- Fallback only; see getAreasForGeo above.
@@ -901,6 +942,8 @@ async function searchDoctorsUncached(
             OR word_similarity(${raw}, s2.name->>'bn') > 0.4
             OR word_similarity(${raw}, s2.name->>'en') > 0.4
           ))
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(d.custom_specialties) cs
+          WHERE cs->>'bn' ILIKE ${like} OR cs->>'en' ILIKE ${like})
         OR EXISTS (SELECT 1 FROM chambers c2 WHERE c2.doctor_id = d.id AND c2.visible
           AND (c2.name->>'bn' ILIKE ${like} OR c2.name->>'en' ILIKE ${like}))
         OR EXISTS (SELECT 1 FROM hospitals hf2 WHERE hf2.id = d.hospital_id
@@ -937,8 +980,12 @@ async function searchDoctorsUncached(
       const ds = Array.isArray(params.district) ? params.district : [params.district];
       const list = sql.join(ds.map((s) => sql`${s}`), sql`, `);
       conditions.push(sql`(
-        EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id
-                JOIN districts dd ON dd.id = ad.district_id
+        -- LEFT JOIN on areas + COALESCE, so a chamber that carries only a
+        -- district (no thana picked) still puts its doctor in that district's
+        -- listing. The thana, when present, stays authoritative.
+        EXISTS (SELECT 1 FROM chambers cd
+                LEFT JOIN areas ad ON ad.id = cd.area_id
+                JOIN districts dd ON dd.id = COALESCE(ad.district_id, cd.district_id)
                 WHERE cd.doctor_id = d.id AND cd.visible AND dd.slug IN (${list}))
         OR (NOT EXISTS (SELECT 1 FROM chambers cx WHERE cx.doctor_id = d.id AND cx.visible)
             AND EXISTS (SELECT 1 FROM hospitals hd JOIN areas hda ON hda.id = hd.area_id
@@ -1055,14 +1102,17 @@ async function searchDoctorsUncached(
             COALESCE(fc.lng, fa.lng, dh.lng, fd.lng, dha.lng, dhd.lng) AS lng
           FROM doctors dd
           LEFT JOIN LATERAL (
-            SELECT ch.lat, ch.lng, ch.area_id
+            SELECT ch.lat, ch.lng, ch.area_id, ch.district_id
             FROM chambers ch
             WHERE ch.doctor_id = dd.id AND ch.visible
             ORDER BY ch.sort ASC, ch.id ASC
             LIMIT 1
           ) fc ON TRUE
           LEFT JOIN areas     fa  ON fa.id  = fc.area_id
-          LEFT JOIN districts fd  ON fd.id  = fa.district_id
+          -- District coords are the last-resort location for this doctor. A
+          -- chamber with only a district still has one, so read it from the
+          -- chamber when the thana is blank.
+          LEFT JOIN districts fd  ON fd.id  = COALESCE(fa.district_id, fc.district_id)
           LEFT JOIN hospitals dh  ON dh.id  = dd.hospital_id
           LEFT JOIN areas     dha ON dha.id = dh.area_id
           LEFT JOIN districts dhd ON dhd.id = dha.district_id
@@ -1102,11 +1152,11 @@ async function searchDoctorsUncached(
           -- 1. Verified in user's area
           WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 1
           -- 2. Verified in user's district
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 2
+          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd LEFT JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND COALESCE(ad.district_id, cd.district_id) = ${userDistrictId ?? null}) THEN 2
           -- 3. Normal in user's area
           WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 3
           -- 4. Normal in user's district
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND ad.district_id = ${userDistrictId ?? null}) THEN 4
+          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd LEFT JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND COALESCE(ad.district_id, cd.district_id) = ${userDistrictId ?? null}) THEN 4
           -- 5. Other verified
           WHEN d.verified THEN 5
           -- 6. Anything else
@@ -1169,12 +1219,14 @@ export const getDoctorBySlug = unstable_cache(
       mt_ml: MLText; md_ml: MLText; hospital_id: number | null;
       social_links: SocialLinks | null;
       treated_conditions: { bn?: string[]; en?: string[] } | null;
+      custom_specialties: MLText[] | null;
     }>(sql`
       SELECT ${cardSelect},
         d.bio AS bio_ml, d.gender, d.experience_years, d.patients_served AS patients_ml, d.photo_key,
         d.active, d.hospital_id, d.meta_title AS mt_ml, d.meta_description AS md_ml,
         d.social_links,
-        d.treated_conditions
+        d.treated_conditions,
+        d.custom_specialties
       ${cardFrom} WHERE d.slug = ${slug}
     `);
     const doc = docRes.rows[0];
@@ -1207,6 +1259,7 @@ export const getDoctorBySlug = unstable_cache(
           areaId: chambersT.areaId,
           areaMl: areasT.name,
           areaSlug: areasT.slug,
+          customArea: chambersT.customArea,
         })
         .from(chambersT)
         .leftJoin(areasT, eq(areasT.id, chambersT.areaId))
@@ -1253,9 +1306,20 @@ export const getDoctorBySlug = unstable_cache(
       meta_title: ml(doc.mt_ml, locale),
       meta_description: ml(doc.md_ml, locale),
       social_links: doc.social_links ?? {},
-      specialties: specialtyRows.map((s) => ({
-        id: s.id, slug: s.slug, name: ml(s.name, locale),
-      })),
+      specialties: [
+        ...specialtyRows.map((s) => ({
+          id: s.id as number | null,
+          slug: s.slug as string | null,
+          name: ml(s.name, locale),
+        })),
+        // Doctor-only free-text entries, appended so a linked specialty always
+        // stays the primary one (meta titles read specialties[0]). No id and no
+        // slug — there is nothing to link to. `ml()` already falls back to the
+        // other locale, so an entry typed in one language still renders.
+        ...(doc.custom_specialties ?? [])
+          .map((c) => ({ id: null, slug: null, name: ml(c, locale) }))
+          .filter((c) => c.name),
+      ],
       hospital:
         doc.hospital_ml && doc.hospital_slug && doc.hospital_id
           ? {
@@ -1274,7 +1338,11 @@ export const getDoctorBySlug = unstable_cache(
         lng: c.lng,
         map_url: c.mapUrl,
         area_id: c.areaId,
-        area: ml(c.areaMl, locale),
+        // Free text the admin typed for THIS chamber wins over the linked
+        // thana, matching the card. It carries no slug, so the profile (which
+        // prints the area as plain text anyway) and the JSON-LD address both
+        // pick it up without anything to link to.
+        area: ml(c.customArea, locale) || ml(c.areaMl, locale),
         area_slug: c.areaSlug ?? null,
         schedule: (c.schedule ?? []).map((s) => ({
           days: t(s.days, locale),
@@ -1491,16 +1559,28 @@ export async function expirePromotions() {
     .where(and(eq(promotionsT.status, "active"), sql`${promotionsT.endsOn} < CURRENT_DATE`))
     .returning({ doctorId: promotionsT.doctorId });
 
-  if (expired.length > 0) {
-    const doctorIds = expired.map((e) => e.doctorId);
+  // One doctor can have several promotions expire in the same sweep, and a row
+  // could carry a null doctor_id, so narrow the list before it reaches SQL. An
+  // empty list would render `IN ()` — a syntax error — so the whole statement is
+  // skipped in that case.
+  const doctorIds = [...new Set(expired.map((e) => e.doctorId).filter((id): id is number => id != null))];
+
+  if (doctorIds.length > 0) {
     // Switch the curated-order entry off, so the admin panel visibly shows
     // the doctor as deselected instead of leaving a ticked box that the public
     // ranking silently ignores. The ranking already excludes them by date; this
     // is what makes the expiry legible to a human.
+    //
+    // The ids are joined into an IN list rather than interpolated as one value:
+    // `ANY(${doctorIds})` made Drizzle expand the JS array into a row
+    // constructor — `ANY(($1, $2))` — and Postgres rejected it with
+    // "op ANY/ALL (array) requires array on right side", which took the whole
+    // /admin dashboard down on load.
+    const idList = sql.join(doctorIds.map((id) => sql`${id}`), sql`, `);
     await db.execute(sql`
       UPDATE district_doctor_priority p
       SET enabled = false, updated_at = now()
-      WHERE p.doctor_id = ANY(${doctorIds})
+      WHERE p.doctor_id IN (${idList})
         AND p.enabled
         AND NOT EXISTS (
           SELECT 1 FROM promotions pr
@@ -1836,9 +1916,12 @@ export async function searchDistricts(
     FROM ${doctorsT} doc
     WHERE doc.active AND (
       EXISTS (
+        -- COALESCE: same rule as the district listing — a chamber with only a
+        -- district still belongs to it.
         SELECT 1 FROM ${chambersT} c
-        JOIN ${areasT} a ON a.id = c.area_id
-        WHERE c.doctor_id = doc.id AND c.visible AND a.district_id = districts.id
+        LEFT JOIN ${areasT} a ON a.id = c.area_id
+        WHERE c.doctor_id = doc.id AND c.visible
+          AND COALESCE(a.district_id, c.district_id) = districts.id
       )
       OR (
         -- Fallback only, which is what the comment above always described.

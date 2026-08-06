@@ -161,9 +161,15 @@ export default async function DoctorDetailPage({ params }: Props) {
               {doc.specialties.length > 0 && (
                 <div className="mb-2 text-base font-semibold text-brand-600">
                   {doc.specialties.map((s, i) => (
-                    <span key={s.id}>
+                    // Free-text specialties carry no slug — nothing to link to,
+                    // so they render as plain text in the same line.
+                    <span key={s.slug ?? `custom-${i}`}>
                       {i > 0 && ", "}
-                      <Link href={L(`/specialties/${s.slug}`)} className="hover:underline">{s.name}</Link>
+                      {s.slug ? (
+                        <Link href={L(`/specialties/${s.slug}`)} className="hover:underline">{s.name}</Link>
+                      ) : (
+                        s.name
+                      )}
                     </span>
                   ))}{" "}
                   {d.specialist}

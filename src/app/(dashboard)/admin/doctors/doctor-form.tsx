@@ -37,6 +37,10 @@ type ChamberDraft = {
   id?: number; name: ML; address: ML;
   district_id: number | null;
   area_id: number | null;
+  // Free-text thana for this chamber only. Never joins the shared area list, so
+  // it stays out of every other chamber's dropdown and out of the public
+  // filters. When set it is what the public profile prints.
+  custom_area: ML;
   fee: number; phone: string; map_url: string;
   // Public visibility — false hides just this chamber (doctor stays public).
   visible: boolean;
@@ -57,12 +61,17 @@ export type DoctorInitial = {
   verified: boolean; active: boolean;
   meta_title: ML; meta_description: ML; photo_url: string | null;
   social_links: SocialLinksDraft;
-  specialty_ids: number[]; chambers: ChamberDraft[];
+  specialty_ids: number[];
+  // Free-text specialties saved on this doctor alone — they never join the
+  // shared specialty list, so they stay out of every other doctor's picker and
+  // out of the public filters. Shown as plain text on the profile.
+  custom_specialties: ML[];
+  chambers: ChamberDraft[];
 };
 
 const EMPTY_CHAMBER = (): ChamberDraft => ({
   name: { ...emptyML }, address: { ...emptyML },
-  district_id: null, area_id: null,
+  district_id: null, area_id: null, custom_area: { ...emptyML },
   fee: 0, phone: "", map_url: "",
   visible: false, lat: null, lng: null,
   schedule: [],
@@ -309,6 +318,10 @@ export function DoctorForm({
                     onAddClick={() => setModal({ kind: "specialty" })}
                     primaryHint="★"
                     />
+                    <CustomSpecialtyList
+                      value={form.custom_specialties}
+                      onChange={(v) => set("custom_specialties", v)}
+                    />
                 </Field>
             </div>
           </div>
@@ -370,6 +383,27 @@ export function DoctorForm({
                           onAddClick={ c.district_id ? () => setModal({ kind: "area", chamberIndex: i, districtId: c.district_id! }) : undefined }
                           disabled={!c.district_id}
                         />
+                        <div className="mt-2.5 rounded-xl border border-dashed border-line bg-page p-3">
+                          <div className="text-[12.5px] font-bold text-ink-soft">শুধু এই চেম্বারের জন্য থানা / উপজেলা (লেখা)</div>
+                          <p className="mb-2.5 mt-1 text-[11.5px] leading-relaxed text-ink-ghost">
+                            তালিকায় নেই এমন এলাকা এখানে লিখে দিন। লেখা থাকলে প্রোফাইলে এটিই দেখাবে,
+                            তালিকায় বা অন্য চেম্বারের জন্য যোগ হবে না।
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className="w-full rounded-[9px] border border-line bg-white px-2.5 py-2 text-[13.5px] outline-none focus:border-brand-600"
+                              value={c.custom_area.bn}
+                              onChange={(e) => setChamber(i, { custom_area: { ...c.custom_area, bn: e.target.value } })}
+                              placeholder="বাংলা"
+                            />
+                            <input
+                              className="w-full rounded-[9px] border border-line bg-white px-2.5 py-2 font-latin text-[13.5px] outline-none focus:border-brand-600"
+                              value={c.custom_area.en}
+                              onChange={(e) => setChamber(i, { custom_area: { ...c.custom_area, en: e.target.value } })}
+                              placeholder="English"
+                            />
+                          </div>
+                        </div>
                       </Field>
                       <Field label="ভিজিট ফি (টাকা)">
                         <input type="number" className={inputCls} value={c.fee || ""} onChange={(e) => setChamber(i, { fee: Number(e.target.value) || 0 })} />
@@ -567,6 +601,82 @@ export function DoctorForm({
             return { ok: true };
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// Cap mirrors CUSTOM_SPECIALTY_MAX in actions/admin-doctors.ts — the server
+// trims anything past it, so the button disappears at the same number instead
+// of letting the admin type rows that get silently dropped on save.
+const CUSTOM_SPECIALTY_MAX = 12;
+
+/**
+ * Free-text specialties for a single doctor.
+ *
+ * Deliberately NOT wired to quickCreateSpecialty: that action writes a row into
+ * the shared `specialties` taxonomy, which gets a public page, a filter entry
+ * and a permanent slot in every other doctor's picker. These entries stay on
+ * the doctor record and render as plain text on the profile.
+ */
+function CustomSpecialtyList({
+  value,
+  onChange,
+}: {
+  value: ML[];
+  onChange: (v: ML[]) => void;
+}) {
+  const patch = (i: number, part: Partial<ML>) =>
+    onChange(value.map((row, idx) => (idx === i ? { ...row, ...part } : row)));
+
+  const rowCls =
+    "w-full rounded-[9px] border border-line bg-white px-2.5 py-2 text-[13.5px] outline-none focus:border-brand-600";
+
+  return (
+    <div className="mt-2.5 rounded-xl border border-dashed border-line bg-page p-3">
+      <div className="text-[12.5px] font-bold text-ink-soft">শুধু এই ডাক্তারের জন্য বিভাগ (লেখা)</div>
+      <p className="mb-2.5 mt-1 text-[11.5px] leading-relaxed text-ink-ghost">
+        তালিকায় নেই এমন বিভাগ এখানে লিখে দিন। এটি শুধু এই ডাক্তারের প্রোফাইলে সাধারণ লেখা হিসেবে দেখাবে,
+        উপরের তালিকায় বা অন্য ডাক্তারের জন্য যোগ হবে না।
+      </p>
+
+      {value.length > 0 && (
+        <div className="mb-2 flex flex-col gap-2">
+          {value.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                className={rowCls}
+                value={row.bn}
+                onChange={(e) => patch(i, { bn: e.target.value })}
+                placeholder="বাংলা"
+              />
+              <input
+                className={rowCls + " font-latin"}
+                value={row.en}
+                onChange={(e) => patch(i, { en: e.target.value })}
+                placeholder="English"
+              />
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                aria-label="মুছুন"
+                className="shrink-0 rounded-[8px] border border-line bg-white px-2.5 py-2 text-[12px] font-semibold text-[#DC2626] hover:bg-slate-50"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {value.length < CUSTOM_SPECIALTY_MAX && (
+        <button
+          type="button"
+          onClick={() => onChange([...value, { ...emptyML }])}
+          className="rounded-[9px] border border-brand-600 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-brand-700 hover:bg-brand-50"
+        >
+          + লিখে বিভাগ যোগ করুন
+        </button>
       )}
     </div>
   );

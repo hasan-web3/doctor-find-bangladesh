@@ -17,6 +17,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
     id: number; slug: string; name: MLRaw; degrees: MLRaw; bio: MLRaw;
     gender: string | null; experience_years: number | null; patients_served: MLRaw;
     treated_conditions: { bn?: string[]; en?: string[] } | null;
+    custom_specialties: MLRaw[] | null;
     hospital_id: number | null;
     verified: boolean; active: boolean;
     meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
@@ -33,11 +34,16 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
     // starts populated and the area select shows the correct filtered list.
     db.execute<{
       id: number; name: MLRaw; address: MLRaw; area_id: number | null; district_id: number | null;
+      custom_area: MLRaw;
       fee: number; phone: string | null; map_url: string | null;
       visible: boolean; lat: number | null; lng: number | null;
       schedule: { days: MLRaw; time: MLRaw }[];
     }>(sql`
-      SELECT c.id, c.name, c.address, c.area_id, a.district_id,
+      SELECT c.id, c.name, c.address, c.area_id,
+        -- Chamber's own district wins: a chamber with a district but no thana
+        -- has no area row to derive it from.
+        COALESCE(c.district_id, a.district_id) AS district_id,
+        c.custom_area,
         c.fee, c.phone, c.map_url, c.visible, c.lat, c.lng, c.schedule
       FROM chambers c LEFT JOIN areas a ON a.id = c.area_id
       WHERE c.doctor_id=${doctorId} ORDER BY c.sort
@@ -77,6 +83,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       bn: (doc.treated_conditions?.bn ?? []).join("\n"),
       en: (doc.treated_conditions?.en ?? []).join("\n"),
     },
+    custom_specialties: (doc.custom_specialties ?? []).map(toML),
     hospital_id: doc.hospital_id ?? null,
     verified: doc.verified,
     active: doc.active,
@@ -91,6 +98,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       address: toML(c.address),
       district_id: c.district_id,
       area_id: c.area_id,
+      custom_area: toML(c.custom_area),
       fee: c.fee,
       phone: c.phone || "",
       map_url: c.map_url || "",

@@ -41,9 +41,11 @@ export default async function NewDoctorPage() {
           meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
           social_links: EMPTY_SOCIAL_LINKS(),
           specialty_ids: [],
+          custom_specialties: [],
           chambers: [{
             name: { ...emptyML }, address: { ...emptyML },
-            district_id: null, area_id: null, fee: 0, phone: "", map_url: "",
+            district_id: null, area_id: null, custom_area: { ...emptyML },
+            fee: 0, phone: "", map_url: "",
             // New chambers start hidden — admin explicitly toggles on to publish.
             visible: false, lat: null, lng: null,
             schedule: [],

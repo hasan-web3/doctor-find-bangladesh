@@ -24,10 +24,24 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
       specialty_bn: string | null; area_bn: string | null; promo_ends: string | null;
     }>(sql`
       SELECT d.id, d.slug, d.name->>'bn' AS name_bn, d.verified, d.active,
-        (SELECT s.name->>'bn' FROM doctor_specialties ds JOIN specialties s ON s.id=ds.specialty_id
-         WHERE ds.doctor_id=d.id ORDER BY ds.is_primary DESC LIMIT 1) AS specialty_bn,
-        (SELECT a.name->>'bn' FROM chambers c JOIN areas a ON a.id=c.area_id
-         WHERE c.doctor_id=d.id ORDER BY c.sort LIMIT 1) AS area_bn,
+        -- Same fallback the public card uses: a doctor whose only specialty is
+        -- free text has no doctor_specialties row, so show their first custom
+        -- entry instead of an empty cell.
+        COALESCE(
+          (SELECT s.name->>'bn' FROM doctor_specialties ds JOIN specialties s ON s.id=ds.specialty_id
+           WHERE ds.doctor_id=d.id ORDER BY ds.is_primary DESC LIMIT 1),
+          d.custom_specialties->0->>'bn',
+          d.custom_specialties->0->>'en'
+        ) AS specialty_bn,
+        -- First chamber that resolves to SOME locality: its free-text thana if
+        -- the admin typed one, otherwise the linked thana. Chambers with
+        -- neither are skipped so the column still falls through to the next
+        -- chamber, exactly as the plain JOIN used to.
+        (SELECT COALESCE(NULLIF(c.custom_area->>'bn', ''), NULLIF(c.custom_area->>'en', ''), a.name->>'bn')
+           FROM chambers c LEFT JOIN areas a ON a.id=c.area_id
+          WHERE c.doctor_id=d.id
+            AND COALESCE(NULLIF(c.custom_area->>'bn', ''), NULLIF(c.custom_area->>'en', ''), a.name->>'bn') IS NOT NULL
+          ORDER BY c.sort LIMIT 1) AS area_bn,
         (SELECT p.ends_on::text FROM promotions p WHERE p.doctor_id=d.id AND p.status='active'
          ORDER BY p.ends_on DESC LIMIT 1) AS promo_ends
       FROM doctors d WHERE ${where}

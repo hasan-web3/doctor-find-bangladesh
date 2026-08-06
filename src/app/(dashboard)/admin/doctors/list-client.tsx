@@ -23,9 +23,11 @@ const NEW_DOCTOR: DoctorInitial = {
   meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
   social_links: EMPTY_SOCIAL_LINKS(),
   specialty_ids: [],
+  custom_specialties: [],
   chambers: [{
     name: { ...emptyML }, address: { ...emptyML },
-    district_id: null, area_id: null, fee: 0, phone: "", map_url: "",
+    district_id: null, area_id: null, custom_area: { ...emptyML },
+    fee: 0, phone: "", map_url: "",
     visible: false, lat: null, lng: null,
     schedule: [],
   }],

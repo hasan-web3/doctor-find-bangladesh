@@ -174,6 +174,12 @@ export const doctors = pgTable(
     // public profile as a checkbox list. Shape: { bn: string[], en: string[] }.
     // Each locale's array is independent (counts may differ).
     treatedConditions: jsonb("treated_conditions").$type<{ bn?: string[]; en?: string[] }>().notNull().default(sql`'{}'::jsonb`),
+    // Free-text specialties that belong to THIS doctor only — never added to
+    // the shared `specialties` taxonomy, so they get no page, no filter entry
+    // and never appear in another doctor's picker. Rendered on the public
+    // profile as plain text beside the linked specialties.
+    // See migrations/011_doctor_custom_specialties.sql.
+    customSpecialties: jsonb("custom_specialties").$type<ML[]>().notNull().default(mlListEmpty),
     // Primary hospital affiliation (v2). Chambers stay independent physical locations.
     hospitalId: bigint("hospital_id", { mode: "number" }).references(() => hospitals.id, { onDelete: "set null" }),
     photoKey: text("photo_key"),
@@ -237,6 +243,14 @@ export const chambers = pgTable(
     name: jsonb("name").$type<ML>().notNull(),
     address: jsonb("address").$type<ML>().notNull().default(mlEmpty),
     areaId: bigint("area_id", { mode: "number" }).references(() => areas.id, { onDelete: "set null" }),
+    // The admin picks a district first, then a thana inside it. Stored in its
+    // own column instead of being re-derived from `areaId` so a chamber with a
+    // district but no thana yet still has a place. Kept in sync on save: when a
+    // thana IS chosen, this mirrors that thana's district.
+    districtId: bigint("district_id", { mode: "number" }).references(() => districts.id, { onDelete: "set null" }),
+    // Free-text thana for this chamber only — never joins the `areas` taxonomy.
+    // Wins over the linked area for display. See migration 012.
+    customArea: jsonb("custom_area").$type<ML>().notNull().default(mlEmpty),
     fee: integer("fee").notNull().default(0),
     schedule: jsonb("schedule").$type<ChamberSchedule[]>().notNull().default(mlListEmpty),
     phone: text("phone"),
@@ -253,6 +267,7 @@ export const chambers = pgTable(
   (t) => ({
     doctorIdx: index("idx_chambers_doctor").on(t.doctorId),
     areaIdx: index("idx_chambers_area").on(t.areaId),
+    districtIdx: index("idx_chambers_district").on(t.districtId),
   })
 );
 

@@ -96,9 +96,15 @@ export default async function AppointmentPage({ params }: Props) {
             {doc.specialties.length > 0 && (
               <div className="mb-2 text-base font-semibold text-brand-600">
                 {doc.specialties.map((s, i) => (
-                  <span key={s.id}>
+                  // Slug-less entries are this doctor's own free-text
+                  // specialties: plain text, no link target.
+                  <span key={s.slug ?? `custom-${i}`}>
                     {i > 0 && ", "}
-                    <Link href={L(`/specialties/${s.slug}`)} className="hover:underline">{s.name}</Link>
+                    {s.slug ? (
+                      <Link href={L(`/specialties/${s.slug}`)} className="hover:underline">{s.name}</Link>
+                    ) : (
+                      s.name
+                    )}
                   </span>
                 ))}{" "}
                 {d.specialist}
