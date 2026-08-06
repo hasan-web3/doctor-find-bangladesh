@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { detectAreaFromHeaders } from "@/lib/geo";
+import { detectAreaFromHeaders, describeGeoHeaders } from "@/lib/geo";
 import { getDistrictsForGeo } from "@/lib/data";
 import { t, isLocale, type Locale } from "@/lib/i18n";
 import type { ClientLocation } from "@/lib/location";
@@ -17,8 +17,10 @@ import type { ClientLocation } from "@/lib/location";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const rawLocale = new URL(request.url).searchParams.get("locale");
+  const sp = new URL(request.url).searchParams;
+  const rawLocale = sp.get("locale");
   const locale: Locale = isLocale(rawLocale) ? rawLocale : "bn";
+  const debug = sp.get("debug") === "1";
 
   try {
     const h = await headers();
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
       source: geo.districtSlug || geo.areaSlug || geo.lat !== null ? "ip" : "none",
     };
 
-    return NextResponse.json(payload, {
+    return NextResponse.json(debug ? { ...payload, _debug: describeGeoHeaders(h) } : payload, {
       headers: {
         // Per-visitor by definition — must never land in a shared cache, and
         // Cloudflare must not "Cache Everything" this path. The client parks

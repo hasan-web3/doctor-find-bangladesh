@@ -156,7 +156,16 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   // Vercel. IP-based area lookup is performed lazily in detectArea() (server
   // components) instead. We only forward the client IP so that path can use it.
   const requestHeaders = new Headers(req.headers);
-  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  // Same priority as getClientIp() in src/lib/geo.ts, and for the same reason:
+  // this site sits behind Cloudflare, so `x-forwarded-for` as Vercel presents
+  // it is the Cloudflare PoP, not the visitor. `cf-connecting-ip` is the only
+  // header here that carries the person.
+  const clientIp =
+    req.headers.get("cf-connecting-ip")?.trim() ||
+    req.headers.get("true-client-ip")?.trim() ||
+    req.headers.get("x-real-ip")?.trim() ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
   if (clientIp && !NO_GEO.test(pathname)) {
     requestHeaders.set("x-client-ip", clientIp);
   }

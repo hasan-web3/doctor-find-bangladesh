@@ -251,8 +251,11 @@ async function fetchIpLocation(
   const empty: IpLocation = { city: null, country_code: null, lat: null, lng: null };
   const signal = AbortSignal.timeout(IP_GEO_TIMEOUT_MS);
   try {
+    // Encoded even though getClientIp() has already validated the shape: this
+    // value comes from a request header and must never be able to shape the URL.
+    const safeIp = encodeURIComponent(ip);
     if (provider === "ipinfo" && apiKey) {
-      const res = await fetch(`https://ipinfo.io/${ip}?token=${apiKey}`, { signal });
+      const res = await fetch(`https://ipinfo.io/${safeIp}?token=${encodeURIComponent(apiKey)}`, { signal });
       if (!res.ok) return empty;
       const data = await res.json();
       // ipinfo returns "loc": "22.8098,89.5551".
@@ -270,7 +273,7 @@ async function fetchIpLocation(
     // tier is rate limited per calling IP and, on Vercel, that IP is shared, so
     // treat a non-200 as "unavailable" and let the caller fall back.
     const res = await fetch(
-      `http://ip-api.com/json/${ip}?fields=status,countryCode,city,regionName,lat,lon`,
+      `http://ip-api.com/json/${safeIp}?fields=status,countryCode,city,regionName,lat,lon`,
       { signal }
     );
     if (!res.ok) return empty;
@@ -325,12 +328,164 @@ function resolveLocation(loc: IpLocation, districts: GeoDistrict[]): GeoResult {
   return { ...EMPTY, lat: loc.lat, lng: loc.lng };
 }
 
-function clientIpFrom(h: Headers): string {
-  return h.get("x-client-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+// ---------------------------------------------------------------------------
+// Whose IP is this, really?
+// ---------------------------------------------------------------------------
+// doctorsfindbd.com is served THROUGH CLOUDFLARE, in front of Vercel. That one
+// fact broke every layer of this:
+//
+//   visitor (Khulna) -> Cloudflare PoP -> Vercel -> this function
+//
+// Vercel's connection comes from Cloudflare, not from the visitor, so
+// everything Vercel derives from the socket describes a Cloudflare data centre:
+// `x-forwarded-for` and `x-real-ip` are the PoP's address, and the
+// `x-vercel-ip-*` geo headers are the PoP's city. Live responses confirm it —
+// the `CF-RAY` suffix on this site alternates between `DAC` (Dhaka) and `CGP`
+// (Chattogram), which is exactly the pair of wrong answers the site has been
+// giving. Reordering the providers did not help because the provider was being
+// handed Cloudflare's address and answering about it perfectly correctly.
+//
+// `cf-connecting-ip` is the only header here that carries the visitor. It is
+// set by Cloudflare on every proxied request and cannot be forged through
+// Cloudflare (it overwrites whatever the client sent). Someone hitting the
+// Vercel origin directly could spoof it, which would give them the wrong
+// nearby-doctor ordering and nothing else — no access decision reads this.
+const IP_HEADERS = [
+  "cf-connecting-ip",  // Cloudflare: the real visitor. Must come first.
+  "true-client-ip",    // Cloudflare Enterprise / Akamai equivalent.
+  "x-client-ip",       // Our own middleware, forwarded from the above.
+  "x-real-ip",         // Generic reverse proxies; on Vercel this is the peer.
+  "x-forwarded-for",   // Last resort: a comma-separated chain, client first.
+] as const;
+
+// "[2001:db8::1]:443" / "1.2.3.4:5678" / "::ffff:1.2.3.4" all have to come out
+// as a bare address, or the provider URL is malformed and the lookup fails —
+// which used to look identical to "provider is down" and fell back to Vercel's
+// (wrong) headers.
+function sanitizeIp(raw: string): string {
+  let ip = raw.trim();
+  if (!ip) return "";
+
+  // Bracketed IPv6, with or without a port.
+  if (ip.startsWith("[")) {
+    const close = ip.indexOf("]");
+    ip = close === -1 ? ip.slice(1) : ip.slice(1, close);
+  }
+
+  // IPv4 with a port. A single colon plus dots can only be host:port; a bare
+  // IPv6 address always has two or more colons.
+  if (ip.includes(".") && (ip.match(/:/g) || []).length === 1) {
+    ip = ip.split(":")[0];
+  }
+
+  // IPv4-mapped IPv6, which ip-api and ipinfo both reject.
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) ip = mapped[1];
+
+  return ip.trim();
 }
 
+function isValidIp(ip: string): boolean {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+    return ip.split(".").every((octet) => Number(octet) <= 255);
+  }
+  // Loose IPv6 check — enough to keep junk out of an outbound URL.
+  return ip.includes(":") && /^[0-9a-f:]+$/i.test(ip);
+}
+
+/** The visitor's own address, or "" when we only have infrastructure. */
+function getClientIp(h: Headers): string {
+  for (const name of IP_HEADERS) {
+    const raw = h.get(name);
+    if (!raw) continue;
+    // Only x-forwarded-for is a list, but splitting is harmless on the others
+    // and guards against a proxy that decides to chain one of them too.
+    const candidate = sanitizeIp(raw.split(",")[0] ?? "");
+    if (candidate && isValidIp(candidate)) return candidate;
+  }
+  return "";
+}
+
+// Addresses no geo provider can say anything useful about. Rejecting them here
+// keeps a pointless outbound call (and a cached empty answer) from happening.
 function isUsableIp(ip: string): boolean {
-  return Boolean(ip) && ip !== "::1" && !ip.startsWith("127.") && !ip.startsWith("192.168.") && !ip.startsWith("10.");
+  if (!ip || !isValidIp(ip)) return false;
+  if (ip === "::1" || ip === "::") return false;
+  if (/^127\./.test(ip)) return false;              // loopback
+  if (/^10\./.test(ip)) return false;               // private
+  if (/^192\.168\./.test(ip)) return false;         // private
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return false; // private
+  if (/^169\.254\./.test(ip)) return false;         // link-local
+  if (/^(fc|fd)/i.test(ip)) return false;           // IPv6 unique-local
+  if (/^fe80:/i.test(ip)) return false;             // IPv6 link-local
+  return true;
+}
+
+/**
+ * True when this request reached us through Cloudflare.
+ *
+ * When it did, Vercel's `x-vercel-ip-*` headers describe the Cloudflare PoP
+ * rather than the visitor, so they are not a usable backup — they are the
+ * source of the wrong answer, not a fallback from it.
+ */
+function isProxiedByCloudflare(h: Headers): boolean {
+  return Boolean(h.get("cf-connecting-ip") || h.get("cf-ray"));
+}
+
+// Cloudflare's own visitor geo, when the zone has the "Add visitor location
+// headers" managed transform switched on (Cloudflare dashboard → Rules →
+// Settings). Unlike Vercel's headers on this deployment, these are derived from
+// the VISITOR's address, not from the PoP that happened to take the connection,
+// so they are a real backup rather than a source of wrong answers.
+//
+// Off by default, so this simply returns null until it is enabled — worth
+// turning on, because it makes the free path correct again and takes load off
+// the rate-limited ip-api tier.
+function readCloudflareGeo(h: Headers): IpLocation | null {
+  const city = h.get("cf-ipcity");
+  const country = h.get("cf-ipcountry");
+  const latS = h.get("cf-iplatitude");
+  const lngS = h.get("cf-iplongitude");
+  if (!city && !latS && !lngS) return null;
+  const lat = latS ? Number(latS) : NaN;
+  const lng = lngS ? Number(lngS) : NaN;
+  return {
+    city: city || null,
+    country_code: country && country !== "XX" ? country : null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+  };
+}
+
+/**
+ * What the request actually told us about the visitor, for `?debug=1` on
+ * /api/user/location.
+ *
+ * This exists because the failure it diagnoses is invisible from the outside:
+ * a wrong city here looks exactly like a wrong city from a bad provider, and
+ * the only way to tell them apart is to see WHICH header the address came from
+ * and whether Cloudflare is in the path. Working that out by redeploying
+ * guesses cost most of a day.
+ *
+ * Returns the visitor their own address and the names of the headers present —
+ * nothing they could not read from their own connection.
+ */
+export function describeGeoHeaders(h: Headers): Record<string, unknown> {
+  return {
+    resolvedClientIp: getClientIp(h) || null,
+    behindCloudflare: isProxiedByCloudflare(h),
+    cfRay: h.get("cf-ray"),
+    headers: Object.fromEntries(
+      [...IP_HEADERS, "x-vercel-ip-city", "x-vercel-ip-country", "cf-ipcity", "cf-ipcountry"].map(
+        (name) => [name, h.get(name)]
+      )
+    ),
+    // Which header set is eligible as the backup tier. See
+    // lookupNetworkLocation() for why Vercel's are excluded behind Cloudflare.
+    backupTier: isProxiedByCloudflare(h)
+      ? (readCloudflareGeo(h) ? "cloudflare-visitor-geo" : "none (enable Cloudflare visitor location headers)")
+      : "vercel-edge-geo",
+  };
 }
 
 /** Did this answer name a place at all, coarse or not? */
@@ -360,6 +515,11 @@ function namesAPlace(loc: IpLocation | null): boolean {
 // and ipinfo place this network in Khulna. So it leads, and Vercel becomes the
 // backup for the cases the provider cannot serve.
 //
+// Behind Cloudflare there is no usable backup at all: the Vercel headers then
+// describe the Cloudflare PoP, so falling back to them means answering "Dhaka"
+// or "Chattogram" depending on which data centre took the connection. Better
+// to admit we do not know and let the visitor tell us.
+//
 // Cost of leading with it is bounded by two caches that were already in place:
 //   • the browser parks the answer in localStorage for 30 minutes, so a visitor
 //     hits /api/user/location at most twice an hour, not once per page;
@@ -373,8 +533,12 @@ function namesAPlace(loc: IpLocation | null): boolean {
 //      rate-limited, timed out, or a private/local IP) or when the provider
 //      only resolved to the country centre and Vercel did better.
 async function lookupNetworkLocation(h: Headers): Promise<IpLocation | null> {
-  const vercelLoc = readVercelGeo(h);
-  const ip = clientIpFrom(h);
+  // The backup tier. Behind Cloudflare, Vercel's headers describe the proxy, so
+  // Cloudflare's own visitor geo takes their place — when it is enabled. When
+  // it is not, there is no backup and we would rather say "unknown" than name
+  // the data centre's city.
+  const vercelLoc = isProxiedByCloudflare(h) ? readCloudflareGeo(h) : readVercelGeo(h);
+  const ip = getClientIp(h);
 
   if (isUsableIp(ip)) {
     const providerLoc = await lookupIp(ip);
