@@ -6,7 +6,7 @@ import { updateAppointmentStatus } from "@/actions/admin-system";
 import { StatusBadge } from "@/components/admin/ui";
 import { NewFlag, useNewRows } from "@/components/admin/notifications";
 import { cn } from "@/lib/utils";
-import { num as bnNum, date as bnDate } from "@/lib/i18n";
+import { date as fmtDate } from "@/lib/i18n";
 
 const STATUS: Record<string, { tone: "blue" | "green" | "gray" | "red"; label: string }> = {
   new: { tone: "blue", label: "নতুন" },
@@ -54,11 +54,13 @@ export function AppointmentRow({ appt }: { appt: Appt }) {
         </div>
         <div className="text-sm text-ink-mute">
           {appt.doctor_bn}
-          {appt.chamber_bn ? ` · ${appt.chamber_bn}` : ""} · {bnDate(appt.visit_date, "bn")}, {appt.time_slot}
+          {appt.chamber_bn ? ` · ${appt.chamber_bn}` : ""} · {fmtDate(appt.visit_date, "en")}, {appt.time_slot}
         </div>
+        {/* Patient-supplied values stay exactly as submitted, in Latin digits,
+            so they can be copied into a dialer or matched against a record. */}
         <div className="mt-1 text-[12.5px] text-ink-ghost">
-          ✆ {bnNum(appt.phone, "bn")}
-          {appt.age ? ` · বয়স: ${bnNum(appt.age, "bn")}` : ""}
+          ✆ <span className="font-latin">{appt.phone}</span>
+          {appt.age ? <> · বয়স: <span className="font-latin">{appt.age}</span></> : ""}
           {appt.problem ? ` · ${appt.problem}` : ""}
         </div>
       </div>

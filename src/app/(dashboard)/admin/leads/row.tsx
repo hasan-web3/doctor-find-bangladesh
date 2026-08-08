@@ -6,14 +6,14 @@ import { updateLeadStatus } from "@/actions/admin-system";
 import { StatusBadge } from "@/components/admin/ui";
 import { NewFlag, useNewRows } from "@/components/admin/notifications";
 import { cn } from "@/lib/utils";
-import { bnNum, bnDateTime } from "@/lib/bn";
+import { dateTime } from "@/lib/i18n";
 
 // `type` is intentionally absent: the site runs one contact form now, so every
 // lead is the same kind and a per-row type badge only added noise. The column
 // still exists in the database for historic rows — see the note on the list
 // page — it just isn't surfaced here.
 type Lead = {
-  id: number; name: string; phone: string; message: string | null;
+  id: number; name: string; phone: string; email: string | null; message: string | null;
   status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
 };
 
@@ -49,9 +49,16 @@ export function LeadRow({ lead }: { lead: Lead }) {
         </div>
         {lead.message && <div className="mb-1 text-sm text-ink-mute">{lead.message}</div>}
         {lead.extra?.note && <div className="mb-1 text-[13px] text-ink-faint">বিভাগ: {lead.extra.note}</div>}
-        <div className="text-[12.5px] text-ink-ghost">
-          ✆ {bnNum(lead.phone)} · {bnDateTime(lead.created_at)}
+        {/* Phone is printed exactly as the visitor typed it — converting it to
+            Bangla digits made it useless to copy into a dialer or a search. */}
+        <div className="font-latin text-[12.5px] text-ink-ghost">
+          ✆ {lead.phone} · {dateTime(lead.created_at, "en")}
         </div>
+        {lead.email && (
+          <a href={`mailto:${lead.email}`} className="mt-0.5 inline-block font-latin text-[12.5px] text-brand-700">
+            {lead.email}
+          </a>
+        )}
       </div>
       <div className="flex gap-2">
         <a href={`tel:${lead.phone}`} className="rounded-[9px] border border-warm-border bg-warm-soft px-3.5 py-2 text-[13px] font-semibold text-warm">

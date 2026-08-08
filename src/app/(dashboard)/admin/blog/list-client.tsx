@@ -8,7 +8,8 @@ import { type PostInitial, PostForm } from "./post-form";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { StatusBadge } from "@/components/admin/ui";
 import { Pagination } from "@/components/admin/pagination";
-import { bnDate, bnNum } from "@/lib/bn";
+import { bnNum } from "@/lib/bn";
+import { date as fmtDate } from "@/lib/i18n";
 import { DeletePostButton } from "./delete-button";
 import { emptyML } from "@/lib/utils";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
@@ -106,7 +107,7 @@ export function BlogList({
                     </td>
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{p.category || "..."}</td>
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">
-                        {p.published_at ? bnDate(p.published_at) : "..."}
+                        {p.published_at ? fmtDate(p.published_at, "en") : "..."}
                     </td>
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{bnNum(p.views)}</td>
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3">

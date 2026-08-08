@@ -28,6 +28,12 @@ export type SiteSettings = {
   helpline_bn: string;
   whatsapp: string;
   email: string;
+  // Contact-form confirmation routing. `contact_email_from` is the SENDER the
+  // visitor sees (its domain must be verified in Resend); `contact_email_bcc`
+  // is a comma-separated list of team addresses that get a silent copy, kept
+  // out of To: so the visitor never sees internal addresses.
+  contact_email_from: string;
+  contact_email_bcc: string;
   address: MLText;
   facebook: string;
   youtube: string;
@@ -60,6 +66,8 @@ const DEFAULTS: SiteSettings = {
   helpline_bn: "০১৭৭৪৭৩৯৯১৪",
   whatsapp: "8801774739914",
   email: "",
+  contact_email_from: "contact@doctorsfindbd.com",
+  contact_email_bcc: "",
   address: { bn: "খুলনা, বাংলাদেশ", en: "Khulna, Bangladesh" },
   facebook: "",
   youtube: "",

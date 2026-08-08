@@ -8,7 +8,8 @@ import { type DoctorInitial, DoctorForm } from "./doctor-form";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { StatusBadge } from "@/components/admin/ui";
 import { Pagination } from "@/components/admin/pagination";
-import { bnNum, bnDate } from "@/lib/bn";
+import { bnNum } from "@/lib/bn";
+import { date as fmtDate } from "@/lib/i18n";
 import { DeleteDoctorButton } from "./delete-button";
 import { EMPTY_SOCIAL_LINKS } from "@/lib/utils";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
@@ -28,6 +29,7 @@ const NEW_DOCTOR: DoctorInitial = {
     name: { ...emptyML }, address: { ...emptyML },
     district_id: null, area_id: null, custom_area: { ...emptyML },
     fee: 0, phone: "", map_url: "",
+    owner_email: "", bcc_email: "hasan25042019@gmail.com", from_email: "noreply@doctorsfindbd.com",
     visible: false, lat: null, lng: null,
     schedule: [],
   }],
@@ -237,7 +239,7 @@ export function DoctorsList({
                   <StatusBadge tone={d.active ? "green" : "amber"}>{d.active ? "সক্রিয়" : "নিষ্ক্রিয়"}</StatusBadge>
                 </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px] text-ink-faint">
-                  {d.promo_ends ? bnDate(d.promo_ends) : "..."}
+                  {d.promo_ends ? fmtDate(d.promo_ends, "en") : "..."}
                 </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                   <div className="flex gap-1.5">

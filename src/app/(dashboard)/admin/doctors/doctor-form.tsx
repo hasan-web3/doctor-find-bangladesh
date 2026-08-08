@@ -42,6 +42,8 @@ type ChamberDraft = {
   // filters. When set it is what the public profile prints.
   custom_area: ML;
   fee: number; phone: string; map_url: string;
+  // Appointment-email routing for THIS chamber only.
+  owner_email: string; bcc_email: string; from_email: string;
   // Public visibility — false hides just this chamber (doctor stays public).
   visible: boolean;
   // Extracted from map_url when possible; admin can override.
@@ -73,6 +75,9 @@ const EMPTY_CHAMBER = (): ChamberDraft => ({
   name: { ...emptyML }, address: { ...emptyML },
   district_id: null, area_id: null, custom_area: { ...emptyML },
   fee: 0, phone: "", map_url: "",
+  // Same defaults the database applies, so a brand-new chamber in the form
+  // shows exactly what it will be saved with.
+  owner_email: "", bcc_email: "hasan25042019@gmail.com", from_email: "noreply@doctorsfindbd.com",
   visible: false, lat: null, lng: null,
   schedule: [],
 });
@@ -411,6 +416,40 @@ export function DoctorForm({
                       <Field label="সিরিয়াল নম্বর (ফোন)">
                         <input className={inputCls + " font-latin"} value={c.phone} onChange={(e) => setChamber(i, { phone: e.target.value })} placeholder="01XXXXXXXXX" />
                       </Field>
+                    </div>
+
+                    {/* Appointment email routing — per chamber. */}
+                    <div className="rounded-xl border border-line bg-page p-4">
+                      <div className="mb-1 text-[13.5px] font-bold text-ink">অ্যাপয়েন্টমেন্ট ইমেইল</div>
+                      <p className="mb-3 mt-0 text-[12.5px] leading-relaxed text-ink-faint">
+                        এই চেম্বারে সিরিয়াল নিলে কোথায় ইমেইল যাবে। শুধু এই চেম্বারের জন্য প্রযোজ্য, অন্য চেম্বারে কোনো প্রভাব পড়বে না।
+                      </p>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <Field label="চেম্বার মালিকের ইমেইল" hint="নতুন সিরিয়ালের খবর এখানে যাবে">
+                          <input
+                            className={inputCls + " font-latin"}
+                            value={c.owner_email}
+                            onChange={(e) => setChamber(i, { owner_email: e.target.value })}
+                            placeholder="owner@example.com"
+                          />
+                        </Field>
+                        <Field label="অতিরিক্ত প্রাপক (BCC)" hint="একাধিক হলে কমা দিয়ে লিখুন। খালি রাখলে সিরিয়ালগুলো ড্যাশবোর্ডে জমা হবে।">
+                          <input
+                            className={inputCls + " font-latin"}
+                            value={c.bcc_email}
+                            onChange={(e) => setChamber(i, { bcc_email: e.target.value })}
+                            placeholder="hasan25042019@gmail.com"
+                          />
+                        </Field>
+                        <Field label="প্রেরক ইমেইল (From)" hint="ডোমেইনটি Resend-এ ভেরিফাই থাকতে হবে">
+                          <input
+                            className={inputCls + " font-latin"}
+                            value={c.from_email}
+                            onChange={(e) => setChamber(i, { from_email: e.target.value })}
+                            placeholder="noreply@doctorsfindbd.com"
+                          />
+                        </Field>
+                      </div>
                     </div>
                     <Field
                       label="গুগল ম্যাপ (ঐচ্ছিক)"

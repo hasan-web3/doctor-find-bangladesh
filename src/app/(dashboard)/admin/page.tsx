@@ -4,7 +4,8 @@ import { StatusBadge } from "@/components/admin/ui";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { expirePromotions } from "@/lib/data";
-import { bnNum, bnMoney, bnDateTime, bnDate } from "@/lib/bn";
+import { bnNum, bnMoney } from "@/lib/bn";
+import { date as fmtDate, dateTime } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -153,7 +154,7 @@ export default async function AdminDashboard() {
                       {e.plan === "premium" ? "প্রিমিয়াম" : e.plan === "featured" ? "ফিচার্ড" : "বেসিক"} প্ল্যান
                     </div>
                   </div>
-                  <span className="whitespace-nowrap text-xs font-bold text-[#B45309]">{bnDate(e.ends_on)}</span>
+                  <span className="whitespace-nowrap text-xs font-bold text-[#B45309]">{fmtDate(e.ends_on, "en")}</span>
                 </div>
               ))}
             </div>
@@ -184,7 +185,7 @@ export default async function AdminDashboard() {
                   <td className="border-b border-[#F1F5F9] px-3 py-3 text-sm font-semibold text-ink">{a.patient_name}</td>
                   <td className="border-b border-[#F1F5F9] px-3 py-3 text-sm text-ink-mute">{a.doctor_bn}</td>
                   <td className="border-b border-[#F1F5F9] px-3 py-3 text-[13.5px] text-ink-faint">
-                    {bnDate(a.visit_date)}, {a.time_slot}
+                    {fmtDate(a.visit_date, "en")}, {a.time_slot}
                   </td>
                   <td className="border-b border-[#F1F5F9] px-3 py-3">
                     <StatusBadge tone={APPT_TONES[a.status]?.tone || "gray"}>{APPT_TONES[a.status]?.label || a.status}</StatusBadge>
@@ -209,7 +210,7 @@ export default async function AdminDashboard() {
                 <span className="text-ink-faint">{log.action}</span>
                 <span className="rounded bg-page px-1.5 py-0.5 font-latin text-xs text-ink-mute">{log.entity}</span>
                 <span className="mr-auto" />
-                <span className="text-xs text-ink-ghost">{bnDateTime(log.created_at)}</span>
+                <span className="text-xs text-ink-ghost">{dateTime(log.created_at, "en")}</span>
               </div>
             ))}
           </div>

@@ -36,6 +36,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       id: number; name: MLRaw; address: MLRaw; area_id: number | null; district_id: number | null;
       custom_area: MLRaw;
       fee: number; phone: string | null; map_url: string | null;
+      owner_email: string | null; bcc_email: string | null; from_email: string | null;
       visible: boolean; lat: number | null; lng: number | null;
       schedule: { days: MLRaw; time: MLRaw }[];
     }>(sql`
@@ -44,7 +45,8 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
         -- has no area row to derive it from.
         COALESCE(c.district_id, a.district_id) AS district_id,
         c.custom_area,
-        c.fee, c.phone, c.map_url, c.visible, c.lat, c.lng, c.schedule
+        c.fee, c.phone, c.owner_email, c.bcc_email, c.from_email,
+        c.map_url, c.visible, c.lat, c.lng, c.schedule
       FROM chambers c LEFT JOIN areas a ON a.id = c.area_id
       WHERE c.doctor_id=${doctorId} ORDER BY c.sort
     `),
@@ -102,6 +104,9 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       fee: c.fee,
       phone: c.phone || "",
       map_url: c.map_url || "",
+      owner_email: c.owner_email || "",
+      bcc_email: c.bcc_email || "",
+      from_email: c.from_email || "",
       visible: c.visible,
       lat: c.lat,
       lng: c.lng,

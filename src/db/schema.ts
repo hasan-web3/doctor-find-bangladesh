@@ -254,6 +254,13 @@ export const chambers = pgTable(
     fee: integer("fee").notNull().default(0),
     schedule: jsonb("schedule").$type<ChamberSchedule[]>().notNull().default(mlListEmpty),
     phone: text("phone"),
+    // Per-chamber appointment-email routing (migration 014). Each chamber owns
+    // its own sender/recipients, so editing one never affects another.
+    // `bccEmail` is comma separated and also decides whether a booking is
+    // written to the database at all — see submitAppointment.
+    ownerEmail: text("owner_email"),
+    bccEmail: text("bcc_email"),
+    fromEmail: text("from_email"),
     lat: doublePrecision("lat"),
     lng: doublePrecision("lng"),
     mapUrl: text("map_url"),
@@ -281,6 +288,8 @@ export const appointments = pgTable(
     chamberId: bigint("chamber_id", { mode: "number" }).references(() => chambers.id, { onDelete: "set null" }),
     patientName: text("patient_name").notNull(),
     phone: text("phone").notNull(),
+    // Optional: only when the patient supplied one on the booking form.
+    email: text("email"),
     age: text("age"),
     problem: text("problem"),
     visitDate: date("visit_date").notNull(),
@@ -326,6 +335,9 @@ export const leads = pgTable(
     type: leadType("type").notNull(),
     name: text("name").notNull(),
     phone: text("phone").notNull(),
+    // Optional: the contact form only asks for it so we can send the visitor a
+    // confirmation. Null for every lead created before migration 013.
+    email: text("email"),
     message: text("message"),
     extra: jsonb("extra").$type<Record<string, unknown>>().notNull().default(mlEmpty),
     status: leadStatus("status").notNull().default("new"),

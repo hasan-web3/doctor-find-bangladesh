@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveUser, deleteUser } from "@/actions/admin-system";
 import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
-import { bnDate } from "@/lib/bn";
+import { date as fmtDate } from "@/lib/i18n";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 type Row = { id: number; name: string; email: string; role: string; active: boolean; created_at: string };
@@ -100,7 +100,7 @@ export function UsersManager({ rows, isSuperAdmin, selfId, q }: { rows: Row[]; i
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                   <StatusBadge tone={u.active ? "green" : "gray"}>{u.active ? "সক্রিয়" : "নিষ্ক্রিয়"}</StatusBadge>
                 </td>
-                <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px] text-ink-faint">{bnDate(u.created_at)}</td>
+                <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px] text-ink-faint">{fmtDate(u.created_at, "en")}</td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                   {isSuperAdmin && (
                     <div className="flex gap-1.5">

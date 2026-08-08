@@ -15,7 +15,7 @@ export function LeadForm({
   extraField,
 }: {
   type: "patient" | "doctor";
-  d: Pick<Dict, "your_name" | "your_message" | "send" | "sending" | "mobile_number">;
+  d: Pick<Dict, "your_name" | "your_email" | "your_message" | "send" | "sending" | "mobile_number">;
   namePlaceholder?: string;
   messagePlaceholder?: string;
   submitLabel?: string;
@@ -62,8 +62,19 @@ export function LeadForm({
           />
         )}
       </div>
+      {/* Optional. Given one, we email the visitor an automatic confirmation;
+          left blank the form behaves exactly as before. */}
+      <input
+        name="email"
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        placeholder={d.your_email}
+        className="w-full rounded-[11px] border border-line px-3.5 py-3 font-latin text-[15px] outline-none focus:border-brand-600"
+      />
       <textarea
         name="message"
+        required
         rows={3}
         placeholder={messagePlaceholder || d.your_message}
         className="w-full resize-y rounded-[11px] border border-line px-3.5 py-3 font-body text-[15px] outline-none focus:border-brand-600"

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveReview, toggleReview, deleteReview } from "@/actions/admin-content";
 import { Field, inputCls, Toggle, Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
-import { bnDate } from "@/lib/bn";
+import { date as fmtDate } from "@/lib/i18n";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
 
 type Review = {
@@ -86,7 +86,7 @@ export function ReviewsManager({ reviews, doctors, q }: { reviews: Review[]; doc
                 <StatusBadge tone={r.published ? "green" : "amber"}>{r.published ? "প্রকাশিত" : "অপেক্ষমাণ"}</StatusBadge>
               </div>
               <div className="text-[13px] text-ink-faint">
-                {r.doctor_bn} · {r.area_text || ""} · {bnDate(r.created_at)}
+                {r.doctor_bn} · {r.area_text || ""} · {fmtDate(r.created_at, "en")}
               </div>
               {r.body && <p className="mb-0 mt-1.5 text-sm text-ink-mute">{r.body}</p>}
             </div>

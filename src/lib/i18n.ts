@@ -53,9 +53,24 @@ const EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July
 export function date(d: Date | string, locale: Locale): string {
   const dt = typeof d === "string" ? new Date(d) : d;
   const months = locale === "bn" ? BN_MONTHS : EN_MONTHS;
+  // Years and day numbers go through num() as STRINGS on purpose. Passing the
+  // number takes num()'s toLocaleString("en-IN") path, which groups thousands —
+  // so 2026 came out as "২,০২৬" in every Bangla date on the site.
   return locale === "bn"
-    ? `${num(dt.getDate(), locale)} ${months[dt.getMonth()]}, ${num(dt.getFullYear(), locale)}`
+    ? `${num(String(dt.getDate()), locale)} ${months[dt.getMonth()]}, ${num(String(dt.getFullYear()), locale)}`
     : `${months[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}`;
+}
+
+// Date plus clock time. The admin dashboard passes "en" so timestamps stay in
+// Latin digits, which is what an operator needs when cross-checking a record.
+export function dateTime(d: Date | string, locale: Locale): string {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  const time = new Intl.DateTimeFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(dt);
+  return `${date(dt, locale)}, ${time}`;
 }
 
 // OpenGraph/HTML lang tags

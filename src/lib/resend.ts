@@ -78,15 +78,26 @@ export function parseList(raw?: string | null): string[] {
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// A non-ASCII display name has to be RFC 2047 encoded before it can travel in
+// a header, and Bangla costs 3 UTF-8 bytes per character, so the encoded form
+// inflates several times over. Resend rejects the whole address field past 320
+// characters: a 47-character Bangla name was enough to trigger
+// "The email address length is more than 320 characters long" and silently kill
+// every send. 80 bytes is a safe ceiling (~26 Bangla characters, 80 Latin).
+const MAX_SENDER_NAME_BYTES = 80;
+
 /**
  * Builds an RFC 5322 address. The display name is quoted so a comma or dot
- * inside a Bangla/Latin brand name can never split the header.
+ * inside a Bangla/Latin brand name can never split the header, and is dropped
+ * entirely when it is too long to encode — a plain address still delivers,
+ * a rejected header does not.
  */
 export function formatSender(email: string, name?: string | null): string {
   const addr = (email || "").trim();
   if (!addr) return "";
   const label = (name || "").trim();
-  return label ? `${JSON.stringify(label)} <${addr}>` : addr;
+  if (!label || Buffer.byteLength(label, "utf8") > MAX_SENDER_NAME_BYTES) return addr;
+  return `${JSON.stringify(label)} <${addr}>`;
 }
 
 function cleanTags(tags?: { name: string; value: string }[]) {

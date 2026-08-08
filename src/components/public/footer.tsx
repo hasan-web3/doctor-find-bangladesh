@@ -202,7 +202,9 @@ export async function Footer({ locale }: { locale: Locale }) {
       </div>
       <div className="mt-11 border-t border-white/10">
         <div className="mx-auto max-w-site px-5 py-5 text-center text-[13.5px] text-ink-faint">
-          © {num(new Date().getFullYear(), locale)} {brand}. {d.footer_rights}
+          {/* String, not number: num() groups thousands for numeric input, which
+              printed the year as "২,০২৬". */}
+          © {num(String(new Date().getFullYear()), locale)} {brand}. {d.footer_rights}
         </div>
       </div>
     </footer>

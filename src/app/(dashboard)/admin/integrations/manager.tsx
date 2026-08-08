@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveIntegrationAction, testIntegrationAction, sendTestEmail } from "@/actions/admin-system";
 import type { IntegrationKey } from "@/lib/integrations";
 import { Field, inputCls, Toggle, StatusBadge } from "@/components/admin/ui";
-import { bnDateTime } from "@/lib/bn";
+import { dateTime } from "@/lib/i18n";
 
 export type IntegrationView = {
   key: IntegrationKey;
@@ -108,7 +108,7 @@ function Card({ item }: { item: IntegrationView }) {
             </div>
           )}
           {item.last_tested_at && (
-            <div className="mt-2 text-xs text-ink-ghost">সর্বশেষ টেস্ট: {bnDateTime(item.last_tested_at)}</div>
+            <div className="mt-2 text-xs text-ink-ghost">সর্বশেষ টেস্ট: {dateTime(item.last_tested_at, "en")}</div>
           )}
           <div className="mt-4 flex gap-3">
             <button onClick={save} disabled={pending} className="rounded-[10px] bg-brand-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60">

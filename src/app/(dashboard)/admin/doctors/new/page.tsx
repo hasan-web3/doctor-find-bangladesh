@@ -46,6 +46,7 @@ export default async function NewDoctorPage() {
             name: { ...emptyML }, address: { ...emptyML },
             district_id: null, area_id: null, custom_area: { ...emptyML },
             fee: 0, phone: "", map_url: "",
+            owner_email: "", bcc_email: "hasan25042019@gmail.com", from_email: "noreply@doctorsfindbd.com",
             // New chambers start hidden — admin explicitly toggles on to publish.
             visible: false, lat: null, lng: null,
             schedule: [],

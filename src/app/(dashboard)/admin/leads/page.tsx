@@ -2,9 +2,11 @@ import Link from "next/link";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { LeadRow } from "./row";
+import { ContactEmailSettings } from "./email-settings";
 import { Pagination } from "@/components/admin/pagination";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
 import { searchClause } from "@/lib/admin-search";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +27,20 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
 
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`status = ${sp.status}::lead_status`);
-  if (sp.q?.trim()) conds.push(searchClause(sp.q, [sql`name`, sql`phone`, sql`message`]));
+  if (sp.q?.trim()) conds.push(searchClause(sp.q, [sql`name`, sql`phone`, sql`email`, sql`message`]));
   const where = sql.join(conds, sql` AND `);
 
-  const [rowsRes, totalRes] = await Promise.all([
+  const [rowsRes, totalRes, settings] = await Promise.all([
     db.execute<{
-      id: number; name: string; phone: string; message: string | null;
+      id: number; name: string; phone: string; email: string | null; message: string | null;
       status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
     }>(sql`
-    SELECT id, name, phone, message, status, created_at::text, extra FROM leads
+    SELECT id, name, phone, email, message, status, created_at::text, extra FROM leads
     WHERE ${where} ORDER BY created_at DESC
     LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
   `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM leads WHERE ${where}`),
+    getSettings(),
   ]);
   const rows = rowsRes.rows;
   const totalPages = Math.ceil((totalRes.rows[0]?.c ?? 0) / perPage);
@@ -45,6 +48,11 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
   return (
     <div>
       <h1 className="mb-5 mt-0 font-heading text-2xl font-bold text-ink">লিড / যোগাযোগ</h1>
+
+      <ContactEmailSettings
+        initialFrom={settings.contact_email_from || ""}
+        initialBcc={settings.contact_email_bcc || ""}
+      />
 
       <div className="mb-[18px] flex flex-wrap gap-2">
         {TABS.map(([value, label]) => (

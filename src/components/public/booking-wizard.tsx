@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { submitAppointment, type FormResult } from "@/actions/public";
 import { useBookingContext } from "@/components/public/booking-context";
-import { localeHref, num, type Locale } from "@/lib/i18n";
+import { localeHref, num, date as fmtDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/dict";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ type Chamber = { id: number; name: string; area: string; fee: number; schedule: 
 type BookingDict = Pick<Dict,
   "step_datetime" | "step_patient" | "step_confirm" | "select_chamber" | "select_date" |
   "select_time" | "next_step" | "prev_step" | "patient_info_title" | "patient_name" |
-  "patient_name_placeholder" | "mobile_number" | "age" | "age_placeholder" | "problem_label" |
+  "patient_name_placeholder" | "mobile_number" | "your_email" | "age" | "age_placeholder" | "problem_label" |
   "problem_placeholder" | "confirm_booking" | "booking_pending" | "booking_success_title" |
   "booking_success_sub" | "doctor_label" | "datetime_label" | "serial_label" | "back_home" |
   "no_slots_for_day" | "fee" | "taka">;
@@ -100,6 +100,7 @@ export function BookingWizard({
     chamberId, setChamberId,
     patientName, setPatientName,
     phone, setPhone,
+    email, setEmail,
     age, setAge,
     problem, setProblem,
   } = useBookingContext();
@@ -260,6 +261,12 @@ export function BookingWizard({
                   <input name="age" value={age} onChange={(e) => setAge(e.target.value)} placeholder={d.age_placeholder} className="w-full rounded-[11px] border border-line px-3.5 py-3 text-[15px] outline-none focus:border-brand-600" />
                 </div>
               </div>
+              {/* Optional. Given one, the patient gets a confirmation email;
+                  left blank the booking behaves exactly as before. */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-ink-soft">{d.your_email}</label>
+                <input name="email" type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@gmail.com" className="w-full rounded-[11px] border border-line px-3.5 py-3 font-latin text-[15px] outline-none focus:border-brand-600" />
+              </div>
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-ink-soft">{d.problem_label}</label>
                 <textarea name="problem" rows={3} value={problem} onChange={(e) => setProblem(e.target.value)} placeholder={d.problem_placeholder} className="w-full resize-y rounded-[11px] border border-line px-3.5 py-3 font-body text-[15px] outline-none focus:border-brand-600" />
@@ -279,7 +286,7 @@ export function BookingWizard({
             <p className="mb-5 text-[15px] text-ink-mute">{d.booking_success_sub}</p>
             <div className="mx-auto mb-[22px] max-w-[400px] rounded-[14px] border border-line bg-page p-[18px] text-right">
               <div className="flex justify-between py-[7px] text-[14.5px]"><span className="text-ink-faint">{d.doctor_label}</span><span className="font-semibold text-ink">{doctorName}</span></div>
-              <div className="flex justify-between border-t border-line py-[7px] text-[14.5px]"><span className="text-ink-faint">{d.datetime_label}</span><span className="font-semibold text-ink">{num(date, locale)} · {slot}</span></div>
+              <div className="flex justify-between border-t border-line py-[7px] text-[14.5px]"><span className="text-ink-faint">{d.datetime_label}</span><span className="font-semibold text-ink">{fmtDate(date, locale)} · {slot}</span></div>
               <div className="flex justify-between border-t border-line py-[7px] text-[14.5px]"><span className="text-ink-faint">{d.serial_label}</span><span className="font-semibold text-brand-600">#{result.serial}</span></div>
             </div>
             <Link href={localeHref(locale, "/")} className="inline-block rounded-xl bg-brand-600 px-7 py-[13px] text-[15px] font-bold text-white">{d.back_home}</Link>

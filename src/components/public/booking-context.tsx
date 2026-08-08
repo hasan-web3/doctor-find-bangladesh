@@ -27,6 +27,9 @@ interface BookingContextType {
   setPatientName: (name: string) => void;
   phone: string;
   setPhone: (phone: string) => void;
+  // Optional: only used to send the patient a confirmation email.
+  email: string;
+  setEmail: (email: string) => void;
   age: string;
   setAge: (age: string) => void;
   problem: string;
@@ -43,6 +46,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [age, setAge] = useState("");
   const [problem, setProblem] = useState("");
 
@@ -53,6 +57,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     chamberId, setChamberId,
     patientName, setPatientName,
     phone, setPhone,
+    email, setEmail,
     age, setAge,
     problem, setProblem,
   };
