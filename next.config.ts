@@ -149,6 +149,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // Static canonicalisations. These are also implemented in src/middleware.ts
+  // (kept there as a fallback), but next.config redirects are applied by the
+  // routing layer BEFORE middleware runs — so declaring them here means these
+  // URLs are answered without invoking the middleware function at all. Only
+  // rules that need no database lookup belong here; slug-change redirects stay
+  // in the middleware's DB-backed map.
+  async redirects() {
+    return [
+      // /area (the bare index only — /area/doctors/... is a real route) -> /areas.
+      // The two rendered identical pages with different canonical tags.
+      { source: "/area", destination: "/areas", permanent: true },
+      { source: "/en/area", destination: "/en/areas", permanent: true },
+      // Bare /districts/<slug> is a stub; the canonical listing is .../doctors.
+      // `:slug` matches ONE segment, so /districts/x/doctors never re-matches.
+      { source: "/districts/:slug", destination: "/districts/:slug/doctors", permanent: true },
+      { source: "/en/districts/:slug", destination: "/en/districts/:slug/doctors", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

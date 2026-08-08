@@ -83,8 +83,20 @@ export function revalidateSitemaps() {
   revalidatePath("/sitemap/[shard]", "page");
 }
 
+// The middleware's redirect snapshot is refreshed from /api/redirects, and that
+// route is now response-cached for a long window (see the note there) so bot and
+// visitor traffic never wakes a function for it. That trade only works if the
+// cache is purged the moment a redirect actually changes — which is what this
+// does. The `redirects` TAG alone is not enough: it clears the inner
+// unstable_cache read, not the cached HTTP response in front of it.
+export function revalidateRedirects() {
+  revalidateTag("redirects");
+  revalidatePath("/api/redirects");
+}
+
 export function revalidatePublic(tags: string[] = []) {
   for (const tag of tags) revalidateTag(tag);
+  if (tags.includes("redirects")) revalidatePath("/api/redirects");
   revalidateTag("sitemap");
   revalidateSitemaps();
 

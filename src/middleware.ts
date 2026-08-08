@@ -37,18 +37,44 @@ const NEUTRAL = /^\/(admin|admin-login|api|_next|sitemap|robots\.txt|icon\.svg|f
 // Paths that should not trigger geo-detection (e.g. image assets)
 const NO_GEO = /\.(jpg|jpeg|png|svg|webp|ico|txt)$/;
 
+// ---- vulnerability-scanner paths ----
+// This site is not PHP and has no WordPress. Every one of these is a bot
+// probing for an exploit, and there are thousands of them a day. Without this
+// guard `/wp-login.php` falls through NEUTRAL, gets rewritten to
+// `/bn/wp-login.php` and renders the full not-found PAGE — a server render with
+// layout data fetches, i.e. real Active CPU spent on a scanner. Answering with
+// a bare 404 from the edge costs nothing and is checked before any other work.
+//
+// Nothing legitimate on this site starts with these segments or ends in these
+// extensions; `/.well-known/*` is deliberately NOT listed (ACME/TLS needs it).
+const SCANNER_PATH =
+  /^\/(?:wp-admin|wp-includes|wp-content|wp-login|wp-json|wordpress|wp|xmlrpc|phpmyadmin|phpMyAdmin|pma|myadmin|adminer|cgi-bin|vendor|autodiscover|owa|solr|actuator|telescope|\.env|\.git|\.svn|\.aws|\.ssh|\.vscode|\.idea)(?:[/.]|$)|\.(?:php\d?|phtml|phar|asp|aspx|jsp|cgi|pl|sh|bak|sql|old|swp|ini|env)$/i;
+
 // ---- stale-while-revalidate redirect cache ----
 let redirectMap: Record<string, { to: string; permanent: boolean }> = {};
 let redirectMapAt = 0;
 let refreshing = false;
 
+// How long an edge isolate keeps its snapshot before refreshing in the
+// background. Every refresh is one request to /api/redirects, and Vercel runs
+// many isolates in parallel, so a short TTL turned into a continuous stream of
+// function invocations for a table that changes a few times a month. 15 minutes
+// is safe because redirects are ALSO enforced at the page level (see below), so
+// a stale snapshot can only ever mean "the 308 arrives one hop later", never a
+// wrong page. Admin edits purge /api/redirects immediately anyway
+// (revalidateRedirects() in src/lib/revalidate.ts).
+const REDIRECT_TTL_MS = 15 * 60_000;
+
 async function refreshRedirects(origin: string) {
   if (refreshing) return;
   refreshing = true;
   try {
-    // /api/redirects is unstable_cache-backed (tag: redirects), so this is a
-    // cheap cached hit, and it runs in the background — never on the hot path.
-    const res = await fetch(`${origin}/api/redirects`, { cache: "no-store" });
+    // /api/redirects is a cached route handler, so this normally never reaches
+    // a function at all — it is served from the CDN. (Do NOT put `no-store`
+    // back here: that forces every refresh to the origin, which is exactly the
+    // invocation storm this cache exists to avoid.) It also runs in the
+    // background via waitUntil — never on the hot path.
+    const res = await fetch(`${origin}/api/redirects`);
     if (res.ok) {
       redirectMap = await res.json();
       redirectMapAt = Date.now();
@@ -62,6 +88,19 @@ async function refreshRedirects(origin: string) {
 
 export async function middleware(req: NextRequest, event: NextFetchEvent) {
   const { pathname } = req.nextUrl;
+
+  // ---- scanner paths: cheapest possible exit, before ANY other work ----
+  // Deliberately the first statement in the function: no DB, no geo, no JWT, no
+  // rewrite. `Cache-Control` lets the edge absorb repeat probes of the same URL.
+  if (SCANNER_PATH.test(pathname)) {
+    return new NextResponse(null, {
+      status: 404,
+      headers: {
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+        "X-Robots-Tag": "noindex",
+      },
+    });
+  }
 
   // ---- admin guard (locale-neutral) ----
   if (pathname.startsWith("/admin") && !pathname.startsWith("/admin-login")) {
@@ -87,7 +126,7 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (NEUTRAL.test(pathname)) return NextResponse.next();
 
   // ---- refresh redirect snapshot in the background if stale (non-blocking) ----
-  if (req.method === "GET" && Date.now() - redirectMapAt > 60_000) {
+  if (req.method === "GET" && Date.now() - redirectMapAt > REDIRECT_TTL_MS) {
     event.waitUntil(refreshRedirects(req.nextUrl.origin));
   }
 

@@ -18,9 +18,9 @@ import {
 } from "@/db";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { revalidateTag } from "next/cache";
 import {
   revalidatePublic,
+  revalidateRedirects,
   revalidateSpecialty,
   revalidateArea,
   revalidateHospital,
@@ -113,7 +113,7 @@ export async function saveSpecialty(payload: unknown): Promise<ActionResult> {
   }
   await audit(existing ? "update" : "create", "specialties", s.id, { name: s.name.bn });
   revalidateSpecialty({ slug, oldSlug: existing?.slug });
-  revalidateTag("redirects");
+  revalidateRedirects();
   return { ok: true, message: "বিভাগ সংরক্ষণ হয়েছে" };
 }
 
@@ -278,7 +278,7 @@ export async function saveArea(payload: unknown): Promise<ActionResult> {
   }
   await audit(existing ? "update" : "create", "areas", a.id, { name: a.name.bn });
   revalidateArea({ slug, oldSlug: existing?.slug, districtSlug: dist.slug });
-  revalidateTag("redirects");
+  revalidateRedirects();
   return { ok: true, message: "থানা / উপজেলা সংরক্ষণ হয়েছে" };
 }
 
@@ -433,7 +433,7 @@ export async function saveHospital(payload: unknown): Promise<ActionResult> {
   }
   await audit(existing ? "update" : "create", "hospitals", h.id, { name: h.name.bn });
   revalidateHospital({ slug, oldSlug: existing?.slug });
-  revalidateTag("redirects");
+  revalidateRedirects();
   return { ok: true, message: "হাসপাতাল সংরক্ষণ হয়েছে" };
 }
 
@@ -525,7 +525,7 @@ export async function saveBlogPost(payload: unknown): Promise<ActionResult> {
   }
   await audit(existing ? "update" : "create", "blog_posts", p.id, { title: p.title.bn });
   revalidateBlogPost({ slug, oldSlug: existing?.slug });
-  revalidateTag("redirects");
+  revalidateRedirects();
   return { ok: true, message: "আর্টিকেল সংরক্ষণ হয়েছে" };
 }
 

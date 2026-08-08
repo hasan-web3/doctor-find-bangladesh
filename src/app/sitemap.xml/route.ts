@@ -6,18 +6,18 @@ import { listSitemaps, renderIndexXml } from "@/lib/sitemap-core";
 // new entity type (added to src/lib/sitemap-core.ts) automatically appears
 // without touching this file.
 
-export const revalidate = 3600;
+// Building this index is the single most expensive request on the site:
+// listSitemaps() runs sectionEntries() for ALL eight sections just to count
+// them, and several of those are multi-join CTE queries over the whole doctor
+// table. Googlebot re-fetches the index constantly, so it must be answered from
+// cache, not recomputed. See the shard route for why the cache is a `revalidate`
+// window rather than a hand-written Cache-Control header.
+export const revalidate = 86400;
 
 export async function GET() {
   const shards = await listSitemaps().catch(() => [{ section: "core", page: 0 } as const]);
   const body = renderIndexXml(shards);
   return new NextResponse(body, {
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-      // Matches the shard route — see the note there. The index lists which
-      // shards exist, so a new section must not be pinned behind a stale edge
-      // entry either.
-      "Cache-Control": "public, max-age=0, s-maxage=60",
-    },
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
   });
 }

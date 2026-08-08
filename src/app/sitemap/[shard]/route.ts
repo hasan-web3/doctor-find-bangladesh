@@ -6,7 +6,36 @@ import { buildShard, decodeShardId, renderUrlsetXml } from "@/lib/sitemap-core";
 // segment (with or without .xml suffix) and passes it to decodeShardId,
 // which handles either shape.
 
-export const revalidate = 3600;
+// 24h — and the freshness problem this file used to have is solved a different
+// way, not by a short window.
+//
+// HISTORY: this route carried `Cache-Control: s-maxage=60` because
+// revalidatePath() cannot evict an edge entry created by a HAND-WRITTEN
+// s-maxage. True — but that also meant the route opted out of the ISR cache
+// entirely, so every crawler hit re-ran the section queries (a full scan of the
+// doctors table plus the coverage CTEs) as a billed function. That is the
+// Active-CPU cost this change removes.
+//
+// The header is gone, so Next emits its OWN ISR cache headers and the entry is
+// purgeable again — and revalidateSitemaps() (src/lib/revalidate.ts) already
+// runs on EVERY content mutation and calls
+// `revalidatePath("/sitemap/[shard]", "page")`, which covers all shards. So a
+// newly added doctor still lands in the XML immediately; the 24h number is only
+// the ceiling for when nothing changes at all.
+//
+// Do not reintroduce a manual Cache-Control here — it silently disables both
+// the cache and the purge.
+export const revalidate = 86400;
+
+// A dynamic segment with no generateStaticParams is treated as fully dynamic —
+// `revalidate` alone would not put the response in the incremental cache, and
+// every crawler hit would still re-run the section queries. Declaring it (even
+// empty) opts the route into ISR: nothing is prerendered at build, but the
+// first request for each shard is cached and served from there afterwards.
+// `dynamicParams` defaults to true, so unknown/new shards still resolve.
+export function generateStaticParams(): { shard: string }[] {
+  return [];
+}
 
 export async function GET(_req: Request, ctx: { params: Promise<{ shard: string }> }) {
   const { shard } = await ctx.params;
@@ -23,24 +52,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ shard: string 
   }
   const body = renderUrlsetXml(entries);
   return new NextResponse(body, {
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-      // 60s, and deliberately NO stale-while-revalidate.
-      //
-      // This header is what Vercel's edge cache obeys, and revalidatePath() /
-      // revalidateTag() cannot evict an edge entry created by a manual
-      // s-maxage on a dynamic route handler. The previous value
-      // (s-maxage=3600, stale-while-revalidate=86400) therefore pinned the
-      // shard for up to 25 hours no matter what the admin did — a doctor
-      // added at 18:49 was still missing from doctors.xml the next day.
-      //
-      // SWR is the dangerous half: it lets the CDN keep serving the old body
-      // while it refreshes in the background, so the very crawl that matters
-      // still sees stale XML. Without it the edge must revalidate at 60s, so
-      // freshness is bounded and predictable. Sitemaps are fetched a handful
-      // of times a day, so the extra origin hits are irrelevant — and the
-      // 60s floor still absorbs any accidental hammering.
-      "Cache-Control": "public, max-age=0, s-maxage=60",
-    },
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
   });
 }
