@@ -15,13 +15,13 @@ import {
 } from "@/db";
 import { requireSession, hashPassword } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { revalidatePublic } from "@/lib/revalidate";
+import { revalidatePublic, revalidateIntegrationStatus } from "@/lib/revalidate";
 import {
   saveIntegration, markIntegrationStatus, INTEGRATION_FIELDS,
   type IntegrationKey,
 } from "@/lib/integrations";
-import { testSmtp } from "@/lib/mailer";
-import { sendNotification } from "@/lib/mailer";
+import { testSmtp, sendMail, emailLayout, activeProvider } from "@/lib/mailer";
+import { testResend } from "@/lib/resend";
 import { uploadImage, destroyImage } from "@/lib/storage";
 import type { ActionResult } from "./admin-doctors";
 
@@ -221,6 +221,11 @@ export async function testIntegrationAction(
 
   try {
     switch (key) {
+      case "resend":
+        // Validates the key and the sender domain without sending an email.
+        // Use the "টেস্ট ইমেইল পাঠান" button for an actual delivery check.
+        result = await testResend(config);
+        break;
       case "smtp":
         result = await testSmtp(config);
         break;
@@ -293,7 +298,8 @@ export async function testIntegrationAction(
 
   await markIntegrationStatus(key, result.ok ? "ok" : "failed", result.message);
   await audit("test", "integrations", key, { ok: result.ok });
-  revalidatePublic(["integrations"]);
+  // Status-only write — deliberately does NOT purge public ISR. See revalidate.ts.
+  revalidateIntegrationStatus();
   return result;
 }
 
@@ -351,11 +357,34 @@ export async function deleteUser(id: number): Promise<ActionResult> {
 }
 
 // ---------------- misc ----------------
-export async function sendTestEmail(): Promise<ActionResult> {
-  await requireSession();
-  const ok = await sendNotification("ডক্টরস ফাইন্ড বাংলাদেশ টেস্ট ইমেইল", "<p>SMTP ইন্টিগ্রেশন সঠিকভাবে কাজ করছে।</p>");
-  return ok
-    ? { ok: true, message: "টেস্ট ইমেইল পাঠানো হয়েছে" }
-    : { ok: false, message: "ইমেইল পাঠানো যায়নি। SMTP কনফিগারেশন যাচাই করুন।" };
+// Real delivery check. Goes to the logged-in admin's own address, so no
+// recipient needs configuring anywhere.
+export async function sendTestEmail(to?: string): Promise<ActionResult> {
+  const session = await requireSession();
+
+  const provider = await activeProvider();
+  if (!provider) {
+    return { ok: false, message: "কোনো ইমেইল প্রোভাইডার চালু নেই। ইন্টিগ্রেশন পেজ থেকে Resend চালু করুন।" };
+  }
+
+  const recipient = to?.trim() || session.email;
+  const sentAt = new Date().toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" });
+  const res = await sendMail({
+    to: recipient,
+    subject: "ডক্টরস ফাইন্ড বাংলাদেশ টেস্ট ইমেইল",
+    html: emailLayout(
+      "ইমেইল সেটআপ ঠিক আছে",
+      `<p style="margin:0 0 10px;">এই ইমেইলটি পেয়েছেন মানে ইমেইল পাঠানোর সংযোগ ঠিকভাবে কাজ করছে।</p>
+       <p style="margin:0;color:#8593A0;font-size:13px;">পাঠানোর সময়: ${sentAt}</p>`,
+      "এটি একটি স্বয়ংক্রিয় টেস্ট ইমেইল।"
+    ),
+    tags: [{ name: "type", value: "test" }],
+  });
+
+  await audit("test", "integrations", provider, { ok: res.ok, kind: "email" });
+
+  return res.ok
+    ? { ok: true, message: `টেস্ট ইমেইল ${recipient} ঠিকানায় পাঠানো হয়েছে` }
+    : { ok: false, message: res.message };
 }
 

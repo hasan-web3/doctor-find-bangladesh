@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, integrations } from "@/db";
 import { decryptJson, encryptJson } from "./crypto";
 
-export type IntegrationKey = "smtp" | "sms" | "google_maps" | "ip_geo" | "analytics" | "recaptcha";
+export type IntegrationKey = "resend" | "smtp" | "sms" | "google_maps" | "ip_geo" | "analytics" | "recaptcha";
 
 export type IntegrationRow = {
   key: IntegrationKey;
@@ -16,10 +16,25 @@ export type IntegrationRow = {
 };
 
 // Field definitions drive both the admin UI form and validation.
-export const INTEGRATION_FIELDS: Record<IntegrationKey, { label_bn: string; desc_bn: string; fields: { name: string; label_bn: string; secret?: boolean; placeholder?: string }[] }> = {
+export const INTEGRATION_FIELDS: Record<IntegrationKey, { label_bn: string; desc_bn: string; fields: { name: string; label_bn: string; secret?: boolean; placeholder?: string; hint_bn?: string }[] }> = {
+  // Key only. Sender and recipient addresses belong to each send site (contact
+  // form, appointment, chamber owner), not to the integration.
+  resend: {
+    label_bn: "ইমেইল (Resend)",
+    desc_bn: "অ্যাপয়েন্টমেন্ট ও ফর্মের অটোমেটিক ইমেইল পাঠানোর প্রধান মাধ্যম।",
+    fields: [
+      {
+        name: "api_key",
+        label_bn: "Resend API কী",
+        secret: true,
+        placeholder: "re_xxxxxxxxxxxx",
+        hint_bn: "শুধু কী দিন। কোন ইমেইল থেকে যাবে তা প্রতিটি ফিচারে আলাদা করে ঠিক করা হবে।",
+      },
+    ],
+  },
   smtp: {
-    label_bn: "ইমেইল (SMTP)",
-    desc_bn: "নতুন অ্যাপয়েন্টমেন্ট ও লিড এলে ইমেইল নোটিফিকেশন পাঠাতে ব্যবহৃত হয়।",
+    label_bn: "ইমেইল (SMTP ব্যাকআপ)",
+    desc_bn: "Resend বন্ধ বা ব্যর্থ হলে এই SMTP দিয়ে ইমেইল পাঠানো হবে।",
     fields: [
       { name: "host", label_bn: "SMTP হোস্ট", placeholder: "smtp.gmail.com" },
       { name: "port", label_bn: "পোর্ট", placeholder: "587" },

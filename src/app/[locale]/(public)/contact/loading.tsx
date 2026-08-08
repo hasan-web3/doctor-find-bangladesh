@@ -44,7 +44,19 @@ function DetailsShimmer() {
 
 export default function ContactLoading() {
   return (
-    <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
+    <div>
+      {/* Hero (dark gradient band) — mirrors the real page so the layout does
+          not jump when the content swaps in. */}
+      <div className="[background:linear-gradient(120deg,#0F172A,#134E4A)]">
+        <div className="mx-auto max-w-[900px] px-5 py-14 text-center">
+          <Shimmer className="mx-auto mb-4 h-8 w-40 rounded-full" />
+          <Shimmer className="mx-auto mb-3 h-10 w-4/5" />
+          <Shimmer className="mx-auto mb-6 h-5 w-3/5" />
+          <Shimmer className="mx-auto h-14 w-64 rounded-xl" />
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
       {/* Breadcrumbs */}
       <Shimmer className="mb-4 h-3.5 w-40" />
       {/* Title and Subtitle */}
@@ -61,6 +73,7 @@ export default function ContactLoading() {
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <FormShimmer />
         <DetailsShimmer />
+      </div>
       </div>
     </div>
   );

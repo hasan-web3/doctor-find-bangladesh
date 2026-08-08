@@ -391,8 +391,11 @@ async function collectSection(section: Section): Promise<SitemapEntry[]> {
       ...entry("/districts", now, "weekly", 0.8),
       ...entry("/hospitals", now, "weekly", 0.7),
       ...entry("/blog", now, "weekly", 0.7),
-      ...entry("/for-doctors", now, "monthly", 0.6),
-      ...entry("/contact", now, "monthly", 0.5),
+      // /for-doctors is gone (308 -> /contact in next.config.ts), so it must
+      // not be advertised: a sitemap entry that redirects lands in GSC's
+      // "Page with redirect" bucket and burns crawl budget. /contact absorbed
+      // its content, so it takes over the higher priority too.
+      ...entry("/contact", now, "monthly", 0.6),
       ...entry("/about", now, "monthly", 0.5),
       ...entry("/privacy", now, "monthly", 0.3),
       ...entry("/terms", now, "monthly", 0.3),

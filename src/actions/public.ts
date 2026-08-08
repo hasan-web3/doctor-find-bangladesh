@@ -188,16 +188,15 @@ export async function submitLead(_prev: FormResult | null, formData: FormData): 
     kind: "lead.new",
     entityId: created?.id,
     title: { bn: `নতুন লিড: ${d.name}`, en: `New lead: ${d.name}` },
-    body: {
-      bn: `${d.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"} • ${d.phone}`,
-      en: `${d.type === "doctor" ? "Doctor promotion" : "Patient support"} • ${d.phone}`,
-    },
+    // One contact form now feeds this, so there is no lead "kind" left to
+    // label — the phone number is the useful half of the badge.
+    body: { bn: `যোগাযোগ • ${d.phone}`, en: `Contact • ${d.phone}` },
     href: "/admin/leads",
     source: "public",
   });
 
   sendNotification(
-    `নতুন লিড (${d.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"}): ${d.name}`,
+    `নতুন যোগাযোগ: ${d.name}`,
     `<p><b>নাম:</b> ${d.name}<br/><b>ফোন:</b> ${d.phone}<br/><b>বার্তা:</b> ${d.message || "-"}</p>`
   ).catch(() => {});
 

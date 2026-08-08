@@ -51,7 +51,7 @@ const TAG_PATHS: Record<string, string[]> = {
   // tags are read by the shared layout (footer specialty links, district
   // picker) and so would cascade into every page on the site. Paths are exact;
   // tags are transitive.
-  doctors: ["/", "/doctors", "/for-doctors", "/specialties", "/areas", "/hospitals", "/districts"],
+  doctors: ["/", "/doctors", "/specialties", "/areas", "/hospitals", "/districts"],
   hospitals: ["/", "/hospitals"],
   specialties: ["/", "/specialties"],
   areas: ["/", "/areas", "/area"],
@@ -61,7 +61,7 @@ const TAG_PATHS: Record<string, string[]> = {
   slides: ["/"],
   faqs: ["/"],
   testimonials: ["/"],
-  "static-pages": ["/about", "/privacy", "/terms", "/for-doctors", "/contact"],
+  "static-pages": ["/about", "/privacy", "/terms", "/contact"],
   redirects: [],
 };
 
@@ -92,6 +92,16 @@ export function revalidateSitemaps() {
 export function revalidateRedirects() {
   revalidateTag("redirects");
   revalidatePath("/api/redirects");
+}
+
+// A connection test writes only `status` / `status_message` / `last_tested_at`,
+// and those are read exclusively by /admin/integrations. Routing it through
+// revalidatePublic() would hit the layout-wide "integrations" tag and throw away
+// the whole site cache just to refresh a status badge — the exact blanket purge
+// the note at the top of this file exists to prevent. So the tag is cleared on
+// its own: enough for the admin page's cached reader, invisible to public ISR.
+export function revalidateIntegrationStatus() {
+  revalidateTag("integrations");
 }
 
 export function revalidatePublic(tags: string[] = []) {

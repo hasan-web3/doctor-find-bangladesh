@@ -577,7 +577,9 @@ export default async function HomePage({ params }: Props) {
                   : "Thousands of patients in your area search for doctors on Doctors Find Bangladesh every day. Get verified and featured to reach more of them."}
               /></p>
               <div className="flex flex-wrap gap-3">
-                <Link href={L("/for-doctors")} className="rounded-[11px] bg-accent px-6 py-[13px] text-[15px] font-bold text-white transition-colors hover:bg-accent-hover">
+                {/* /for-doctors is retired — the doctor pitch lives at the top
+                    of /contact now, next to the single lead form. */}
+                <Link href={L("/contact")} className="rounded-[11px] bg-accent px-6 py-[13px] text-[15px] font-bold text-white transition-colors hover:bg-accent-hover">
                   {d.fordoc_cta}
                 </Link>
                 <a href={`tel:${settings.helpline}`} className="rounded-[11px] border border-white/20 bg-white/10 px-6 py-[13px] text-[15px] font-bold text-white">

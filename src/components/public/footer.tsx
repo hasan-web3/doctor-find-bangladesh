@@ -51,7 +51,11 @@ export async function Footer({ locale }: { locale: Locale }) {
     { label: d.nav_blog, href: "/blog" },
     { label: d.terms, href: "/terms" },
     { label: d.privacy, href: "/privacy" },
-    { label: d.footer_for_doctors, href: "/for-doctors" },
+    // No "ডাক্তারদের জন্য" row here. It used to point at /for-doctors, which is
+    // now folded into /contact — so it would have been a second link to the
+    // same URL as "যোগাযোগ" two rows up: a duplicate React key AND two
+    // identical links side by side. The doctor pitch keeps its own footer
+    // column further right, with a CTA button to the same page.
   ];
 
   const socials = [
@@ -189,7 +193,7 @@ export async function Footer({ locale }: { locale: Locale }) {
           <div className="mb-3.5 font-heading text-[15px] font-bold text-white">{d.footer_for_doctors}</div>
           <p className="mb-3.5 text-sm leading-relaxed">{d.footer_for_doctors_text}</p>
           <Link
-            href={L("/for-doctors")}
+            href={L("/contact")}
             className="inline-block rounded-[10px] bg-brand-600 px-[18px] py-[11px] text-sm font-semibold text-white transition-colors hover:bg-brand-700"
           >
             {d.footer_contact_cta}

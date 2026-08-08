@@ -249,11 +249,6 @@ const bn = {
   plans_sub: "আপনার প্রয়োজন অনুযায়ী প্ল্যান বেছে নিন। যেকোনো প্ল্যানে যোগ দিতে যোগাযোগ করুন।",
   plan_popular: "জনপ্রিয়",
   plan_cta: "এই প্ল্যান নিন",
-  fordoc_form_title: "প্রোফাইল যুক্ত করতে তথ্য দিন",
-  fordoc_name_placeholder: "ডাক্তারের নাম",
-  fordoc_specialty_placeholder: "বিশেষজ্ঞ বিভাগ",
-  fordoc_message_placeholder: "চেম্বার ও প্ল্যান সম্পর্কে লিখুন",
-  fordoc_submit: "তথ্য পাঠান",
 
   // contact
   contact_title: "যোগাযোগ করুন",
@@ -536,11 +531,6 @@ const en: typeof bn = {
   plans_sub: "Pick the plan that fits your needs. Contact us to join any plan.",
   plan_popular: "Popular",
   plan_cta: "Choose This Plan",
-  fordoc_form_title: "Submit your details to get listed",
-  fordoc_name_placeholder: "Doctor's name",
-  fordoc_specialty_placeholder: "Specialty",
-  fordoc_message_placeholder: "Tell us about your chamber and preferred plan",
-  fordoc_submit: "Send Details",
 
   contact_title: "Contact Us",
   contact_sub: "We're here for you. Reach us through any of the channels below.",

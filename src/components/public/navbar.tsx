@@ -70,7 +70,8 @@ export function Navbar({
           <a href={`tel:${helpline}`} className="flex items-center gap-[7px] text-brand-100">
             <span>✆</span> {d.call_for_help}: {helplineDisplay}
           </a>
-          <Link href={L("/for-doctors")} className="text-[13px] text-brand-100">
+          {/* /for-doctors was folded into /contact — one page, one form. */}
+          <Link href={L("/contact")} className="text-[13px] text-brand-100">
             {d.doctor_add_profile}
           </Link>
         </div>

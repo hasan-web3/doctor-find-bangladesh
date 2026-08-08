@@ -23,7 +23,7 @@ type Basic = {
   logo_desktop_footer_url: string;
   logo_mobile_footer_url: string;
   favicon_url: string;
-  // Controls whether the /for-doctors page renders the promotion plan cards.
+  // Controls whether the /contact page renders the promotion plan cards.
   // When off, the page shows only the lead form (still lets doctors sign up).
   show_plans: boolean;
 };
@@ -222,7 +222,7 @@ export function SettingsManager({
           <div>
             <div className="mb-1 font-heading text-base font-bold text-ink">প্রমোশন প্ল্যান</div>
             <p className="m-0 text-[13px] text-ink-faint">
-              ডাক্তারদের জন্য পেজে প্রদর্শিত প্ল্যান ও মূল্য। Toggle বন্ধ করলে <code className="font-latin">/for-doctors</code> পেজে শুধু যোগাযোগ ফর্ম থাকবে, প্ল্যানগুলো লুকিয়ে যাবে।
+              <code className="font-latin">/contact</code> পেজে ডাক্তারদের জন্য দেখানো প্ল্যান ও মূল্য। Toggle বন্ধ করলে প্ল্যানগুলো লুকিয়ে যাবে, বাকি পেজ আগের মতোই থাকবে।
             </p>
           </div>
           {/* Visibility toggle — persists alongside the basic-info save on the

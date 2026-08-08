@@ -8,8 +8,12 @@ import { NewFlag, useNewRows } from "@/components/admin/notifications";
 import { cn } from "@/lib/utils";
 import { bnNum, bnDateTime } from "@/lib/bn";
 
+// `type` is intentionally absent: the site runs one contact form now, so every
+// lead is the same kind and a per-row type badge only added noise. The column
+// still exists in the database for historic rows — see the note on the list
+// page — it just isn't surfaced here.
 type Lead = {
-  id: number; type: "patient" | "doctor"; name: string; phone: string; message: string | null;
+  id: number; name: string; phone: string; message: string | null;
   status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
 };
 
@@ -39,9 +43,6 @@ export function LeadRow({ lead }: { lead: Lead }) {
         <div className="mb-1.5 flex flex-wrap items-center gap-2.5">
           <span className="text-[15px] font-bold text-ink">{lead.name}</span>
           {isNew && <NewFlag />}
-          <StatusBadge tone={lead.type === "doctor" ? "amber" : "blue"}>
-            {lead.type === "doctor" ? "ডাক্তার প্রমোশন" : "রোগী সহায়তা"}
-          </StatusBadge>
           <StatusBadge tone={lead.status === "new" ? "blue" : lead.status === "in_progress" ? "amber" : "green"}>
             {lead.status === "new" ? "নতুন" : lead.status === "in_progress" ? "চলমান" : "সমাধান হয়েছে"}
           </StatusBadge>

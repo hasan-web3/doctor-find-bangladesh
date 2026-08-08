@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveIntegrationAction, testIntegrationAction } from "@/actions/admin-system";
+import { saveIntegrationAction, testIntegrationAction, sendTestEmail } from "@/actions/admin-system";
 import type { IntegrationKey } from "@/lib/integrations";
 import { Field, inputCls, Toggle, StatusBadge } from "@/components/admin/ui";
 import { bnDateTime } from "@/lib/bn";
@@ -11,7 +11,7 @@ export type IntegrationView = {
   key: IntegrationKey;
   label_bn: string;
   desc_bn: string;
-  fields: { name: string; label_bn: string; secret?: boolean; placeholder?: string }[];
+  fields: { name: string; label_bn: string; secret?: boolean; placeholder?: string; hint_bn?: string }[];
   enabled: boolean;
   status: "never" | "ok" | "failed";
   status_message: string | null;
@@ -52,6 +52,18 @@ function Card({ item }: { item: IntegrationView }) {
       router.refresh();
     });
 
+  // Email providers get a real delivery check on top of the credential test.
+  // It sends through the SAVED config, so it also confirms the integration is
+  // enabled and stored correctly — not just that the typed values look right.
+  const isMailProvider = item.key === "resend" || item.key === "smtp";
+
+  const sendTest = () =>
+    startTransition(async () => {
+      const res = await sendTestEmail();
+      setMessage({ ok: res.ok, text: res.message });
+      router.refresh();
+    });
+
   return (
     <div className="rounded-2xl border border-line bg-white">
       <button onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-center gap-3 p-5 text-right">
@@ -75,7 +87,11 @@ function Card({ item }: { item: IntegrationView }) {
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {item.fields.map((f) => (
-              <Field key={f.name} label={f.label_bn} hint={f.secret ? "পরিবর্তন করতে নতুন মান লিখুন" : undefined}>
+              <Field
+                key={f.name}
+                label={f.label_bn}
+                hint={f.hint_bn || (f.secret ? "পরিবর্তন করতে নতুন মান লিখুন" : undefined)}
+              >
                 <input
                   type={f.secret ? "password" : "text"}
                   className={inputCls + " font-latin"}
@@ -101,7 +117,17 @@ function Card({ item }: { item: IntegrationView }) {
             <button onClick={test} disabled={pending} className="rounded-[10px] border border-brand-600 bg-white px-5 py-2.5 text-sm font-semibold text-brand-700 disabled:opacity-60">
               সংযোগ টেস্ট করুন
             </button>
+            {isMailProvider && (
+              <button onClick={sendTest} disabled={pending} className="rounded-[10px] border border-line bg-white px-5 py-2.5 text-sm text-ink-mute disabled:opacity-60">
+                টেস্ট ইমেইল পাঠান
+              </button>
+            )}
           </div>
+          {isMailProvider && (
+            <div className="mt-2 text-xs text-ink-ghost">
+              “সংযোগ টেস্ট” শুধু কী যাচাই করে, ইমেইল পাঠায় না। আসল ডেলিভারি দেখতে আগে সংরক্ষণ করে “টেস্ট ইমেইল পাঠান” চাপুন, ইমেইলটি আপনার নিজের ঠিকানায় যাবে।
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -10,7 +10,13 @@ export const dynamic = "force-dynamic";
 
 const TABS = [["", "সব"], ["new", "নতুন"], ["in_progress", "চলমান"], ["resolved", "সমাধান"]] as const;
 
-type SP = { status?: string; type?: string; q?: string; page?: string; perPage?: string };
+// One inbox, one form. The site used to run two separate contact forms
+// (patient support on /contact, doctor promotion on /for-doctors) and this page
+// carried a type filter to separate them. There is now a single contact form,
+// so every lead lands in the same list and the type chips are gone — status is
+// the only axis worth filtering on. The `type` COLUMN is left untouched in the
+// database so historic rows keep their value.
+type SP = { status?: string; q?: string; page?: string; perPage?: string };
 
 export default async function AdminLeadsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -19,16 +25,15 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
 
   const conds: SQL[] = [sql`TRUE`];
   if (sp.status) conds.push(sql`status = ${sp.status}::lead_status`);
-  if (sp.type) conds.push(sql`type = ${sp.type}::lead_type`);
   if (sp.q?.trim()) conds.push(searchClause(sp.q, [sql`name`, sql`phone`, sql`message`]));
   const where = sql.join(conds, sql` AND `);
 
   const [rowsRes, totalRes] = await Promise.all([
     db.execute<{
-      id: number; type: "patient" | "doctor"; name: string; phone: string; message: string | null;
+      id: number; name: string; phone: string; message: string | null;
       status: "new" | "in_progress" | "resolved"; created_at: string; extra: { note?: string };
     }>(sql`
-    SELECT id, type, name, phone, message, status, created_at::text, extra FROM leads
+    SELECT id, name, phone, message, status, created_at::text, extra FROM leads
     WHERE ${where} ORDER BY created_at DESC
     LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
   `),
@@ -47,29 +52,12 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
             key={value}
             href={`/admin/leads${value ? `?status=${value}` : ""}`}
             className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
-              (sp.status || "") === value && !sp.type ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-mute"
+              (sp.status || "") === value ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-mute"
             }`}
           >
             {label}
           </Link>
         ))}
-        <span className="mx-1 w-px bg-line" />
-        <Link prefetch={false}
-          href="/admin/leads?type=patient"
-          className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
-            sp.type === "patient" ? "border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]" : "border-line bg-white text-ink-mute"
-          }`}
-        >
-          রোগী সহায়তা
-        </Link>
-        <Link prefetch={false}
-          href="/admin/leads?type=doctor"
-          className={`rounded-full border px-[18px] py-2 text-[13.5px] font-semibold ${
-            sp.type === "doctor" ? "border-warm-text bg-warm-soft text-warm-text" : "border-line bg-white text-ink-mute"
-          }`}
-        >
-          ডাক্তার প্রমোশন
-        </Link>
         <div className="ml-auto flex flex-1 justify-end">
           <DebouncedSearch initial={sp.q || ""} placeholder="নাম, ফোন বা বার্তা" />
         </div>

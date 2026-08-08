@@ -165,6 +165,14 @@ const nextConfig: NextConfig = {
       // `:slug` matches ONE segment, so /districts/x/doctors never re-matches.
       { source: "/districts/:slug", destination: "/districts/:slug/doctors", permanent: true },
       { source: "/en/districts/:slug", destination: "/en/districts/:slug/doctors", permanent: true },
+      // /for-doctors is retired: its hero, its plans and its lead form were all
+      // folded into /contact so the site has ONE contact form and one inbox.
+      // The URL is indexed and was linked from the navbar, footer and homepage,
+      // so it 308s rather than 404s — Google transfers the ranking to /contact.
+      // Internal links already point at /contact directly; this is for external
+      // links and anything still in the index.
+      { source: "/for-doctors", destination: "/contact", permanent: true },
+      { source: "/en/for-doctors", destination: "/en/contact", permanent: true },
     ];
   },
 };
