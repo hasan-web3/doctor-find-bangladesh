@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { Navbar } from "@/components/public/navbar";
@@ -5,6 +6,8 @@ import { getSettings } from "@/lib/settings";
 import { getRecaptchaSiteKey } from "@/lib/recaptcha";
 import { getDict } from "@/lib/dict";
 import { t } from "@/lib/i18n";
+import { brandOgImage } from "@/lib/seo";
+import { siteUrl, brandIdentity } from "@/lib/seo-utils";
 import { IntakeForm } from "./intake-form";
 
 // This route is the one deliberate exception to the site's ISR-everywhere rule.
@@ -19,6 +22,56 @@ type LinkRow = {
   client_name: string;
   submitted_at: string | null;
 };
+
+/**
+ * The link is shared by hand, over WhatsApp and Messenger, so the preview card
+ * IS the first impression: a doctor who is about to type their details into a
+ * form should see our brand on the message, not a bare host name.
+ *
+ * The image is the same brand card the main domain shows (see brandOgImage).
+ * The title and description describe the form rather than the doctor, because
+ * this metadata is identical for every token — nothing about who the link was
+ * made for leaks into a preview that sits in a chat thread.
+ *
+ * `noindex` still applies: a preview fetcher reads OG tags and ignores robots
+ * directives, while a search engine obeys the noindex and drops the URL. Both
+ * behaviours are what we want at the same time.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const [{ token }, settings, ogImage] = await Promise.all([params, getSettings(), brandOgImage()]);
+  const siteName = brandIdentity(settings.site_name, settings.brand_name).name;
+  const title = "ডাক্তারের তথ্য ফর্ম";
+  const description =
+    "এই ফর্মটি পূরণ করে দিলে আমরা ডাক্তারের প্রোফাইলটি তৈরি করে দেব। ফর্মটি একবারই জমা দেওয়া যাবে।";
+
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false, nocache: true, noarchive: true, nosnippet: true },
+    openGraph: {
+      type: "website",
+      title: `${title} | ${siteName}`,
+      description,
+      siteName,
+      locale: "bn_BD",
+      // This exact page. og:url is the address a share treats as canonical, so
+      // pointing it at the home page (or at a tokenless /doctor-form, which is
+      // a 404) would send the client somewhere other than their own form.
+      url: siteUrl(`/doctor-form/${encodeURIComponent(token)}`),
+      images: [{ url: ogImage, width: 1200, height: 630, alt: siteName }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} | ${siteName}`,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 export default async function DoctorIntakePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

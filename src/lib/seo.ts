@@ -146,6 +146,37 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
   };
 }
 
+/**
+ * The site-wide brand OG image: the card the main domain shows when its URL is
+ * pasted into WhatsApp, Messenger or Facebook.
+ *
+ * Exists for the pages that live OUTSIDE the [locale] tree and therefore never
+ * go through buildMetadata() — today that is the doctor intake form, which still
+ * has to look like us when the link is shared with a client. It follows the same
+ * order of preference buildMetadata uses for the home page, so the two never
+ * disagree:
+ *
+ *   1. an admin SEO override on "/" — literally the main domain's own image
+ *   2. the site-wide default the admin set in SEO settings
+ *   3. the generated card at /api/og, which is what every other page falls back
+ *      to, titled with the site's default title so it reads as the brand
+ *
+ * Always an absolute URL: preview crawlers do not resolve relative paths, and
+ * pages outside [locale] have no metadataBase to resolve them against.
+ */
+export async function brandOgImage(): Promise<string> {
+  const [settings, overrides] = await Promise.all([getSettings(), getOverrides()]);
+
+  const homeOverride = overrides["/"]?.og_image_url?.trim();
+  if (homeOverride) return homeOverride;
+
+  const declared = settings.seo_default_og_image?.trim();
+  if (declared) return declared;
+
+  const title = t(settings.seo_default_title, "bn");
+  return siteUrl(`/api/og?title=${encodeURIComponent(title)}&subtitle=&locale=bn`);
+}
+
 // When a slug changes, keep the old URL alive with a permanent redirect.
 export async function recordSlugChange(oldPath: string, newPath: string) {
   if (oldPath === newPath) return;
