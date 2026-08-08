@@ -13,7 +13,11 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // Admin, auth, API, and booking flow are not crawlable content.
-        disallow: ["/admin", "/admin-login", "/api", "/appointment"],
+        // `/doctor-form` is the private one-time intake form we email to a
+        // doctor — it carries a token in the URL and must never be crawled,
+        // cached by a search engine, or indexed. The page also sends
+        // `noindex, nofollow` itself; this is the belt to that braces.
+        disallow: ["/admin", "/admin-login", "/api", "/appointment", "/doctor-form"],
       },
     ],
     sitemap: siteUrl("/sitemap.xml"),

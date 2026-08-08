@@ -32,7 +32,11 @@ const AREA_COOKIE = "db_area";
 // `sitemap` (no extension anchor) covers both /sitemap.xml (legacy) and
 // /sitemap/<id>.xml sub-sitemaps emitted by generateSitemaps() — the locale
 // rewrite must never touch these or Google gets 404s.
-const NEUTRAL = /^\/(admin|admin-login|api|_next|sitemap|robots\.txt|icon\.svg|favicon\.ico)/;
+// `doctor-form` is the token-gated intake form we send to a paying doctor. It
+// has one root layout of its own, no /en twin and no locale segment, so the
+// rewrite below must leave it alone — /doctor-form/<token> rewritten to
+// /bn/doctor-form/<token> would 404.
+const NEUTRAL = /^\/(admin|admin-login|api|_next|sitemap|robots\.txt|icon\.svg|favicon\.ico|doctor-form)/;
 
 // Paths that should not trigger geo-detection (e.g. image assets)
 const NO_GEO = /\.(jpg|jpeg|png|svg|webp|ico|txt)$/;

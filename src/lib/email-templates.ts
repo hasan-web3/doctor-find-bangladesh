@@ -141,8 +141,21 @@ function brandedEmail(opts: {
   contactOverride?: { label: string; display: string; dial: string } | null;
   /** Sentence introducing the website link, worded per template. */
   siteLinkLabel: string;
+  /**
+   * Closing line under the divider. Defaults to the automatic-message notice the
+   * receipts carry, because they are sent from a noreply address. A template
+   * whose replies actually reach a person overrides it and says so.
+   */
+  footerNote?: string;
+  /**
+   * Body width in pixels. 620 suits the short receipts; templates carrying a
+   * long URL or several paragraphs pass more so lines break less often.
+   */
+  maxWidth?: number;
 }): string {
   const { brandName, preheader, heading, bodyHtml, settings, contactOverride, siteLinkLabel } = opts;
+  const maxWidth = opts.maxWidth ?? 620;
+  const footerNote = opts.footerNote ?? "এটি একটি স্বয়ংক্রিয় বার্তা, এই ইমেইলের উত্তর দেওয়ার প্রয়োজন নেই।";
 
   const helplineDisplay = contactOverride
     ? contactOverride.display
@@ -152,7 +165,7 @@ function brandedEmail(opts: {
   const socials = socialLinks(settings);
 
   const helplineBlock = helplineDisplay
-    ? `<tr><td style="padding:0 26px 18px 26px;">
+    ? `<tr><td class="em-pad" style="padding:0 26px 18px 26px;">
          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:${PAGE};border-radius:10px;">
            <tr><td style="padding:14px 16px;font-size:14px;color:${INK_SOFT};">
              ${esc(helplineLabel)}
@@ -165,7 +178,7 @@ function brandedEmail(opts: {
     : "";
 
   const socialBlock = socials.length
-    ? `<tr><td style="padding:0 26px 22px 26px;font-size:13.5px;color:${INK_GHOST};">
+    ? `<tr><td class="em-pad" style="padding:0 26px 22px 26px;font-size:13.5px;color:${INK_GHOST};">
          আমাদের সাথে থাকুন:
          ${socials
            .map(
@@ -180,32 +193,47 @@ function brandedEmail(opts: {
   // the anchor text. Deliberately not a big "CLICK HERE" button: a plain,
   // relevant link on the sending domain is what keeps a transactional mail out
   // of the spam folder.
-  const siteBlock = `<tr><td style="padding:0 26px 22px 26px;font-size:13.5px;color:${INK_GHOST};">
+  const siteBlock = `<tr><td class="em-pad" style="padding:0 26px 22px 26px;font-size:13.5px;color:${INK_GHOST};">
          ${esc(siteLinkLabel)}
          <a href="${esc(siteUrl("/"))}" style="color:${BRAND};text-decoration:none;font-weight:600;">${esc(brandName)}</a>
        </td></tr>`;
 
+  // Responsiveness comes from the inline styles first: the outer table is
+  // width="100%" and the card is capped with max-width, so it already shrinks to
+  // any viewport without a single media query. The <style> block below is pure
+  // enhancement — it only trims the generous desktop side padding on narrow
+  // screens. Clients that strip <style> (some webmail does) lose nothing but a
+  // few pixels of margin, which is exactly why the padding is not ONLY there.
+  const responsiveCss = `
+    @media only screen and (max-width:600px) {
+      .em-shell { padding:12px 8px !important; }
+      .em-card { border-radius:12px !important; }
+      .em-pad { padding-left:16px !important; padding-right:16px !important; }
+      .em-h1 { font-size:16px !important; }
+      .em-body { font-size:14px !important; line-height:1.75 !important; }
+    }`;
+
   return `<!doctype html>
-<html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(heading)}</title></head>
+<html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(heading)}</title><style>${responsiveCss}</style></head>
 <body style="margin:0;padding:0;background:${PAGE};">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${esc(preheader)}</div>
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:${PAGE};padding:24px 12px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;background:#FFFFFF;border:1px solid ${LINE};border-radius:14px;overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
-        <tr><td style="background:${BRAND};padding:16px 26px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:${PAGE};">
+    <tr><td align="center" class="em-shell" style="padding:24px 12px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="em-card" style="max-width:${maxWidth}px;background:#FFFFFF;border:1px solid ${LINE};border-radius:14px;overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+        <tr><td class="em-pad" style="background:${BRAND};padding:16px 26px;">
           <span style="color:#FFFFFF;font-size:16px;font-weight:700;">${esc(brandName)}</span>
         </td></tr>
-        <tr><td style="padding:24px 26px 6px 26px;">
-          <h1 style="margin:0;font-size:17px;line-height:1.5;font-weight:700;color:${INK};">${esc(heading)}</h1>
+        <tr><td class="em-pad" style="padding:24px 26px 6px 26px;">
+          <h1 class="em-h1" style="margin:0;font-size:17px;line-height:1.5;font-weight:700;color:${INK};">${esc(heading)}</h1>
         </td></tr>
-        <tr><td style="padding:6px 26px 18px 26px;font-size:14.5px;line-height:1.8;color:${INK_SOFT};">
+        <tr><td class="em-pad em-body" style="padding:6px 26px 18px 26px;font-size:14.5px;line-height:1.8;color:${INK_SOFT};">
           ${bodyHtml}
         </td></tr>
         ${helplineBlock}
         ${siteBlock}
         ${socialBlock}
-        <tr><td style="border-top:1px solid ${LINE};padding:14px 26px;font-size:12px;line-height:1.6;color:${INK_GHOST};">
-          এটি একটি স্বয়ংক্রিয় বার্তা, এই ইমেইলের উত্তর দেওয়ার প্রয়োজন নেই।<br>${esc(brandName)}
+        <tr><td class="em-pad" style="border-top:1px solid ${LINE};padding:14px 26px;font-size:12px;line-height:1.6;color:${INK_GHOST};">
+          ${esc(footerNote)}<br>${esc(brandName)}
         </td></tr>
       </table>
     </td></tr>
@@ -255,6 +283,137 @@ export function contactConfirmationEmail(opts: {
           ${row("বার্তা", esc(message || "-").replace(/\n/g, "<br>"))}
         </table>
         <p style="margin:0;">জরুরি প্রয়োজন হলে নিচের নম্বরে সরাসরি কল করতে পারেন।</p>`,
+      settings,
+    }),
+  };
+}
+
+/**
+ * The invitation a doctor (or their chamber staff) gets after they pay to be
+ * listed: one private link to the intake form.
+ *
+ * Three things it has to get right. Deliverability first: a stranger receiving
+ * a link is exactly the shape of mail that spam filters distrust, so it stays on
+ * the same table-and-inline-styles shell as the receipts, carries a plain-text
+ * part, and links only to our own domain. Then the single-use rule, which has to
+ * be unmistakable, because a client who fills half a form and comes back to a
+ * dead link will give up rather than call. And finally it is a real
+ * conversation, not a receipt: replies reach the contact inbox (sendIntakeLink
+ * sets Reply-To), so the footer invites them instead of warning them off.
+ */
+export function doctorFormInviteEmail(opts: {
+  clientName: string;
+  formUrl: string;
+  settings: SiteSettings;
+}): { subject: string; html: string } {
+  const { clientName, formUrl, settings } = opts;
+  const brandName = brandOf(settings);
+  const name = clientName.trim();
+
+  return {
+    // States what it is and who it is from. No urgency words, no capitals, no
+    // exclamation marks — all three are spam signals on a first-contact mail.
+    subject: `${brandName}: ডাক্তারের প্রোফাইল তথ্যের ফর্ম`,
+    html: brandedEmail({
+      brandName,
+      // Wider than the receipts: this one carries a full-length URL plus several
+      // paragraphs, and at 620px the link wrapped onto three lines.
+      maxWidth: 700,
+      preheader: "লিংকে ক্লিক করে ফর্মটি পূরণ করুন। ফর্মটি একবারই জমা দেওয়া যাবে।",
+      siteLinkLabel: "আমাদের ওয়েবসাইট:",
+      footerNote:
+        "কিছু জানার থাকলে এই ইমেইলের উত্তর দিতে পারেন, অথবা উপরের হেল্পলাইন নম্বরে কল করুন।",
+      heading: name ? `${name}, আপনার ফর্মের লিংক` : "আপনার ফর্মের লিংক",
+      bodyHtml: `
+        <p style="margin:0 0 14px;">
+          আমাদের ওয়েবসাইটে ডাক্তারের প্রোফাইল যুক্ত করার জন্য কিছু তথ্য দরকার।
+          নিচের লিংকে ক্লিক করে ফর্মটি পূরণ করে দিন, আমরা সেই তথ্য দিয়েই প্রোফাইলটি তৈরি করব।
+        </p>
+        <p style="margin:0 0 14px;">
+          ফর্মে ডাক্তারের নাম, ডিগ্রি ও পদবি, বিশেষজ্ঞ বিভাগ, হাসপাতাল, চেম্বারের ঠিকানা,
+          সময়সূচি, ভিজিট ফি আর সিরিয়াল নম্বর লাগবে। ডাক্তারের একটি ছবিও দিতে হবে,
+          তাই ছবিটি হাতের কাছে রেখে শুরু করলে সুবিধা হবে।
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:${ACCENT_BG};border:1px solid ${ACCENT_LINE};border-radius:10px;margin:0 0 14px;">
+          <tr><td style="padding:14px 16px;">
+            <div style="font-size:12.5px;color:${ACCENT_TEXT};opacity:.85;margin:0 0 6px;">আপনার ফর্মের লিংক</div>
+            <a href="${esc(formUrl)}" style="font-size:14px;font-weight:700;color:${BRAND};text-decoration:underline;word-break:break-all;">${esc(formUrl)}</a>
+          </td></tr>
+        </table>
+        <p style="margin:0 0 14px;">
+          একটি বিষয় খেয়াল রাখবেন। এই লিংক দিয়ে <b>শুধু একবারই</b> ফর্ম জমা দেওয়া যাবে,
+          একবার জমা দেওয়ার পর লিংকটি আর কাজ করবে না। তাই তথ্যগুলো ঠিক আছে কিনা দেখে নিয়ে
+          তারপর জমা দিন। পরে কিছু বদলাতে হলে বা নতুন করে ফর্ম লাগলে আমাদের সাথে যোগাযোগ
+          করলেই আমরা নতুন একটি লিংক পাঠিয়ে দেব।
+        </p>
+        <p style="margin:0;">
+          ফর্ম পূরণ করতে কোনো অসুবিধা হলে এই ইমেইলের উত্তর দিন অথবা নিচের নম্বরে কল করুন,
+          আমরা সাহায্য করব।
+        </p>`,
+      settings,
+    }),
+  };
+}
+
+/**
+ * Internal copy, sent to the contact address the moment a form lands, so nobody
+ * has to keep the dashboard open to know a lead arrived. Bangla like the rest,
+ * but the phone, email and fee stay in Latin digits because staff copy them.
+ */
+export function doctorFormSubmittedEmail(opts: {
+  clientName: string;
+  clientPhone: string;
+  clientEmail?: string | null;
+  doctorName: string;
+  hospital?: string | null;
+  specialty?: string | null;
+  chamberName?: string | null;
+  district?: string | null;
+  area?: string | null;
+  fee?: number | null;
+  serialPhone?: string | null;
+  settings: SiteSettings;
+}): { subject: string; html: string } {
+  const { settings } = opts;
+  const brandName = brandOf(settings);
+
+  const row = (label: string, value: string) =>
+    `<tr>
+       <td style="padding:4px 0;font-size:13px;color:${INK_GHOST};width:96px;vertical-align:top;">${label}</td>
+       <td style="padding:4px 0;font-size:14px;color:${INK};">${value}</td>
+     </tr>`;
+
+  const dashboardUrl = siteUrl("/admin/doctor-forms");
+
+  return {
+    subject: `নতুন ডাক্তার ফর্ম জমা পড়েছে: ${opts.doctorName.trim()}`,
+    html: brandedEmail({
+      brandName,
+      preheader: `${opts.clientName.trim()} ফর্মটি জমা দিয়েছেন, ফোন ${opts.clientPhone}`,
+      siteLinkLabel: "ওয়েবসাইট:",
+      heading: "নতুন ডাক্তার ফর্ম জমা পড়েছে",
+      bodyHtml: `
+        <p style="margin:0 0 14px;">পাঠানো লিংক থেকে একজন ফর্মটি পূরণ করে জমা দিয়েছেন। সম্পূর্ণ তথ্য ও ছবি ড্যাশবোর্ডে দেখা যাবে।</p>
+        <p style="margin:0 0 6px;font-size:13px;color:${INK_GHOST};">যিনি জমা দিয়েছেন</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px;">
+          ${row("নাম", esc(opts.clientName))}
+          ${row("ফোন", `<a href="tel:${esc(opts.clientPhone)}" style="color:${BRAND};text-decoration:none;font-weight:700;">${esc(opts.clientPhone)}</a>`)}
+          ${opts.clientEmail ? row("ইমেইল", `<a href="mailto:${esc(opts.clientEmail)}" style="color:${BRAND};text-decoration:none;">${esc(opts.clientEmail)}</a>`) : ""}
+        </table>
+        <p style="margin:0 0 6px;font-size:13px;color:${INK_GHOST};">ডাক্তারের তথ্য</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px;">
+          ${row("ডাক্তার", esc(opts.doctorName))}
+          ${opts.specialty ? row("বিভাগ", esc(opts.specialty)) : ""}
+          ${opts.hospital ? row("হাসপাতাল", esc(opts.hospital)) : ""}
+          ${opts.chamberName ? row("চেম্বার", esc(opts.chamberName)) : ""}
+          ${opts.district || opts.area ? row("এলাকা", esc([opts.area, opts.district].filter(Boolean).join(", "))) : ""}
+          ${opts.fee ? row("ভিজিট ফি", `${esc(String(opts.fee))} টাকা`) : ""}
+          ${opts.serialPhone ? row("সিরিয়াল নম্বর", esc(opts.serialPhone)) : ""}
+        </table>
+        <p style="margin:0;">
+          ড্যাশবোর্ডে দেখুন:
+          <a href="${esc(dashboardUrl)}" style="color:${BRAND};font-weight:700;text-decoration:underline;">ডাক্তার ফর্ম</a>
+        </p>`,
       settings,
     }),
   };

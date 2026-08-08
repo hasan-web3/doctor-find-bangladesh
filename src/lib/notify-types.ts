@@ -16,6 +16,8 @@ export const NOTIFY_PANELS = [
   "specialties",
   "districts",
   "areas",
+  // Doctor intake forms submitted by a client through a one-time link.
+  "doctor-forms",
 ] as const;
 
 export type NotifyPanel = (typeof NOTIFY_PANELS)[number];

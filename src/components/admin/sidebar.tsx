@@ -9,6 +9,7 @@ import { UnreadBadge, useNotifications } from "@/components/admin/notifications"
 const NAV: { label: string; href: string; icon: string }[] = [
   { label: "ড্যাশবোর্ড", href: "/admin", icon: "chart" },
   { label: "ডাক্তার", href: "/admin/doctors", icon: "user" },
+  { label: "ডাক্তার ফর্ম", href: "/admin/doctor-forms", icon: "book" },
   { label: "প্রমোশন ও পেমেন্ট", href: "/admin/doctors-priority", icon: "shield" },
   { label: "বিভাগ", href: "/admin/specialties", icon: "activity" },
   { label: "জেলা", href: "/admin/districts", icon: "pin" },

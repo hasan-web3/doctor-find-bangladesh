@@ -347,6 +347,91 @@ export const leads = pgTable(
   (t) => ({ statusIdx: index("idx_leads_status").on(t.status) })
 );
 
+// ------------- doctor intake forms -------------
+// One-time links the admin generates and sends to a paying doctor, plus the
+// forms those links produce. See migrations/015_doctor_intake_forms.sql for the
+// reasoning behind the two-table split and the single-use claim.
+export const doctorFormLinks = pgTable(
+  "doctor_form_links",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    // 32 random URL-safe bytes — the page has no login, so this IS the credential.
+    token: text("token").notNull().unique(),
+    clientName: text("client_name").notNull(),
+    clientPhone: text("client_phone").notNull(),
+    // The address the link was emailed to; null when it was only saved and
+    // shared over WhatsApp / Messenger instead.
+    clientEmail: text("client_email"),
+    fromEmail: text("from_email"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    // Null => still open. Set exactly once, by the atomic claim in
+    // submitDoctorIntake, which is what makes the link single-use.
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    openIdx: index("idx_doctor_form_links_open").on(t.token).where(sql`${t.submittedAt} IS NULL`),
+  })
+);
+
+export type DoctorSubmissionData = {
+  name?: ML;
+  /** Either language accepted, so a single string rather than an ML pair. */
+  degrees?: string;
+  bio?: string;
+  gender?: string;
+  experience_years?: number | null;
+  patients_served?: ML;
+  /** One condition per line, either language. */
+  treated_conditions?: string;
+  hospital?: ML;
+  specialty?: ML;
+  chamber_name?: ML;
+  address?: ML;
+  district?: ML;
+  area?: ML;
+  fee?: number;
+  serial_phone?: string;
+  owner_email?: string;
+  map_url?: string;
+  /** Same { days, time } shape as chambers.schedule, straight from the picker. */
+  schedule?: ChamberSchedule[];
+  social_links?: SocialLinks;
+};
+
+export const doctorSubmissions = pgTable(
+  "doctor_submissions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    linkId: bigint("link_id", { mode: "number" }).references(() => doctorFormLinks.id, { onDelete: "cascade" }),
+    // Copied off the link rather than joined: the lead has to stay readable and
+    // searchable as one row.
+    clientName: text("client_name").notNull(),
+    clientPhone: text("client_phone").notNull(),
+    clientEmail: text("client_email"),
+    // Flattened for the list + search only; `data` is the source of truth.
+    doctorNameBn: text("doctor_name_bn"),
+    doctorNameEn: text("doctor_name_en"),
+    hospitalBn: text("hospital_bn"),
+    specialtyBn: text("specialty_bn"),
+    districtBn: text("district_bn"),
+    areaBn: text("area_bn"),
+    serialPhone: text("serial_phone"),
+    fee: integer("fee").notNull().default(0),
+    ownerEmail: text("owner_email"),
+    photoKey: text("photo_key"),
+    photoUrl: text("photo_url"),
+    shareImageKey: text("share_image_key"),
+    shareImageUrl: text("share_image_url"),
+    data: jsonb("data").$type<DoctorSubmissionData>().notNull().default(mlEmpty),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ createdIdx: index("idx_doctor_submissions_created").on(t.createdAt.desc()) })
+);
+
 // ------------- blog -------------
 export const blogCategories = pgTable("blog_categories", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -603,4 +688,6 @@ export type StaticPage = typeof staticPages.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+export type DoctorFormLink = typeof doctorFormLinks.$inferSelect;
+export type DoctorSubmission = typeof doctorSubmissions.$inferSelect;
 export type SiteSetting = typeof siteSettings.$inferSelect;
