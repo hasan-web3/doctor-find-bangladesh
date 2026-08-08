@@ -32,32 +32,30 @@ import { toLatinDigits, type IntakeResult } from "@/lib/doctor-intake";
 //   5. The page itself is noindex and disallowed in robots.txt, so the URL never
 //      enters an index in the first place.
 
-const mlBoth = (label: string) =>
-  z.object({
-    bn: z.string().trim().min(1, `${label} বাংলায় লিখুন`),
-    en: z.string().trim().min(1, `${label} ইংরেজিতে লিখুন / in English`),
-  });
-
 const mlOptional = z.object({
   bn: z.string().trim().default(""),
   en: z.string().trim().default(""),
 });
 
 const draftSchema = z.object({
-  name: mlBoth("ডাক্তারের নাম"),
-  // Either language is enough for these three — the label on the form says so.
-  degrees: z.string().trim().min(2, "ডিগ্রি ও পদবি লিখুন (বাংলা বা ইংরেজি)"),
-  bio: z.string().trim().min(10, "পরিচিতি লিখুন (বাংলা বা ইংরেজি)"),
+  // The one bilingual field: the name heads the profile on both locale pages.
+  name: z.object({
+    bn: z.string().trim().min(1, "ডাক্তারের নাম বাংলায় লিখুন"),
+    en: z.string().trim().min(1, "ডাক্তারের নাম ইংরেজিতে লিখুন / in English"),
+  }),
+  // Everything below takes one value in whichever language the client chose.
+  degrees: z.string().trim().min(2, "ডিগ্রি ও পদবি লিখুন"),
+  bio: z.string().trim().min(10, "পরিচিতি লিখুন"),
   gender: z.enum(["male", "female", "other"], { errorMap: () => ({ message: "লিঙ্গ নির্বাচন করুন" }) }),
   experience_years: z.string().trim().default(""),
-  patients_served: mlOptional,
-  treated_conditions: z.string().trim().min(2, "যে সকল রোগের চিকিৎসা করা হয় তা লিখুন (বাংলা বা ইংরেজি)"),
-  hospital: mlBoth("প্রধান হাসপাতালের নাম"),
-  specialty: mlBoth("বিশেষজ্ঞ বিভাগ"),
-  chamber_name: mlBoth("চেম্বারের নাম"),
-  address: mlBoth("চেম্বারের ঠিকানা"),
-  district: mlBoth("জেলার নাম"),
-  area: mlBoth("শহর / গ্রাম / থানার নাম"),
+  patients_served: z.string().trim().default(""),
+  treated_conditions: z.string().trim().min(2, "যে সকল রোগের চিকিৎসা করা হয় তা লিখুন"),
+  hospital: z.string().trim().min(2, "প্রধান হাসপাতালের নাম লিখুন"),
+  specialty: z.string().trim().min(2, "বিশেষজ্ঞ বিভাগ লিখুন"),
+  chamber_name: z.string().trim().min(2, "চেম্বারের নাম লিখুন"),
+  address: z.string().trim().min(2, "চেম্বারের ঠিকানা লিখুন"),
+  district: z.string().trim().min(2, "জেলার নাম লিখুন"),
+  area: z.string().trim().min(2, "শহর / গ্রাম / থানার নাম লিখুন"),
   fee: z.string().trim().min(1, "ভিজিট ফি লিখুন"),
   // Chambers hand out landlines, multiple numbers, sometimes an extension — a
   // strict 01XXXXXXXXX rule would reject perfectly good serial lines, so this
@@ -85,7 +83,6 @@ const payloadSchema = z.object({
   token: z.string().trim().min(10),
   draft: draftSchema,
   photo_data: z.string().optional(),
-  share_image_data: z.string().optional(),
   recaptcha_token: z.string().optional(),
   trap: z.string().optional(),
   elapsed_ms: z.number().optional(),
@@ -197,9 +194,6 @@ export async function submitDoctorIntake(payload: unknown): Promise<IntakeResult
 
   try {
     const photo = await uploadImage(parsed.data.photo_data, "doctors");
-    const share = parsed.data.share_image_data?.startsWith("data:image")
-      ? await uploadImage(parsed.data.share_image_data, "doctor-share")
-      : null;
 
     const data = {
       name: draft.name,
@@ -232,17 +226,15 @@ export async function submitDoctorIntake(payload: unknown): Promise<IntakeResult
         clientEmail: link.client_email,
         doctorNameBn: draft.name.bn,
         doctorNameEn: draft.name.en,
-        hospitalBn: draft.hospital.bn,
-        specialtyBn: draft.specialty.bn,
-        districtBn: draft.district.bn,
-        areaBn: draft.area.bn,
+        hospital: draft.hospital,
+        specialty: draft.specialty,
+        district: draft.district,
+        area: draft.area,
         serialPhone: draft.serial_phone,
         fee,
         ownerEmail: ownerEmail || null,
         photoKey: photo.key,
         photoUrl: photo.url,
-        shareImageKey: share?.key ?? null,
-        shareImageUrl: share?.url ?? null,
         data,
         ip,
         userAgent,
@@ -278,11 +270,11 @@ export async function submitDoctorIntake(payload: unknown): Promise<IntakeResult
           clientPhone: link.client_phone,
           clientEmail: link.client_email,
           doctorName: draft.name.bn || draft.name.en,
-          hospital: draft.hospital.bn,
-          specialty: draft.specialty.bn,
-          chamberName: draft.chamber_name.bn,
-          district: draft.district.bn,
-          area: draft.area.bn,
+          hospital: draft.hospital,
+          specialty: draft.specialty,
+          chamberName: draft.chamber_name,
+          district: draft.district,
+          area: draft.area,
           fee,
           serialPhone: draft.serial_phone,
           settings,

@@ -375,22 +375,24 @@ export const doctorFormLinks = pgTable(
   })
 );
 
+// Only the doctor's NAME is bilingual. Every other text field takes whichever
+// language the client is comfortable in (see migration 016) — the admin fills in
+// the second language when they turn this into a real profile.
 export type DoctorSubmissionData = {
   name?: ML;
-  /** Either language accepted, so a single string rather than an ML pair. */
   degrees?: string;
   bio?: string;
   gender?: string;
   experience_years?: number | null;
-  patients_served?: ML;
-  /** One condition per line, either language. */
+  patients_served?: string;
+  /** One condition per line. */
   treated_conditions?: string;
-  hospital?: ML;
-  specialty?: ML;
-  chamber_name?: ML;
-  address?: ML;
-  district?: ML;
-  area?: ML;
+  hospital?: string;
+  specialty?: string;
+  chamber_name?: string;
+  address?: string;
+  district?: string;
+  area?: string;
   fee?: number;
   serial_phone?: string;
   owner_email?: string;
@@ -413,17 +415,15 @@ export const doctorSubmissions = pgTable(
     // Flattened for the list + search only; `data` is the source of truth.
     doctorNameBn: text("doctor_name_bn"),
     doctorNameEn: text("doctor_name_en"),
-    hospitalBn: text("hospital_bn"),
-    specialtyBn: text("specialty_bn"),
-    districtBn: text("district_bn"),
-    areaBn: text("area_bn"),
+    hospital: text("hospital"),
+    specialty: text("specialty"),
+    district: text("district"),
+    area: text("area"),
     serialPhone: text("serial_phone"),
     fee: integer("fee").notNull().default(0),
     ownerEmail: text("owner_email"),
     photoKey: text("photo_key"),
     photoUrl: text("photo_url"),
-    shareImageKey: text("share_image_key"),
-    shareImageUrl: text("share_image_url"),
     data: jsonb("data").$type<DoctorSubmissionData>().notNull().default(mlEmpty),
     ip: text("ip"),
     userAgent: text("user_agent"),

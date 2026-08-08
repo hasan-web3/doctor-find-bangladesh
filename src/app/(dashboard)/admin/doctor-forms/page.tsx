@@ -27,9 +27,9 @@ const ROWS_CTE = sql`
       s.id              AS row_id,
       s.created_at      AS created_at,
       s.client_name, s.client_phone, s.client_email,
-      s.doctor_name_bn, s.doctor_name_en, s.hospital_bn, s.specialty_bn,
-      s.district_bn, s.area_bn, s.serial_phone, s.fee, s.owner_email,
-      s.photo_url, s.share_image_url, s.data,
+      s.doctor_name_bn, s.doctor_name_en, s.hospital, s.specialty,
+      s.district, s.area, s.serial_phone, s.fee, s.owner_email,
+      s.photo_url, s.data,
       l.sent_at, l.created_by, l.client_email AS sent_to, l.token
     FROM doctor_submissions s
     LEFT JOIN doctor_form_links l ON l.id = s.link_id
@@ -39,7 +39,7 @@ const ROWS_CTE = sql`
       l.client_name, l.client_phone, l.client_email,
       NULL::text, NULL::text, NULL::text, NULL::text,
       NULL::text, NULL::text, NULL::text, 0, NULL::text,
-      NULL::text, NULL::text, '{}'::jsonb,
+      NULL::text, '{}'::jsonb,
       l.sent_at, l.created_by, l.client_email, l.token
     FROM doctor_form_links l
     WHERE l.submitted_at IS NULL AND l.sent_at IS NULL
@@ -65,9 +65,9 @@ export default async function AdminDoctorFormsPage({ searchParams }: { searchPar
         sql`doctor_name_bn`,
         sql`doctor_name_en`,
         sql`serial_phone`,
-        sql`hospital_bn`,
-        sql`district_bn`,
-        sql`area_bn`,
+        sql`hospital`,
+        sql`district`,
+        sql`area`,
       ])
     );
   }
@@ -84,9 +84,9 @@ export default async function AdminDoctorFormsPage({ searchParams }: { searchPar
       ${ROWS_CTE}
       SELECT kind, row_id, created_at::text AS created_at,
              client_name, client_phone, client_email,
-             doctor_name_bn, doctor_name_en, hospital_bn, specialty_bn,
-             district_bn, area_bn, serial_phone, fee, owner_email,
-             photo_url, share_image_url, data,
+             doctor_name_bn, doctor_name_en, hospital, specialty,
+             district, area, serial_phone, fee, owner_email,
+             photo_url, data,
              sent_at::text AS sent_at, created_by, sent_to, token
         FROM rows
        WHERE ${where}

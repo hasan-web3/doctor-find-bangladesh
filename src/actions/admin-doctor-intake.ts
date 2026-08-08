@@ -163,7 +163,6 @@ export async function deleteDoctorSubmission(id: number): Promise<SimpleResult> 
       id: doctorSubmissions.id,
       linkId: doctorSubmissions.linkId,
       photoKey: doctorSubmissions.photoKey,
-      shareImageKey: doctorSubmissions.shareImageKey,
       clientName: doctorSubmissions.clientName,
       doctorNameBn: doctorSubmissions.doctorNameBn,
     })
@@ -172,7 +171,7 @@ export async function deleteDoctorSubmission(id: number): Promise<SimpleResult> 
     .limit(1);
   if (!row) return { ok: false, message: "ফর্মটি খুঁজে পাওয়া যায়নি" };
 
-  await Promise.allSettled([destroyImage(row.photoKey), destroyImage(row.shareImageKey)]);
+  await destroyImage(row.photoKey);
   await db.delete(doctorSubmissions).where(eq(doctorSubmissions.id, submissionId));
   // The link row is the other half of the same lead; with the submission gone it
   // has no purpose, and it must not become reusable either.

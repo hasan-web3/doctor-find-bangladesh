@@ -33,15 +33,15 @@ export type FormRow = {
   client_email: string | null;
   doctor_name_bn: string | null;
   doctor_name_en: string | null;
-  hospital_bn: string | null;
-  specialty_bn: string | null;
-  district_bn: string | null;
-  area_bn: string | null;
+  // Single-language since migration 016; only the name is still a bn/en pair.
+  hospital: string | null;
+  specialty: string | null;
+  district: string | null;
+  area: string | null;
   serial_phone: string | null;
   fee: number;
   owner_email: string | null;
   photo_url: string | null;
-  share_image_url: string | null;
   data: DoctorSubmissionData;
   created_at: string;
   sent_at: string | null;
@@ -111,49 +111,30 @@ function DetailView({ row }: { row: FormRow }) {
           </div>
         </div>
 
-        {/* images */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-[200px_1fr]">
-          <div>
-            <div className="mb-1.5 text-[12px] font-semibold text-ink-ghost">ডাক্তারের ছবি</div>
-            {row.photo_url ? (
-              <a href={row.photo_url} target="_blank" rel="noreferrer" className="block">
-                <Image
-                  src={row.photo_url}
-                  alt={row.doctor_name_bn || "doctor"}
-                  width={200}
-                  height={200}
-                  className="aspect-square w-full rounded-xl border border-line object-cover"
-                />
-              </a>
-            ) : (
-              <div className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-ink-ghost">
-                ছবি নেই
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="mb-1.5 text-[12px] font-semibold text-ink-ghost">শেয়ার ছবি</div>
-            {row.share_image_url ? (
-              <a href={row.share_image_url} target="_blank" rel="noreferrer" className="block">
-                <Image
-                  src={row.share_image_url}
-                  alt="share"
-                  width={600}
-                  height={315}
-                  className="w-full rounded-xl border border-line object-cover"
-                />
-              </a>
-            ) : (
-              <div className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-ink-ghost">
-                দেওয়া হয়নি
-              </div>
-            )}
-          </div>
+        {/* photo */}
+        <div className="max-w-[220px]">
+          <div className="mb-1.5 text-[12px] font-semibold text-ink-ghost">ডাক্তারের ছবি</div>
+          {row.photo_url ? (
+            <a href={row.photo_url} target="_blank" rel="noreferrer" className="block">
+              <Image
+                src={row.photo_url}
+                alt={row.doctor_name_bn || "doctor"}
+                width={220}
+                height={220}
+                className="aspect-square w-full rounded-xl border border-line object-cover"
+              />
+            </a>
+          ) : (
+            <div className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-ink-ghost">
+              ছবি নেই
+            </div>
+          )}
         </div>
 
         {/* doctor */}
         <div className="rounded-2xl border border-line bg-white p-5">
           <div className="mb-2 font-heading text-[15px] font-bold text-ink">ডাক্তারের তথ্য</div>
+          {/* The name is the only field the client answers twice. */}
           <Pair label="নাম" bn={d.name?.bn} en={d.name?.en} />
           <Line label="ডিগ্রি ও পদবি" value={d.degrees} />
           <Line label="লিঙ্গ" value={d.gender ? GENDER_LABELS[d.gender] ?? d.gender : ""} />
@@ -162,7 +143,7 @@ function DetailView({ row }: { row: FormRow }) {
             value={d.experience_years != null ? String(d.experience_years) : ""}
             latin
           />
-          <Pair label="রোগী দেখেছেন" bn={d.patients_served?.bn} en={d.patients_served?.en} />
+          <Line label="রোগী দেখেছেন" value={d.patients_served} />
           <Line label="পরিচিতি" value={d.bio} />
           <Line label="যে সকল রোগের চিকিৎসা করা হয়" value={d.treated_conditions} />
         </div>
@@ -170,17 +151,17 @@ function DetailView({ row }: { row: FormRow }) {
         {/* hospital + specialty */}
         <div className="rounded-2xl border border-line bg-white p-5">
           <div className="mb-2 font-heading text-[15px] font-bold text-ink">হাসপাতাল ও বিভাগ</div>
-          <Pair label="প্রধান হাসপাতাল" bn={d.hospital?.bn} en={d.hospital?.en} />
-          <Pair label="বিশেষজ্ঞ বিভাগ" bn={d.specialty?.bn} en={d.specialty?.en} />
+          <Line label="প্রধান হাসপাতাল" value={d.hospital} />
+          <Line label="বিশেষজ্ঞ বিভাগ" value={d.specialty} />
         </div>
 
         {/* chamber */}
         <div className="rounded-2xl border border-line bg-white p-5">
           <div className="mb-2 font-heading text-[15px] font-bold text-ink">চেম্বার</div>
-          <Pair label="চেম্বারের নাম" bn={d.chamber_name?.bn} en={d.chamber_name?.en} />
-          <Pair label="ঠিকানা" bn={d.address?.bn} en={d.address?.en} />
-          <Pair label="জেলা" bn={d.district?.bn} en={d.district?.en} />
-          <Pair label="শহর / গ্রাম / থানা" bn={d.area?.bn} en={d.area?.en} />
+          <Line label="চেম্বারের নাম" value={d.chamber_name} />
+          <Line label="ঠিকানা" value={d.address} />
+          <Line label="জেলা" value={d.district} />
+          <Line label="শহর / গ্রাম / থানা" value={d.area} />
           <Line label="ভিজিট ফি (টাকা)" value={row.fee ? String(row.fee) : ""} latin />
           <Line label="সিরিয়াল নম্বর" value={row.serial_phone} latin />
           <Line label="চেম্বার মালিকের ইমেইল" value={row.owner_email} latin />
@@ -362,8 +343,8 @@ export function DoctorFormsList({
                         </span>
                         {isNew && <span className="ml-2 inline-block align-middle"><NewFlag /></span>}
                         <span className="block text-[12.5px] text-ink-faint">
-                          {r.specialty_bn || "..."}
-                          {r.hospital_bn ? ` • ${r.hospital_bn}` : ""}
+                          {r.specialty || "..."}
+                          {r.hospital ? ` • ${r.hospital}` : ""}
                         </span>
                       </button>
                     )}
@@ -380,7 +361,7 @@ export function DoctorFormsList({
                     )}
                   </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">
-                    {[r.area_bn, r.district_bn].filter(Boolean).join(", ") || "..."}
+                    {[r.area, r.district].filter(Boolean).join(", ") || "..."}
                   </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13.5px] text-ink-mute">
                     {r.fee ? r.fee : "..."}
@@ -482,7 +463,7 @@ export function DoctorFormsList({
               </p>
             ) : (
               <p className="mb-4 mt-0 text-sm leading-relaxed text-ink-mute">
-                <b>{confirm.doctor_name_bn || confirm.doctor_name_en}</b> এর জমা দেওয়া ফর্ম, ক্লায়েন্টের তথ্য এবং ছবিগুলো
+                <b>{confirm.doctor_name_bn || confirm.doctor_name_en}</b> এর জমা দেওয়া ফর্ম, ক্লায়েন্টের তথ্য এবং ছবি
                 ডেটাবেজ ও স্টোরেজ থেকে সম্পূর্ণভাবে মুছে যাবে। এটি আর ফেরানো যাবে না।
               </p>
             )}

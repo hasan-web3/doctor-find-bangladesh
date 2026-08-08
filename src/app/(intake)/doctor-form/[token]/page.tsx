@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
-import Image from "next/image";
 import { db } from "@/db";
+import { Navbar } from "@/components/public/navbar";
 import { getSettings } from "@/lib/settings";
 import { getRecaptchaSiteKey } from "@/lib/recaptcha";
+import { getDict } from "@/lib/dict";
+import { t } from "@/lib/i18n";
 import { IntakeForm } from "./intake-form";
 
 // This route is the one deliberate exception to the site's ISR-everywhere rule.
@@ -37,30 +39,25 @@ export default async function DoctorIntakePage({ params }: { params: Promise<{ t
       : null;
 
   const [settings, recaptchaSiteKey] = await Promise.all([getSettings(), getRecaptchaSiteKey()]);
-  const brandName = settings.site_name?.bn || settings.site_name?.en || "ডক্টরস ফাইন্ড বাংলাদেশ";
-  const brandNameEn = settings.site_name?.en || "Doctors Find Bangladesh";
   const helpline = settings.helpline_bn?.trim() || settings.helpline?.trim() || "";
   const helplineDial = settings.helpline?.trim() || "";
-  const logo = settings.logo_desktop_url?.trim() || settings.logo_url?.trim() || "";
 
+  // The real site header, not a lookalike. Someone who was emailed a link and is
+  // about to type a doctor's details into it should see the same masthead they
+  // saw on the website, with working links back to it. Bangla only, and the
+  // language switcher is hidden: this page has no /en twin to switch to.
+  const dict = getDict("bn");
   const header = (
-    <header className="border-b border-line bg-white">
-      <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-4 sm:px-6">
-        {logo ? (
-          <Image src={logo} alt={brandNameEn} width={150} height={40} className="h-9 w-auto object-contain" />
-        ) : (
-          <span className="font-heading text-[17px] font-bold text-ink">{brandName}</span>
-        )}
-        {helpline && (
-          <a
-            href={helplineDial ? `tel:${helplineDial}` : undefined}
-            className="ml-auto rounded-full border border-line px-3 py-1.5 text-[13px] font-semibold text-brand-700"
-          >
-            ☎ {helpline}
-          </a>
-        )}
-      </div>
-    </header>
+    <Navbar
+      locale="bn"
+      d={dict}
+      helplineDisplay={helpline}
+      helpline={helplineDial}
+      brandName={t(settings.brand_name, "bn")}
+      logoDesktopUrl={settings.logo_desktop_url}
+      logoMobileUrl={settings.logo_mobile_url}
+      showLangSwitcher={false}
+    />
   );
 
   // One message for "never existed" and one for "already used" would let anyone
@@ -103,7 +100,7 @@ export default async function DoctorIntakePage({ params }: { params: Promise<{ t
       <IntakeForm
         token={clean}
         clientName={link.client_name}
-        brandName={brandName}
+        brandName={t(settings.site_name, "bn")}
         helpline={helpline}
         helplineDial={helplineDial}
         recaptchaSiteKey={recaptchaSiteKey}

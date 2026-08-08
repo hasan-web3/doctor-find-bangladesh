@@ -18,6 +18,7 @@ export function Navbar({
   brandName,
   logoDesktopUrl,
   logoMobileUrl,
+  showLangSwitcher = true,
 }: {
   locale: Locale;
   d: Pick<Dict,
@@ -28,6 +29,12 @@ export function Navbar({
   brandName: string;
   logoDesktopUrl: string;
   logoMobileUrl: string;
+  /**
+   * Off for pages that exist in one language only. The switcher rewrites the
+   * CURRENT path with an /en prefix, and the doctor intake form has no /en twin
+   * to land on, so leaving it on would offer the visitor a 404.
+   */
+  showLangSwitcher?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -136,7 +143,7 @@ export function Navbar({
               </Link>
             ))}
           </nav>
-          <LangSwitcher locale={locale} />
+          {showLangSwitcher && <LangSwitcher locale={locale} />}
           <Link
             href={L("/doctors")}
             className="hidden rounded-[10px] bg-accent px-[18px] py-2.5 text-[14.5px] font-bold text-white shadow-[0_4px_12px_rgba(34,197,94,0.3)] transition-colors hover:bg-accent-hover min-[1060px]:inline-block"
