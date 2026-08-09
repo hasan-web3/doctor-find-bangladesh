@@ -55,6 +55,9 @@ export type SiteSettings = {
   seo_default_title: MLText;
   seo_default_description: MLText;
   seo_default_og_image: string;
+  // R2 object key behind seo_default_og_image, so replacing the card deletes
+  // the old object instead of leaving it in the bucket.
+  seo_default_og_image_key: string;
   plans: Plan[];
   stats: StatItem[];
 };
@@ -95,6 +98,7 @@ const DEFAULTS: SiteSettings = {
     en: "Find verified specialist doctors in Khulna by area and specialty, and book appointments easily.",
   },
   seo_default_og_image: "",
+  seo_default_og_image_key: "",
   plans: [],
   stats: [],
 };

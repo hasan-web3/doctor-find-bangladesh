@@ -22,19 +22,20 @@ import {
 } from "@/lib/integrations";
 import { testSmtp, sendMail, emailLayout, activeProvider } from "@/lib/mailer";
 import { testResend } from "@/lib/resend";
-import { uploadImage, destroyImage } from "@/lib/storage";
+import { uploadImage, destroyImage, keyFromPublicUrl } from "@/lib/storage";
 import type { ActionResult } from "./admin-doctors";
 
-// Keys whose value is a logo asset; if the incoming value is a data-URL we
-// upload to R2, otherwise we pass through (raw URL or empty string). The
-// sibling `<name>_key` field carries the R2 object key so the previous
-// object can be destroyed on replace.
-const LOGO_KEYS = [
+// Settings keys whose value is an image asset; if the incoming value is a
+// data-URL we upload to R2, otherwise we pass through (raw URL or empty
+// string). The sibling `<name>_key` field carries the R2 object key so the
+// previous object can be destroyed on replace.
+const IMAGE_KEYS = [
   { url: "logo_desktop_url", key: "logo_desktop_key", folder: "branding" },
   { url: "logo_mobile_url", key: "logo_mobile_key", folder: "branding" },
   { url: "logo_desktop_footer_url", key: "logo_desktop_footer_key", folder: "branding" },
   { url: "logo_mobile_footer_url", key: "logo_mobile_footer_key", folder: "branding" },
   { url: "favicon_url", key: "favicon_key", folder: "branding" },
+  { url: "seo_default_og_image", key: "seo_default_og_image_key", folder: "seo" },
 ] as const;
 
 // ---------------- appointments ----------------
@@ -70,20 +71,42 @@ export async function saveSeoOverride(payload: {
   await requireSession();
   const path = payload.path.trim();
   if (!path.startsWith("/")) return { ok: false, message: "পাথ অবশ্যই / দিয়ে শুরু হবে" };
+
+  // OG card pipeline. This table stores only the URL, so the R2 key of the
+  // image being replaced is recovered from the stored URL — an externally
+  // pasted URL yields no key and is left alone.
+  let ogImageUrl = payload.og_image_url?.trim() || null;
+  const incoming = payload.og_image_url || "";
+  if (incoming.startsWith("data:image") || !ogImageUrl) {
+    const [existing] = await db
+      .select({ ogImageUrl: seoOverrides.ogImageUrl })
+      .from(seoOverrides)
+      .where(eq(seoOverrides.path, path))
+      .limit(1);
+    const prevKey = keyFromPublicUrl(existing?.ogImageUrl);
+    if (incoming.startsWith("data:image")) {
+      const up = await uploadImage(incoming, "seo", prevKey);
+      ogImageUrl = up.url;
+    } else if (prevKey) {
+      // Cleared: drop the object rather than orphan it in the bucket.
+      await destroyImage(prevKey);
+    }
+  }
+
   await db
     .insert(seoOverrides)
     .values({
       path,
       metaTitle: payload.meta_title || { bn: "", en: "" },
       metaDescription: payload.meta_description || { bn: "", en: "" },
-      ogImageUrl: payload.og_image_url || null,
+      ogImageUrl,
     })
     .onConflictDoUpdate({
       target: seoOverrides.path,
       set: {
         metaTitle: payload.meta_title || { bn: "", en: "" },
         metaDescription: payload.meta_description || { bn: "", en: "" },
-        ogImageUrl: payload.og_image_url || null,
+        ogImageUrl,
         updatedAt: new Date(),
       },
     });
@@ -94,6 +117,12 @@ export async function saveSeoOverride(payload: {
 
 export async function deleteSeoOverride(id: number): Promise<ActionResult> {
   await requireSession();
+  const [existing] = await db
+    .select({ ogImageUrl: seoOverrides.ogImageUrl })
+    .from(seoOverrides)
+    .where(eq(seoOverrides.id, id))
+    .limit(1);
+  await destroyImage(keyFromPublicUrl(existing?.ogImageUrl));
   await db.delete(seoOverrides).where(eq(seoOverrides.id, id));
   await audit("delete", "seo_overrides", id);
   revalidatePublic(["seo"]);
@@ -134,14 +163,14 @@ export async function regenerateSitemap(): Promise<ActionResult> {
 export async function saveSettings(entries: Record<string, unknown>): Promise<ActionResult> {
   await requireSession();
 
-  // Logo pipeline: intercept the three logo URL fields. If the incoming
-  // value is a data:image URL, upload it to R2 (destroying the previous
-  // object first) and replace the entry with the public URL. Non-data
+  // Image pipeline: intercept the logo / favicon / OG-card URL fields. If the
+  // incoming value is a data:image URL, upload it to R2 (destroying the
+  // previous object first) and replace the entry with the public URL. Non-data
   // values (existing URLs, empty string clears) fall through untouched.
   // The R2 object key is stashed under `<name>_key` so the next replace
   // can destroy the old object without leaking storage.
   const patched: Record<string, unknown> = { ...entries };
-  for (const { url, key, folder } of LOGO_KEYS) {
+  for (const { url, key, folder } of IMAGE_KEYS) {
     const incoming = patched[url];
     if (typeof incoming !== "string" || !incoming.startsWith("data:image")) continue;
     const [existing] = await db
@@ -155,7 +184,7 @@ export async function saveSettings(entries: Record<string, unknown>): Promise<Ac
     patched[key] = up.key;
   }
   // Explicit empty-string clear: also drop the sibling R2 object.
-  for (const { url, key } of LOGO_KEYS) {
+  for (const { url, key } of IMAGE_KEYS) {
     if (patched[url] === "" && !(key in patched)) {
       const [existing] = await db
         .select({ value: siteSettings.value })

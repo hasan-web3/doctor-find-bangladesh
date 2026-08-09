@@ -79,6 +79,19 @@ export async function uploadImage(
   return { key, url: `${publicBase()}/${key}` };
 }
 
+// Recover the object key from a public URL we previously handed out. Used by
+// tables that store only the URL (no sibling `_key` column) so a replaced
+// image can still be destroyed instead of orphaned. Returns null for URLs
+// that don't live in our bucket — a pasted third-party image must never be
+// treated as ours.
+export function keyFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url || !process.env.R2_PUBLIC_URL) return null;
+  const base = publicBase();
+  if (!url.startsWith(base + "/")) return null;
+  const key = url.slice(base.length + 1).split("?")[0];
+  return key || null;
+}
+
 // Permanent delete at the R2 level. Safe to call with a missing key.
 export async function destroyImage(key: string | null | undefined): Promise<void> {
   if (!key) return;

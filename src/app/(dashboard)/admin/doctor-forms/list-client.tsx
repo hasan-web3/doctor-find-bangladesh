@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Check, Copy } from "lucide-react";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
 import { Pagination } from "@/components/admin/pagination";
@@ -67,26 +68,99 @@ const GENDER_LABELS: Record<string, string> = {
   other: "অন্যান্য / Other",
 };
 
-/** One label + bn/en value pair in the detail view. */
-function Pair({ label, bn, en }: { label: string; bn?: string; en?: string }) {
-  if (!bn?.trim() && !en?.trim()) return null;
+// ---------- detail view ----------
+//
+// This panel has one job beyond being readable: the admin sits with it open and
+// retypes the values into the real doctor form next door. So every value carries
+// its own copy button, and the fields sit in a two-column grid — the modal is
+// 90vw wide and a single column of full-width rows left most of that empty,
+// which is what made a short answer like "MBBS, FCPS" look lost on its own line.
+// Long values (bio, address, map link) span both columns instead.
+
+/** Copies one field's value. Silent on failure: there is nothing useful to say. */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [done, setDone] = useState(false);
   return (
-    <div className="border-b border-[#F1F5F9] py-2.5 last:border-b-0">
-      <div className="mb-1 text-[12px] font-semibold text-ink-ghost">{label}</div>
-      {bn?.trim() && <div className="text-[14.5px] text-ink">{bn}</div>}
-      {en?.trim() && <div className="font-latin text-[13.5px] text-ink-mute">{en}</div>}
+    <button
+      type="button"
+      title={`${label} কপি করুন`}
+      aria-label={`${label} কপি করুন`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch {
+          // Clipboard blocked (insecure origin / permission). The text is
+          // selectable on screen, so the admin still has a way through.
+        }
+      }}
+      className={cn(
+        "shrink-0 rounded-md border p-1 transition-colors",
+        done
+          ? "border-accent bg-accent text-white"
+          : "border-line bg-white text-ink-ghost hover:border-brand-600 hover:text-brand-600"
+      )}
+    >
+      {done ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  );
+}
+
+/**
+ * One labelled value in a details grid. Renders nothing when empty, so a card
+ * never shows a row the client left blank.
+ */
+function Cell({
+  label,
+  value,
+  sub,
+  latin,
+  wide,
+  href,
+}: {
+  label: string;
+  value?: string | null;
+  /** Second line under the value, e.g. the English half of the name. */
+  sub?: string | null;
+  latin?: boolean;
+  wide?: boolean;
+  href?: string;
+}) {
+  const text = (value ?? "").toString().trim();
+  if (!text) return null;
+  return (
+    <div className={cn("rounded-xl border border-line bg-page/70 px-3.5 py-3", wide && "lg:col-span-2")}>
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <span className="text-[11.5px] font-bold text-ink-ghost">{label}</span>
+        <CopyButton value={sub ? `${text} / ${sub}` : text} label={label} />
+      </div>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="block break-all font-latin text-[13.5px] font-semibold text-brand-700 underline"
+        >
+          {text}
+        </a>
+      ) : (
+        <div className={cn("whitespace-pre-line text-[14.5px] leading-relaxed text-ink", latin && "font-latin break-words")}>
+          {text}
+        </div>
+      )}
+      {sub?.trim() && <div className="mt-0.5 font-latin text-[13px] text-ink-mute">{sub}</div>}
     </div>
   );
 }
 
-/** One label + single value row, printed in Latin when it is a number or link. */
-function Line({ label, value, latin }: { label: string; value?: string | null; latin?: boolean }) {
-  if (!value?.toString().trim()) return null;
+/** A titled block whose children lay out two-up on wide screens. */
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-[#F1F5F9] py-2.5 last:border-b-0">
-      <div className="mb-1 text-[12px] font-semibold text-ink-ghost">{label}</div>
-      <div className={cn("whitespace-pre-line text-[14.5px] text-ink", latin && "font-latin break-all")}>{value}</div>
-    </div>
+    <section className="rounded-2xl border border-line bg-white p-5">
+      <h3 className="mb-3 mt-0 font-heading text-[15px] font-bold text-ink">{title}</h3>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{children}</div>
+    </section>
   );
 }
 
@@ -95,122 +169,163 @@ function DetailView({ row }: { row: FormRow }) {
   const schedule = d.schedule ?? [];
   const socials = Object.entries(d.social_links ?? {}).filter(([, v]) => !!v);
 
+  // One condition per line on the form; shown as a checklist so a long list
+  // reads at a glance instead of as a wall of text.
+  const conditions = (d.treated_conditions || "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   return (
-    <div className="p-5 sm:p-6">
-      <div className="flex flex-col gap-5">
-        {/* who sent it */}
-        <div className="rounded-2xl border border-brand-200 bg-brand-50 p-5">
-          <div className="mb-2 font-heading text-[15px] font-bold text-brand-700">যিনি ফর্মটি জমা দিয়েছেন</div>
-          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-            <Line label="নাম" value={row.client_name} />
-            <Line label="ফোন" value={row.client_phone} latin />
-            <Line label="ইমেইল" value={row.client_email} latin />
-            <Line label="জমার সময়" value={dateTime(row.created_at, "en")} latin />
-            <Line label="লিংক তৈরি করেছেন" value={row.created_by} />
-            <Line label="লিংক পাঠানো হয়েছিল" value={row.sent_to} latin />
+    <div className="bg-page p-5 sm:p-6">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-4">
+        {/* ---- masthead: photo, name, when it arrived ---- */}
+        <div className="rounded-2xl border border-line bg-white p-5">
+          <div className="flex flex-wrap items-start gap-5">
+            {row.photo_url ? (
+              <a href={row.photo_url} target="_blank" rel="noreferrer" className="shrink-0">
+                <Image
+                  src={row.photo_url}
+                  alt={row.doctor_name_bn || "doctor"}
+                  width={116}
+                  height={116}
+                  className="h-[116px] w-[116px] rounded-xl border border-line object-cover"
+                />
+              </a>
+            ) : (
+              <div className="flex h-[116px] w-[116px] shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-[12px] text-ink-ghost">
+                ছবি নেই
+              </div>
+            )}
+
+            <div className="min-w-[220px] flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="m-0 font-heading text-[22px] font-bold leading-tight text-ink">
+                  {d.name?.bn || row.doctor_name_bn || "নাম নেই"}
+                </h2>
+                <CopyButton value={d.name?.bn || row.doctor_name_bn || ""} label="বাংলা নাম" />
+              </div>
+              {(d.name?.en || row.doctor_name_en) && (
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className="font-latin text-[15px] text-ink-mute">{d.name?.en || row.doctor_name_en}</span>
+                  <CopyButton value={d.name?.en || row.doctor_name_en || ""} label="English name" />
+                </div>
+              )}
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {[d.specialty, d.hospital, [row.area, row.district].filter(Boolean).join(", ")]
+                  .filter((chip) => !!chip?.trim())
+                  .map((chip, i) => (
+                    <span
+                      key={i}
+                      className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[12.5px] font-semibold text-brand-700"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+              </div>
+            </div>
+
+            <div className="text-right">
+              <StatusBadge tone="green">জমা হয়েছে</StatusBadge>
+              <div className="mt-1.5 font-latin text-[12.5px] text-ink-faint">{dateTime(row.created_at, "en")}</div>
+            </div>
           </div>
         </div>
 
-        {/* photo */}
-        <div className="max-w-[220px]">
-          <div className="mb-1.5 text-[12px] font-semibold text-ink-ghost">ডাক্তারের ছবি</div>
-          {row.photo_url ? (
-            <a href={row.photo_url} target="_blank" rel="noreferrer" className="block">
-              <Image
-                src={row.photo_url}
-                alt={row.doctor_name_bn || "doctor"}
-                width={220}
-                height={220}
-                className="aspect-square w-full rounded-xl border border-line object-cover"
-              />
-            </a>
-          ) : (
-            <div className="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-ink-ghost">
-              ছবি নেই
-            </div>
-          )}
-        </div>
+        {/* ---- who sent it ---- */}
+        <section className="rounded-2xl border border-brand-200 bg-brand-50 p-5">
+          <h3 className="mb-3 mt-0 font-heading text-[15px] font-bold text-brand-700">যিনি ফর্মটি জমা দিয়েছেন</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Cell label="নাম" value={row.client_name} />
+            <Cell label="ফোন" value={row.client_phone} latin />
+            <Cell label="ইমেইল" value={row.client_email} latin />
+            <Cell label="লিংক তৈরি করেছেন" value={row.created_by} />
+          </div>
+        </section>
 
-        {/* doctor */}
-        <div className="rounded-2xl border border-line bg-white p-5">
-          <div className="mb-2 font-heading text-[15px] font-bold text-ink">ডাক্তারের তথ্য</div>
-          {/* The name is the only field the client answers twice. */}
-          <Pair label="নাম" bn={d.name?.bn} en={d.name?.en} />
-          <Line label="ডিগ্রি ও পদবি" value={d.degrees} />
-          <Line label="লিঙ্গ" value={d.gender ? GENDER_LABELS[d.gender] ?? d.gender : ""} />
-          <Line
+        {/* ---- doctor ---- */}
+        <Card title="ডাক্তারের তথ্য">
+          <Cell label="ডিগ্রি ও পদবি" value={d.degrees} wide />
+          <Cell label="প্রধান হাসপাতাল" value={d.hospital} />
+          <Cell label="বিশেষজ্ঞ বিভাগ" value={d.specialty} />
+          <Cell label="লিঙ্গ" value={d.gender ? GENDER_LABELS[d.gender] ?? d.gender : ""} />
+          <Cell
             label="অভিজ্ঞতা (বছর)"
             value={d.experience_years != null ? String(d.experience_years) : ""}
             latin
           />
-          <Line label="রোগী দেখেছেন" value={d.patients_served} />
-          <Line label="পরিচিতি" value={d.bio} />
-          <Line label="যে সকল রোগের চিকিৎসা করা হয়" value={d.treated_conditions} />
-        </div>
+          <Cell label="রোগী দেখেছেন" value={d.patients_served} />
+          <Cell label="পরিচিতি" value={d.bio} wide />
+          {conditions.length > 0 && (
+            <div className="rounded-xl border border-line bg-page/70 px-3.5 py-3 lg:col-span-2">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <span className="text-[11.5px] font-bold text-ink-ghost">যে সকল রোগের চিকিৎসা করা হয়</span>
+                <CopyButton value={conditions.join("\n")} label="রোগের তালিকা" />
+              </div>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                {conditions.map((c, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-[14px] text-ink">
+                    <span className="mt-[3px] text-[11px] text-accent-text">✓</span>
+                    <span>{c}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
 
-        {/* hospital + specialty */}
-        <div className="rounded-2xl border border-line bg-white p-5">
-          <div className="mb-2 font-heading text-[15px] font-bold text-ink">হাসপাতাল ও বিভাগ</div>
-          <Line label="প্রধান হাসপাতাল" value={d.hospital} />
-          <Line label="বিশেষজ্ঞ বিভাগ" value={d.specialty} />
-        </div>
+        {/* ---- chamber ---- */}
+        <Card title="চেম্বার">
+          <Cell label="চেম্বারের নাম" value={d.chamber_name} />
+          <Cell label="ঠিকানা" value={d.address} />
+          <Cell label="জেলা" value={d.district} />
+          <Cell label="শহর / গ্রাম / থানা" value={d.area} />
+          <Cell label="ভিজিট ফি (টাকা)" value={row.fee ? String(row.fee) : ""} latin />
+          <Cell label="সিরিয়াল নম্বর" value={row.serial_phone} latin />
+          <Cell label="চেম্বার মালিকের ইমেইল" value={row.owner_email} latin />
+          <Cell label="গুগল ম্যাপ" value={d.map_url} href={d.map_url} wide />
+        </Card>
 
-        {/* chamber */}
-        <div className="rounded-2xl border border-line bg-white p-5">
-          <div className="mb-2 font-heading text-[15px] font-bold text-ink">চেম্বার</div>
-          <Line label="চেম্বারের নাম" value={d.chamber_name} />
-          <Line label="ঠিকানা" value={d.address} />
-          <Line label="জেলা" value={d.district} />
-          <Line label="শহর / গ্রাম / থানা" value={d.area} />
-          <Line label="ভিজিট ফি (টাকা)" value={row.fee ? String(row.fee) : ""} latin />
-          <Line label="সিরিয়াল নম্বর" value={row.serial_phone} latin />
-          <Line label="চেম্বার মালিকের ইমেইল" value={row.owner_email} latin />
-          <Line label="গুগল ম্যাপ" value={d.map_url} latin />
-        </div>
-
-        {/* schedule */}
-        <div className="rounded-2xl border border-line bg-white p-5">
-          <div className="mb-3 font-heading text-[15px] font-bold text-ink">সময়সূচি</div>
+        {/* ---- schedule ---- */}
+        <section className="rounded-2xl border border-line bg-white p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="m-0 font-heading text-[15px] font-bold text-ink">সময়সূচি</h3>
+            {schedule.length > 0 && (
+              <CopyButton
+                value={schedule.map((s) => `${s.days?.bn || s.days?.en}: ${s.time?.bn || s.time?.en}`).join("\n")}
+                label="সময়সূচি"
+              />
+            )}
+          </div>
           {schedule.length === 0 ? (
             <div className="text-[13.5px] text-ink-ghost">দেওয়া হয়নি</div>
           ) : (
-            <table className="w-full border-collapse">
-              <tbody>
-                {schedule.map((s, i) => (
-                  <tr key={i}>
-                    <td className="w-40 border-b border-[#F1F5F9] py-2 pr-3 text-[14px] font-semibold text-ink">
-                      {s.days?.bn || s.days?.en}
-                      <span className="block font-latin text-[12px] font-normal text-ink-ghost">{s.days?.en}</span>
-                    </td>
-                    <td className="border-b border-[#F1F5F9] py-2 text-[14px] text-ink-mute">
-                      {s.time?.bn}
-                      <span className="block font-latin text-[12.5px] text-ink-ghost">{s.time?.en}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {schedule.map((s, i) => (
+                <div key={i} className="rounded-xl border border-line bg-page/70 px-3.5 py-3">
+                  <div className="text-[14px] font-bold text-ink">{s.days?.bn || s.days?.en}</div>
+                  <div className="font-latin text-[11.5px] text-ink-ghost">{s.days?.en}</div>
+                  <div className="mt-1.5 text-[14px] text-ink-mute">{s.time?.bn}</div>
+                  <div className="font-latin text-[12.5px] text-ink-ghost">{s.time?.en}</div>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
+        </section>
 
-        {/* socials */}
+        {/* ---- socials ---- */}
         {socials.length > 0 && (
-          <div className="rounded-2xl border border-line bg-white p-5">
-            <div className="mb-2 font-heading text-[15px] font-bold text-ink">সামাজিক প্রোফাইল</div>
+          <Card title="সামাজিক প্রোফাইল">
             {socials.map(([key, url]) => (
-              <div key={key} className="border-b border-[#F1F5F9] py-2.5 last:border-b-0">
-                <div className="mb-1 text-[12px] font-semibold text-ink-ghost">{SOCIAL_LABELS[key] ?? key}</div>
-                <a
-                  href={url as string}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all font-latin text-[13.5px] text-brand-700 underline"
-                >
-                  {url as string}
-                </a>
-              </div>
+              <Cell
+                key={key}
+                label={SOCIAL_LABELS[key] ?? key}
+                value={url as string}
+                href={url as string}
+                latin
+              />
             ))}
-          </div>
+          </Card>
         )}
       </div>
     </div>
