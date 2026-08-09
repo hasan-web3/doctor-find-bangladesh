@@ -25,8 +25,11 @@ import {
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, date as fmtDate, type Locale } from "@/lib/i18n";
 
-// ISR: detail; purged by path on edit.
-export const revalidate = 43200;
+// ISR: detail; purged by path on edit (revalidateDoctor() hits /doctors/<slug>
+// in both locales, including the old slug on a rename). 24h is the no-change
+// ceiling, and detail pages are the bulk of the route table — this is where a
+// longer window saves the most background renders as the directory grows.
+export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the
 // ISR cache. An un-enumerated dynamic segment is re-rendered on every single

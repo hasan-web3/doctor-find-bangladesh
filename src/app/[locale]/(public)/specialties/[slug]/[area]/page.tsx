@@ -11,8 +11,8 @@ import { Pagination } from "@/components/public/pagination";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // Empty list = prebuild nothing, but mark the route statically generatable so
 // Next serves it as ISR: first request renders and caches, later requests hit

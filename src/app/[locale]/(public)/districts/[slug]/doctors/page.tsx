@@ -22,8 +22,8 @@ import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the
 // ISR cache. An un-enumerated dynamic segment is re-rendered on every single

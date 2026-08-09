@@ -9,8 +9,8 @@ import { AreaListClient } from "@/components/public/area-list-client";
 import { STATIC_GEO } from "@/lib/geo";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // No `searchParams` in Props on purpose. Awaiting searchParams anywhere in a
 // route — page body OR generateMetadata — forces `ƒ Dynamic` and a full render

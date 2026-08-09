@@ -13,8 +13,11 @@ import { BlogListClient } from "@/components/public/blog-list-client";
 import { BlogCategoryChips } from "@/components/public/blog-category-chips";
 import { Pagination } from "@/components/public/pagination";
 
-// ISR: new posts should surface quickly.
-export const revalidate = 900;
+// ISR: listing. New posts still surface immediately — publishing calls
+// revalidateBlogPost(), which purges this path. Nothing here is time-triggered
+// (posts are gated on a `published` boolean, not a future date), so the 12h
+// window is just the no-change ceiling.
+export const revalidate = 43200;
 
 // See the note in ../areas/page.tsx: reading searchParams anywhere in a route
 // forces `ƒ Dynamic`. The server renders the canonical first page of the

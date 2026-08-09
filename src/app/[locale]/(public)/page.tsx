@@ -44,7 +44,12 @@ import { withPossessive as bnPossessive } from "@/lib/bn";
 import { t, isLocale, localeHref, num, date as fmtDate, type Locale } from "@/lib/i18n";
 
 // ISR: featured doctors + slides + blog rail.
-export const revalidate = 1800;
+//
+// Deliberately the shortest window on the site. Every content type surfaces
+// here, which makes it both the page most tags purge (revalidatePublic() falls
+// back to "/" for any unrecognised tag) and the page where a missed purge would
+// be most visible. 1h is cheap insurance on two cache entries.
+export const revalidate = 3600;
 
 type Props = { params: Promise<{ locale: string }> };
 

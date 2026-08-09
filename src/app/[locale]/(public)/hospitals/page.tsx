@@ -7,8 +7,8 @@ import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { HospitalListClient } from "@/components/public/hospital-list-client";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // See the note in ../areas/page.tsx: reading searchParams anywhere in a route
 // forces `ƒ Dynamic`, so the server renders the canonical first page and

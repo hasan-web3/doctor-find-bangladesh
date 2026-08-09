@@ -10,8 +10,8 @@ import { DoctorPhoto } from "@/components/public/doctor-photo";
 import { getDict } from "@/lib/dict";
 import { isLocale, num, localeHref, type Locale } from "@/lib/i18n";
 
-// ISR: detail; purged by path on edit.
-export const revalidate = 43200;
+// ISR: detail; purged by path on edit. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the
 // ISR cache. An un-enumerated dynamic segment is re-rendered on every single

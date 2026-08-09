@@ -21,8 +21,12 @@ import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-// ISR: highest-traffic listing.
-export const revalidate = 900;
+// ISR: highest-traffic listing. 12h is a CEILING, not the freshness target —
+// every doctor mutation purges this exact path via TAG_PATHS["doctors"] in
+// src/lib/revalidate.ts, so a new or edited doctor shows up within seconds.
+// The window only covers the case where nothing changed at all, and a short one
+// bought nothing except a background re-render four times an hour.
+export const revalidate = 43200;
 
 // See the note in ../areas/page.tsx. This page carries the heaviest filter set
 // on the site (specialty, area, district, hospital, gender, fee, sort, page),

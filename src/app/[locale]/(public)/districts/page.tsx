@@ -9,8 +9,8 @@ import { DistrictListClient } from "@/components/public/district-list-client";
 import { STATIC_GEO } from "@/lib/geo";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 // See the note in ../areas/page.tsx: reading searchParams anywhere in a route
 // forces `ƒ Dynamic`, so the server renders the canonical first page and

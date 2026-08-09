@@ -26,8 +26,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 import { SpecialtyListClient } from "@/components/public/specialty-list-client";
 
-// ISR: hub; on-demand revalidated on mutation.
-export const revalidate = 21600;
+// ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+export const revalidate = 86400;
 
 export default async function SpecialtiesPage({ params }: Props) {
   const { locale: raw } = await params;
