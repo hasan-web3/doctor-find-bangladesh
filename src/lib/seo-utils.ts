@@ -40,19 +40,62 @@ export function brandIdentity(brand: MLText, fallback?: MLText): BrandIdentity {
   return { name, alternateName: bn && bn !== name ? [bn] : [] };
 }
 
-export function ldOrganization(input: { identity: BrandIdentity; helpline: string; logoUrl: string }): JsonLd {
+// NAP (Name, Address, Phone) for the site's own entity.
+//
+// The phone was always declared, but the address only ever existed as footer
+// text — so the single most important local-SEO triple was never available to
+// Google in machine-readable form. `settings.address` is one free-text field
+// (e.g. "Sonadanga, Khulna, Bangladesh"), so it goes into PostalAddress as
+// `streetAddress` with the country pinned to BD rather than being guessed at by
+// splitting the string on commas, which would mislabel it the moment an admin
+// types the parts in a different order.
+function ldPostalAddress(address: string): JsonLd | undefined {
+  const value = address.trim();
+  if (!value) return undefined;
+  return { "@type": "PostalAddress", streetAddress: value, addressCountry: "BD" };
+}
+
+export function ldOrganization(input: {
+  identity: BrandIdentity;
+  helpline: string;
+  logoUrl: string;
+  /** Already localized `settings.address`. Omitted from the graph when blank. */
+  address?: string;
+  email?: string;
+  /** Official brand profiles (Facebook / YouTube / Instagram) for sameAs. */
+  socialUrls?: string[];
+}): JsonLd {
   const { name, alternateName } = input.identity;
+  const address = ldPostalAddress(input.address || "");
+  const email = (input.email || "").trim();
+  const sameAs = (input.socialUrls || [])
+    .map((u) => (typeof u === "string" ? u.trim() : ""))
+    .filter((u) => /^https?:\/\//i.test(u));
   return {
     "@context": "https://schema.org",
-    "@type": "Organization",
+    // MedicalOrganization is a subtype of Organization, so every existing
+    // `{"@id": ORG_ID()}` reference (article publisher, WebSite publisher)
+    // still resolves to this node. Declaring both keeps generic Organization
+    // consumers happy while telling Google this is a health entity, which is
+    // what a YMYL directory should be saying about itself.
+    "@type": ["MedicalOrganization", "Organization"],
     "@id": ORG_ID(),
     name,
     ...(alternateName.length > 0 ? { alternateName } : {}),
     url: siteUrl("/"),
     logo: input.logoUrl || siteUrl("/icon.svg"),
+    // Duplicated at the top level as well as inside contactPoint: Google reads
+    // Organization.telephone/email directly, and several validators do not
+    // descend into contactPoint for the NAP check.
+    telephone: `+88${input.helpline}`,
+    ...(email ? { email } : {}),
+    ...(address ? { address } : {}),
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+    areaServed: { "@type": "Country", name: "Bangladesh" },
     contactPoint: {
       "@type": "ContactPoint",
       telephone: `+88${input.helpline}`,
+      ...(email ? { email } : {}),
       contactType: "customer service",
       areaServed: "BD",
       availableLanguage: ["Bengali", "English"],
@@ -80,6 +123,39 @@ export function ldWebsite(identity: BrandIdentity, locale: Locale): JsonLd {
       },
       "query-input": "required name=search_term_string",
     },
+  };
+}
+
+/**
+ * The doctors a listing page actually renders, as an ItemList.
+ *
+ * A listing page used to declare only a BreadcrumbList, which says where the
+ * page sits but nothing about what is on it. ItemList states plainly that this
+ * URL is a ranked list of N physicians and names each one with its canonical
+ * URL, which is both a content signal for the hub itself and an extra
+ * discovery path to the profile pages.
+ *
+ * Only the doctors present in the cached HTML are listed — the client-side
+ * filter/pagination results are deliberately NOT included, because structured
+ * data must describe what the page really shows.
+ */
+export function ldItemList(
+  name: string,
+  doctors: { slug: string; name: string }[],
+  locale: Locale
+): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name,
+    numberOfItems: doctors.length,
+    itemListOrder: "https://schema.org/ItemListOrderDescending",
+    itemListElement: doctors.map((doc, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: doc.name,
+      url: siteUrl(localeHref(locale, `/doctors/${doc.slug}`)),
+    })),
   };
 }
 
@@ -128,13 +204,24 @@ export function ldPhysician(doc: DoctorFull, locale: Locale): JsonLd {
     image: doc.photo_url || undefined,
     description,
     medicalSpecialty: doc.specialties.map((s: { name: string }) => s.name),
+    // addressLocality used to fall back to a hard-coded "Khulna", which put a
+    // wrong city into the structured data of every doctor outside Khulna. The
+    // doctor row already carries a resolved `district` (chamber first, then
+    // hospital — see cardSelect in data.ts), so that is the correct fallback;
+    // when even that is empty the field is simply omitted, because a missing
+    // locality is a gap while a wrong one is a factual error about a real
+    // person's practice.
     address: doc.chambers.length > 0
-      ? doc.chambers.map((c) => ({
-          "@type": "PostalAddress",
-          streetAddress: c.address || c.name,
-          addressLocality: c.area || (locale === "bn" ? "খুলনা" : "Khulna"),
-          addressCountry: "BD",
-        }))
+      ? doc.chambers.map((c) => {
+          const locality = c.area || doc.district || "";
+          return {
+            "@type": "PostalAddress",
+            streetAddress: c.address || c.name,
+            ...(locality ? { addressLocality: locality } : {}),
+            ...(doc.district && locality !== doc.district ? { addressRegion: doc.district } : {}),
+            addressCountry: "BD",
+          };
+        })
       : undefined,
     priceRange: doc.chambers[0] ? priceTier(doc.chambers[0].fee) : undefined,
     // sameAs anchors Google's Knowledge Graph to this physician's canonical
@@ -151,8 +238,12 @@ export function ldPhysician(doc: DoctorFull, locale: Locale): JsonLd {
 
 export function ldMedicalClinic(h: {
   name: string; slug: string; address: string; area: string;
+  district?: string | null;
   phone: string | null; image_url: string | null; lat: number | null; lng: number | null;
 }, locale: Locale): JsonLd {
+  // Same rule as ldPhysician: no hard-coded city. The hospital's own thana, then
+  // its district, then nothing at all rather than a wrong locality.
+  const locality = h.area || h.district || "";
   return {
     "@context": "https://schema.org",
     "@type": "MedicalClinic",
@@ -163,7 +254,8 @@ export function ldMedicalClinic(h: {
     address: {
       "@type": "PostalAddress",
       streetAddress: h.address || h.name,
-      addressLocality: h.area || (locale === "bn" ? "খুলনা" : "Khulna"),
+      ...(locality ? { addressLocality: locality } : {}),
+      ...(h.district && locality !== h.district ? { addressRegion: h.district } : {}),
       addressCountry: "BD",
     },
     geo: h.lat && h.lng ? { "@type": "GeoCoordinates", latitude: h.lat, longitude: h.lng } : undefined,

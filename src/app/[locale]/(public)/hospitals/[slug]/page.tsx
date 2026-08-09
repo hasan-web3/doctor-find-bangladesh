@@ -44,17 +44,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(locale)) return {};
   const h = await getHospitalBySlug(slug, locale);
   if (!h) return {};
+  // Place name for the title/description. Thana first, district second, and
+  // when the hospital has neither the place is dropped from the sentence
+  // altogether. It used to fall through to a literal "Khulna", which put the
+  // wrong city in the <title> of every hospital in every other district.
+  const place = [h.area, h.district].filter(Boolean).join(", ");
+  const placeSuffix = place ? `, ${place}` : "";
+
   return buildMetadata({
     locale,
     path: `/hospitals/${h.slug}`,
-    title: h.meta_title || `${h.name}, ${h.area || (locale === "bn" ? "খুলনা" : "Khulna")}`,
+    title: h.meta_title || `${h.name}${placeSuffix}`,
     description:
       h.meta_description ||
       (locale === "bn"
-        ? `${h.name} এর ঠিকানা, বিভাগসমূহ, ডাক্তারদের তালিকা ও যোগাযোগের তথ্য। ${h.area || "খুলনা"}, খুলনা।`
-        : `${h.name} address, departments, doctors and contact information. ${h.area || "Khulna"}, Khulna.`),
+        ? `${h.name} এর ঠিকানা, বিভাগসমূহ, ডাক্তারদের তালিকা ও যোগাযোগের তথ্য।${place ? ` ${place}।` : ""}`
+        : `${h.name} address, departments, doctors and contact information.${place ? ` ${place}.` : ""}`),
     ogTitle: h.name,
-    ogSubtitle: `${h.area || "Khulna"}`,
+    ogSubtitle: place,
     ogImage: h.image_url || undefined,
     noTemplate: Boolean(h.meta_title),
   });

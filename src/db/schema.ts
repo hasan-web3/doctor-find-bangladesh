@@ -28,7 +28,11 @@ export const promotionPlan = pgEnum("promotion_plan", ["basic", "featured", "pre
 export const promotionStatus = pgEnum("promotion_status", ["active", "expired", "cancelled"]);
 export const leadType = pgEnum("lead_type", ["patient", "doctor"]);
 export const leadStatus = pgEnum("lead_status", ["new", "in_progress", "resolved"]);
-export const faqScope = pgEnum("faq_scope", ["home", "specialty", "area", "hospital", "doctor"]);
+// `district` was added in migrations/017 so /districts/<slug>/doctors can carry
+// an FAQ block and its FAQPage JSON-LD like every other hub already could.
+// Keep this list in sync with faqSchema in src/actions/admin-content.ts and the
+// SCOPES arrays in the admin FAQ manager/form.
+export const faqScope = pgEnum("faq_scope", ["home", "specialty", "area", "hospital", "doctor", "district"]);
 export const adminRole = pgEnum("admin_role", ["super_admin", "admin", "editor"]);
 
 // ------------- helpers -------------

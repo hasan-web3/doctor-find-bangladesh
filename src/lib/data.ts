@@ -63,6 +63,10 @@ export type District = {
 
 export type Hospital = {
   id: number; slug: string; name: string; area_id: number | null; area: string; area_slug: string | null; district_slug: string | null;
+  // Localized district NAME (the slug alone can't be printed). Needed so the
+  // hospital page and its MedicalClinic JSON-LD can state a real locality
+  // instead of the hard-coded "Khulna" they used to fall back to.
+  district: string;
   address: string; phone: string | null; lat: number | null; lng: number | null;
   description: string; departments: string[]; map_url: string | null; image_url: string | null; image_key: string | null;
   gallery: { key: string; url: string }[]; meta_title: string; meta_description: string;
@@ -644,6 +648,7 @@ export async function searchHospitals(
       areaMl: areasT.name,
       areaSlug: areasT.slug,
       districtSlug: districts.slug,
+      districtMl: districts.name,
       doctorCount: doctorCountSubquery,
     })
     .from(hospitalsT)
@@ -665,7 +670,7 @@ export async function searchHospitals(
   const mappedRows = rows.map((h): Hospital => ({
     id: h.id, slug: h.slug, name: ml(h.name, locale),
     area_id: h.areaId, area: ml(h.areaMl, locale), area_slug: h.areaSlug ?? null,
-    district_slug: h.districtSlug ?? null,
+    district_slug: h.districtSlug ?? null, district: ml(h.districtMl, locale),
     address: ml(h.address, locale), phone: h.phone,
     lat: h.lat, lng: h.lng,
     description: ml(h.description, locale),
@@ -680,10 +685,28 @@ export async function searchHospitals(
   return { rows: mappedRows, total };
 }
 
+// The thana and district are JOINed rather than left blank. They used to be
+// hard-coded as `area: ""`, which is why the hospital page's title, description
+// and MedicalClinic JSON-LD all fell through to a literal "Khulna" — wrong for
+// every hospital outside it, and a duplicated locality for every one inside.
 export const getHospitalBySlug = async (slug: string, locale: Locale) =>
-  (await db.select().from(hospitalsT).where(eq(hospitalsT.slug, slug)).limit(1)).map(h => ({
+  (await db
+    .select({
+      h: hospitalsT,
+      areaMl: areasT.name,
+      areaSlug: areasT.slug,
+      districtMl: districts.name,
+      districtSlug: districts.slug,
+    })
+    .from(hospitalsT)
+    .leftJoin(areasT, eq(areasT.id, hospitalsT.areaId))
+    .leftJoin(districts, eq(districts.id, areasT.districtId))
+    .where(eq(hospitalsT.slug, slug))
+    .limit(1)
+  ).map(({ h, areaMl, areaSlug, districtMl, districtSlug }) => ({
     id: h.id, slug: h.slug, name: ml(h.name, locale),
-    area_id: h.areaId, area: "", area_slug: null, // Simplified for this context
+    area_id: h.areaId, area: ml(areaMl, locale), area_slug: areaSlug ?? null,
+    district: ml(districtMl, locale), district_slug: districtSlug ?? null,
     address: ml(h.address, locale), phone: h.phone,
     lat: h.lat, lng: h.lng,
     description: ml(h.description, locale),
@@ -1390,7 +1413,7 @@ export const getFaqs = unstable_cache(
       .from(faqsT)
       .where(
         and(
-          eq(faqsT.scope, scope as "home" | "specialty" | "area" | "hospital" | "doctor"),
+          eq(faqsT.scope, scope as "home" | "specialty" | "area" | "hospital" | "doctor" | "district"),
           eq(faqsT.active, true),
           refId ? eq(faqsT.refId, refId) : isNull(faqsT.refId)
         )
@@ -2058,4 +2081,201 @@ export const getAllAreaSlugPairs = unstable_cache(
   // Bumped alongside geo-areas-v5 — this list is derived from those counts.
   ["all-area-slug-pairs-v3"],
   { tags: ["areas", "districts", "doctors"] }
+);
+
+// ==========================================================================
+// INTERNAL LINKING — crawlable link sets for the hub pages.
+//
+// Every landing page the sitemap advertises has to be REACHABLE by following
+// links, not just listed in an XML file. Before these readers existed, the
+// /specialties/<spec>/<thana> combination pages (a whole sitemap section) had
+// zero inbound links from anywhere on the site: the only navigation into them
+// was the filter sidebar, which is client-side state and renders no anchors at
+// all. Googlebot does not operate <select> elements, so those pages were
+// orphans — indexed at best, never given any link equity.
+//
+// COVERAGE RULE. `doctor_area` below is byte-for-byte the rule used by
+// src/lib/sitemap-core.ts, and that is the point: a link is only emitted when
+// the page behind it has at least one doctor to show. The sitemap uses the rule
+// to decide which URLs to advertise; these readers use it to decide which URLs
+// to link. The two therefore agree by construction, so no link here can ever
+// point at a page that generateMetadata() has marked `noindex` for being empty.
+//
+//   doctor -> visible chamber -> thana
+//   doctor -> profile hospital -> thana   (ONLY when they have no such chamber)
+// ==========================================================================
+
+const DOCTOR_AREA_CTE = sql`
+  doctor_area AS (
+    SELECT DISTINCT c.doctor_id, c.area_id
+      FROM chambers c
+     WHERE c.visible AND c.area_id IS NOT NULL
+    UNION
+    SELECT DISTINCT d.id AS doctor_id, h.area_id
+      FROM doctors d
+      JOIN hospitals h ON h.id = d.hospital_id
+     WHERE h.area_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM chambers cx
+          WHERE cx.doctor_id = d.id AND cx.visible AND cx.area_id IS NOT NULL
+       )
+  )`;
+
+export type HubLink = {
+  slug: string;
+  name: string;
+  /** Second line on the chip — the thana for a hospital, the district for a thana. */
+  context?: string | null;
+  district_slug?: string | null;
+  doctor_count: number;
+};
+
+type NameRow = { slug: string; name_ml: MLText; doctor_count: number };
+
+/**
+ * Everything a district listing page can legitimately link OUT to: the thanas
+ * inside it, the specialties practised in it, and the hospitals located in it.
+ *
+ * This is what turns /districts/khulna/doctors from a dead end into a hub. It
+ * gives the page real supporting content AND hands Googlebot a crawl path down
+ * into the long tail (thana pages, which in turn link to the specialty × thana
+ * combinations — see getSpecialtiesInArea below).
+ */
+export const getDistrictHubLinks = unstable_cache(
+  async (
+    districtSlug: string,
+    locale: Locale
+  ): Promise<{ thanas: HubLink[]; specialties: HubLink[]; hospitals: HubLink[] }> => {
+    const [thanaRes, specRes, hospRes] = await Promise.all([
+      db.execute<NameRow>(sql`
+        WITH ${DOCTOR_AREA_CTE}
+        SELECT a.slug, a.name AS name_ml, COUNT(DISTINCT d.id)::int AS doctor_count
+          FROM doctor_area da
+          JOIN doctors d ON d.id = da.doctor_id AND d.active
+          JOIN areas a ON a.id = da.area_id AND a.active
+          JOIN districts dist ON dist.id = a.district_id AND dist.active
+         WHERE dist.slug = ${districtSlug}
+         GROUP BY a.slug, a.name, a.sort
+         ORDER BY doctor_count DESC, a.sort, a.slug
+      `),
+      db.execute<NameRow>(sql`
+        WITH ${DOCTOR_AREA_CTE}
+        SELECT s.slug, s.name AS name_ml, COUNT(DISTINCT d.id)::int AS doctor_count
+          FROM doctor_area da
+          JOIN doctors d ON d.id = da.doctor_id AND d.active
+          JOIN doctor_specialties ds ON ds.doctor_id = d.id
+          JOIN specialties s ON s.id = ds.specialty_id AND s.active
+          JOIN areas a ON a.id = da.area_id AND a.active
+          JOIN districts dist ON dist.id = a.district_id AND dist.active
+         WHERE dist.slug = ${districtSlug}
+         GROUP BY s.slug, s.name, s.sort
+         ORDER BY doctor_count DESC, s.sort, s.slug
+      `),
+      db.execute<NameRow & { area_ml: MLText }>(sql`
+        SELECT h.slug, h.name AS name_ml, a.name AS area_ml,
+               COUNT(DISTINCT d.id)::int AS doctor_count
+          FROM hospitals h
+          JOIN doctors d ON d.hospital_id = h.id AND d.active
+          JOIN areas a ON a.id = h.area_id AND a.active
+          JOIN districts dist ON dist.id = a.district_id AND dist.active
+         WHERE h.active AND dist.slug = ${districtSlug}
+         GROUP BY h.slug, h.name, a.name, h.sort
+         ORDER BY doctor_count DESC, h.sort, h.slug
+      `),
+    ]);
+
+    return {
+      thanas: thanaRes.rows.map((r) => ({
+        slug: r.slug,
+        name: ml(r.name_ml, locale),
+        district_slug: districtSlug,
+        doctor_count: r.doctor_count,
+      })),
+      specialties: specRes.rows.map((r) => ({
+        slug: r.slug,
+        name: ml(r.name_ml, locale),
+        doctor_count: r.doctor_count,
+      })),
+      hospitals: hospRes.rows.map((r) => ({
+        slug: r.slug,
+        name: ml(r.name_ml, locale),
+        context: ml(r.area_ml, locale) || null,
+        doctor_count: r.doctor_count,
+      })),
+    };
+  },
+  ["district-hub-links-v1"],
+  { tags: ["districts", "areas", "specialties", "hospitals", "doctors"] }
+);
+
+/**
+ * The specialties actually practised inside ONE thana.
+ *
+ * Rendered on /area/doctors/<district>/<thana> as links to
+ * /specialties/<specialty>/<thana> — the combination pages. This is the primary
+ * fix for those pages being orphans: every combination page the sitemap lists
+ * is reachable in exactly two clicks from the homepage
+ * (home -> district -> thana -> combination), and each link comes from the most
+ * topically relevant page that could possibly point at it.
+ */
+export const getSpecialtiesInArea = unstable_cache(
+  async (areaSlug: string, locale: Locale): Promise<HubLink[]> => {
+    const res = await db.execute<NameRow>(sql`
+      WITH ${DOCTOR_AREA_CTE}
+      SELECT s.slug, s.name AS name_ml, COUNT(DISTINCT d.id)::int AS doctor_count
+        FROM doctor_area da
+        JOIN doctors d ON d.id = da.doctor_id AND d.active
+        JOIN doctor_specialties ds ON ds.doctor_id = d.id
+        JOIN specialties s ON s.id = ds.specialty_id AND s.active
+        JOIN areas a ON a.id = da.area_id AND a.active
+       WHERE a.slug = ${areaSlug}
+       GROUP BY s.slug, s.name, s.sort
+       ORDER BY doctor_count DESC, s.sort, s.slug
+    `);
+    return res.rows.map((r) => ({
+      slug: r.slug,
+      name: ml(r.name_ml, locale),
+      doctor_count: r.doctor_count,
+    }));
+  },
+  ["specialties-in-area-v1"],
+  { tags: ["areas", "specialties", "doctors"] }
+);
+
+/**
+ * The thanas where ONE specialty actually has doctors.
+ *
+ * Rendered on /specialties/<specialty> as links to
+ * /specialties/<specialty>/<thana>. Same destinations as getSpecialtiesInArea,
+ * approached from the other axis — so the combination pages sit in a proper
+ * two-way link graph (hub -> combination -> hub) instead of hanging off one
+ * thread, which is what "Internal Linking" actually asks for.
+ */
+export const getAreasForSpecialty = unstable_cache(
+  async (specialtySlug: string, locale: Locale): Promise<HubLink[]> => {
+    const res = await db.execute<NameRow & { district_slug: string; district_ml: MLText }>(sql`
+      WITH ${DOCTOR_AREA_CTE}
+      SELECT a.slug, a.name AS name_ml,
+             dist.slug AS district_slug, dist.name AS district_ml,
+             COUNT(DISTINCT d.id)::int AS doctor_count
+        FROM doctor_area da
+        JOIN doctors d ON d.id = da.doctor_id AND d.active
+        JOIN doctor_specialties ds ON ds.doctor_id = d.id
+        JOIN specialties s ON s.id = ds.specialty_id AND s.active
+        JOIN areas a ON a.id = da.area_id AND a.active
+        JOIN districts dist ON dist.id = a.district_id AND dist.active
+       WHERE s.slug = ${specialtySlug}
+       GROUP BY a.slug, a.name, a.sort, dist.slug, dist.name
+       ORDER BY doctor_count DESC, a.sort, a.slug
+    `);
+    return res.rows.map((r) => ({
+      slug: r.slug,
+      name: ml(r.name_ml, locale),
+      context: ml(r.district_ml, locale) || null,
+      district_slug: r.district_slug,
+      doctor_count: r.doctor_count,
+    }));
+  },
+  ["areas-for-specialty-v1"],
+  { tags: ["areas", "districts", "specialties", "doctors"] }
 );

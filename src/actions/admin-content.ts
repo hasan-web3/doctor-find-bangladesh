@@ -657,7 +657,7 @@ export async function deleteSlide(id: number): Promise<ActionResult> {
 // ---------------- FAQs ----------------
 const faqSchema = z.object({
   id: z.coerce.number().optional(),
-  scope: z.enum(["home", "specialty", "area", "hospital", "doctor"]).default("home"),
+  scope: z.enum(["home", "specialty", "area", "hospital", "doctor", "district"]).default("home"),
   ref_id: z.coerce.number().nullable().optional(),
   question: mlRequired("বাংলা প্রশ্ন দিন"),
   answer: mlRequired("বাংলা উত্তর দিন"),

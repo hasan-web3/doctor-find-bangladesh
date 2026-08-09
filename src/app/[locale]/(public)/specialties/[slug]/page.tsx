@@ -4,7 +4,8 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty } from "@/lib/data";
+import { LinkCloud } from "@/components/public/link-cloud";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -96,10 +97,15 @@ export default async function SpecialtyPage({ params }: Props) {
     notFound();
   }
 
-  const [settings, allSpecialties, faqs, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, faqs, specialtyAreas, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
     getFaqs("specialty", spec.id, locale),
+    // The thanas where this specialty actually has doctors, linked as
+    // /specialties/<this>/<thana>. Same destinations the thana pages link to,
+    // approached from the other axis, so the combination pages sit in a two-way
+    // link graph instead of hanging off a single thread.
+    getAreasForSpecialty(spec.slug, locale),
     // Canonical first page only. ?page= / ?perPage= / ?q= are applied by
     // <SpecialtyDoctorListClient> after mount — reading them here would force
     // this route to render per request and it would never be cached.
@@ -178,6 +184,20 @@ export default async function SpecialtyPage({ params }: Props) {
           settings={settings}
           initialDoctors={initialDoctorData.rows}
           initialTotal={initialDoctorData.total}
+        />
+      </div>
+
+      <div className="mx-auto max-w-site px-5">
+        <LinkCloud
+          title={d.hub_specialty_areas_title_tpl.replace("{s}", spec.name)}
+          description={d.hub_specialty_areas_desc}
+          items={specialtyAreas}
+          href={(a) => L(`/specialties/${spec.slug}/${a.slug}`)}
+          locale={locale}
+          countSuffix={d.doctors_unit}
+          limit={36}
+          moreHref={L("/areas")}
+          moreLabel={d.view_all_areas}
         />
       </div>
 

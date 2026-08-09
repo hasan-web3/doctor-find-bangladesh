@@ -14,10 +14,12 @@ export type FaqRow = {
 };
 
 type Opt = { id: number; name_bn: string };
-export type Refs = { specialty: Opt[]; area: Opt[]; hospital: Opt[]; doctor: Opt[] };
+export type Refs = { specialty: Opt[]; district: Opt[]; area: Opt[]; hospital: Opt[]; doctor: Opt[] };
 
+// Keep in sync with SCOPES in ./form.tsx, faqSchema in admin-content.ts and the
+// faq_scope enum in src/db/schema.ts.
 const SCOPES = [
-  ["home", "হোমপেজ"], ["specialty", "বিভাগ"], ["area", "থানা / উপজেলা"], ["hospital", "হাসপাতাল"], ["doctor", "ডাক্তার"],
+  ["home", "হোমপেজ"], ["specialty", "বিভাগ"], ["district", "জেলা"], ["area", "থানা / উপজেলা"], ["hospital", "হাসপাতাল"], ["doctor", "ডাক্তার"],
 ] as const;
 
 

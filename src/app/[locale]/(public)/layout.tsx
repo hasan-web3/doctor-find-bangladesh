@@ -76,7 +76,18 @@ export default async function PublicLayout({
         <div className="min-h-screen bg-page">
           <JsonLd
             data={[
-              ldOrganization({ identity, helpline: settings.helpline, logoUrl: settings.logo_url }),
+              // NAP + official profiles. The address and socials were rendered
+              // in the footer as plain text but never declared as structured
+              // data, so the local-SEO triple Google looks for (name, address,
+              // phone) was only ever two thirds present.
+              ldOrganization({
+                identity,
+                helpline: settings.helpline,
+                logoUrl: settings.logo_url,
+                address: t(settings.address, locale),
+                email: settings.email,
+                socialUrls: [settings.facebook, settings.youtube, settings.instagram],
+              }),
               ldWebsite(identity, locale),
             ]}
           />

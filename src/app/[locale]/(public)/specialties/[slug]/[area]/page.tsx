@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorCard } from "@/components/public/doctor-card";
+import { LinkCloud } from "@/components/public/link-cloud";
 import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, countDoctorsFor, type Area } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -37,18 +38,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const doctorCount = await countDoctorsFor({ specialty: spec.slug, area: areaRow.slug });
 
   const short = spec.name.split(" (")[0];
+  // The district this thana belongs to. It used to be the literal string
+  // "Khulna" in the title, the description, the OG subtitle, the <h1> and the
+  // intro paragraph — so a Dhaka thana published as "Cardiology Doctors in
+  // Dhanmondi, Khulna" across every one of those fields. `getAreaBySlug`
+  // already carries the real district name, so it is simply read here; when a
+  // thana has no district linked the district clause drops out of the sentence.
+  const district = areaRow.district || "";
+  const districtSuffix = district ? `, ${district}` : "";
+
   return buildMetadata({
     locale,
     path: `/specialties/${spec.slug}/${areaRow.slug}`,
     noindex: doctorCount === 0,
     title: locale === "bn"
-      ? `${areaRow.name} এলাকার ${short} ডাক্তার`
-      : `${short} Doctors in ${areaRow.name}, Khulna`,
+      ? `${areaRow.name} এলাকার ${short} ডাক্তার${districtSuffix}`
+      : `${short} Doctors in ${areaRow.name}${districtSuffix}`,
     description: locale === "bn"
-      ? `${areaRow.name}, খুলনার অভিজ্ঞ ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা। চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি দেখে সহজে অ্যাপয়েন্টমেন্ট নিন।`
-      : `Experienced ${spec.name} specialists in ${areaRow.name}, Khulna. See chamber addresses, schedules and fees, then book easily.`,
+      ? `${areaRow.name}${districtSuffix} এর অভিজ্ঞ ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা। চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি দেখে সহজে অ্যাপয়েন্টমেন্ট নিন।`
+      : `Experienced ${spec.name} specialists in ${areaRow.name}${districtSuffix}. See chamber addresses, schedules and fees, then book easily.`,
     ogTitle: locale === "bn" ? `${areaRow.name}র ${short} ডাক্তার` : `${short} Doctors in ${areaRow.name}`,
-    ogSubtitle: locale === "bn" ? "খুলনা" : "Khulna",
+    ogSubtitle: district,
   });
 }
 
@@ -88,21 +98,32 @@ export default async function SpecialtyAreaPage({ params }: Props) {
   const totalPages = Math.ceil(total / sanitizedPerPage);
   const short = spec.name.split(" (")[0];
 
+  // Real district name, never a hard-coded city. See generateMetadata above.
+  const district = areaRow.district || "";
+  const districtSuffix = district ? `, ${district}` : "";
+
   const pageTitle = locale === "bn"
-    ? `${areaRow.name} এলাকার ${short} ডাক্তার`
-    : `${short} Doctors in ${areaRow.name}, Khulna`;
+    ? `${areaRow.name} এলাকার ${short} ডাক্তার${districtSuffix}`
+    : `${short} Doctors in ${areaRow.name}${districtSuffix}`;
   const intro = locale === "bn"
-    ? `খুলনার ${areaRow.name} এলাকায় ${spec.name} বিশেষজ্ঞ অভিজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা ও সময়সূচি এক জায়গায়। আপনার কাছের ডাক্তার বেছে নিয়ে সহজে অ্যাপয়েন্টমেন্ট নিন।`
-    : `A complete list of experienced ${spec.name} specialists in ${areaRow.name}, Khulna, with chamber addresses and schedules. Pick a doctor near you and book easily.`;
+    ? `${areaRow.name}${districtSuffix} এলাকায় ${spec.name} বিশেষজ্ঞ অভিজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা ও সময়সূচি এক জায়গায়। আপনার কাছের ডাক্তার বেছে নিয়ে সহজে অ্যাপয়েন্টমেন্ট নিন।`
+    : `A complete list of experienced ${spec.name} specialists in ${areaRow.name}${districtSuffix}, with chamber addresses and schedules. Pick a doctor near you and book easily.`;
 
   return (
     <div>
       <div className="[background:linear-gradient(180deg,#F0FDFA,#F8FAFC)]">
         <div className="mx-auto max-w-site px-5 pb-10 pt-[26px]">
+          {/* The district crumb is what links this combination page back up to
+              its parent listing. Without it the page's only outbound link was
+              the specialty hub, which made the combination pages a dead end in
+              both directions. */}
           <Breadcrumbs
             locale={locale}
             items={[
               { name: d.breadcrumb_home, path: "/" },
+              ...(areaRow.district_slug && district
+                ? [{ name: district, path: `/districts/${areaRow.district_slug}/doctors` }]
+                : []),
               { name: spec.name, path: `/specialties/${spec.slug}` },
               { name: areaRow.name },
             ]}
@@ -141,6 +162,25 @@ export default async function SpecialtyAreaPage({ params }: Props) {
           </div>
         )}
 
+        {/* Sideways links out of the combination page: the thana's full doctor
+            list and the district's. Both destinations are guaranteed to have
+            content, since this page only renders for a thana that has doctors. */}
+        <LinkCloud
+          title={d.hub_related_title}
+          items={[
+            ...(areaRow.district_slug
+              ? [{
+                  slug: `${areaRow.district_slug}/${areaRow.slug}`,
+                  name: d.hub_all_area_doctors_tpl.replace("{a}", areaRow.name),
+                  doctor_count: 0,
+                }]
+              : []),
+          ]}
+          href={(x) => L(`/area/doctors/${x.slug}`)}
+          locale={locale}
+          countSuffix={d.doctors_unit}
+          headingLevel="h2"
+        />
       </div>
     </div>
   );

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
-import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs } from "@/lib/data";
+import { LinkCloud } from "@/components/public/link-cloud";
+import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs, getSpecialtiesInArea } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -78,10 +79,18 @@ export default async function AreaPage({ params }: Props) {
 
   // Fetch initial data for the client component.
   // The client component will re-fetch if filters are applied.
-  const [settings, allSpecialties, faqs, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, faqs, areaSpecialties, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
     getFaqs("area", area.id, locale),
+    // The specialties that actually have doctors in THIS thana. Rendered below
+    // as links to /specialties/<specialty>/<thana> — the combination pages.
+    // Those pages are a whole section of the sitemap and, until this block
+    // existed, had no inbound link anywhere on the site: the only way to reach
+    // them was the client-side filter sidebar, which renders no anchors at all,
+    // so Googlebot could never follow one. This is the page that should point
+    // at them, because it is the closest topical parent they have.
+    getSpecialtiesInArea(area.slug, locale),
     searchDoctors({
       area: area.slug,
       page: 1,
@@ -104,12 +113,19 @@ export default async function AreaPage({ params }: Props) {
 
       <div className="[background:linear-gradient(180deg,#FFF7ED,#F8FAFC)]">
         <div className="mx-auto max-w-site px-5 pb-10 pt-[26px]">
+          {/* Both middle crumbs used to point at URLs that 308 away: `/area`
+              redirects to `/areas` (next.config.ts) and `/area?district=x`
+              redirects with it. A BreadcrumbList whose `item` URLs redirect is
+              a wasted signal, and the district crumb now goes to the district's
+              own listing, which is the page it actually names. */}
           <Breadcrumbs
             locale={locale}
             items={[
               { name: d.breadcrumb_home, path: "/" },
-              { name: d.area_label, path: "/area" },
-              { name: area.district, path: `/area?district=${area.district_slug}`},
+              { name: d.area_label, path: "/areas" },
+              ...(area.district_slug
+                ? [{ name: area.district, path: `/districts/${area.district_slug}/doctors` }]
+                : []),
               { name: area.name }
             ]}
           />
@@ -128,6 +144,35 @@ export default async function AreaPage({ params }: Props) {
           districtSlug={area.district_slug ?? district}
           areaSlug={area.slug}
         />
+
+        {/* Crawlable path down to the specialty × thana combination pages, and
+            back up to the parent district listing. */}
+        <LinkCloud
+          title={d.hub_area_specialties_title_tpl.replace("{a}", area.name)}
+          description={d.hub_area_specialties_desc}
+          items={areaSpecialties}
+          href={(s) => localeHref(locale, `/specialties/${s.slug}/${area.slug}`)}
+          locale={locale}
+          countSuffix={d.doctors_unit}
+          limit={30}
+        />
+
+        {area.district_slug && (
+          <LinkCloud
+            title={d.hub_related_title}
+            items={[
+              {
+                slug: area.district_slug,
+                name: d.hub_all_district_doctors_tpl.replace("{d}", area.district),
+                doctor_count: 0,
+              },
+            ]}
+            href={(x) => localeHref(locale, `/districts/${x.slug}/doctors`)}
+            locale={locale}
+            countSuffix={d.doctors_unit}
+            headingLevel="h3"
+          />
+        )}
       </div>
 
       {faqs.length > 0 && (

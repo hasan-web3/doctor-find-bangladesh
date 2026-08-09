@@ -49,18 +49,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const doc = await getDoctorBySlug(slug, locale);
   if (!doc) return {};
   const specialty = doc.specialties[0]?.name || (locale === "bn" ? "বিশেষজ্ঞ" : "Specialist");
-  const area = doc.chambers[0]?.area || (locale === "bn" ? "খুলনা" : "Khulna");
+  // Where this doctor actually practises: their top chamber's thana, else the
+  // district already resolved on the doctor row (chamber first, then hospital).
+  // Both used to fall through to a hard-coded "Khulna", which stated the wrong
+  // city in the title, description and OG card of every doctor elsewhere in the
+  // country. With no place on file the sentence simply omits it.
+  const area = doc.chambers[0]?.area || doc.district || "";
+  const chamberName = doc.chambers[0]?.name || "";
+  const placeBits = [chamberName, area].filter(Boolean);
+  const place = placeBits.join(", ");
+
   return buildMetadata({
     locale,
     path: `/doctors/${doc.slug}`,
-    title: doc.meta_title || `${doc.name}, ${specialty}, ${area}`,
+    title: doc.meta_title || [doc.name, specialty, area].filter(Boolean).join(", "),
     description:
       doc.meta_description ||
       (locale === "bn"
-        ? `${doc.name} (${doc.degrees || specialty})। চেম্বার: ${doc.chambers[0]?.name || "খুলনা"}, ${area}। সময়সূচি, ভিজিট ফি ও অ্যাপয়েন্টমেন্ট এখানে।`
-        : `${doc.name} (${doc.degrees || specialty}). Chamber: ${doc.chambers[0]?.name || "Khulna"}, ${area}. Schedule, visit fee and appointments here.`),
+        ? `${doc.name} (${doc.degrees || specialty})।${place ? ` চেম্বার: ${place}।` : ""} সময়সূচি, ভিজিট ফি ও অ্যাপয়েন্টমেন্ট এখানে।`
+        : `${doc.name} (${doc.degrees || specialty}).${place ? ` Chamber: ${place}.` : ""} Schedule, visit fee and appointments here.`),
     ogTitle: doc.name,
-    ogSubtitle: `${specialty} · ${area}`,
+    ogSubtitle: [specialty, area].filter(Boolean).join(" · "),
     ogImage: doc.photo_url || undefined,
     noTemplate: Boolean(doc.meta_title),
   });
