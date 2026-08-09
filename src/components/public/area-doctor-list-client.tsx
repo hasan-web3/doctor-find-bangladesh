@@ -162,6 +162,8 @@ export function AreaDoctorListClient({ districtSlug, areaSlug, allSpecialties, l
             }}
             placeholder={d.filter_by_specialty || "Filter by specialty..."}
             emptyLabel={d.no_results || "No results"}
+            clearable
+            clearLabel={locale === "bn" ? "বিভাগ নির্বাচন করুন" : "Select specialty"}
           />
         </div>
         <div>

@@ -22,12 +22,21 @@ export function SearchableFilter({
   onChange,
   placeholder = "Select...",
   emptyLabel = "No results",
+  clearable = false,
+  clearLabel,
 }: {
   options: FilterOption[];
   value: (string|number)[];
   onChange: (ids: (string|number)[]) => void;
   placeholder?: string;
   emptyLabel?: string;
+  /**
+   * Adds a first row carrying the placeholder text. Picking it drops every
+   * selection, so this filter stops narrowing the list.
+   */
+  clearable?: boolean;
+  /** Text of that row. Defaults to the placeholder, which callers localize. */
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -86,6 +95,17 @@ export function SearchableFilter({
                 className="w-full rounded-md border border-line bg-page px-2.5 py-1.5 text-left text-sm outline-none focus:border-brand-500 focus:bg-white"
               />
             </div>
+            {clearable && (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className={`flex w-full items-center border-b border-line px-3 py-2 text-left text-sm hover:bg-brand-50 ${
+                  value.length === 0 ? "bg-brand-50 font-semibold text-brand-700" : "text-ink-mute"
+                }`}
+              >
+                <span className="flex-1 truncate">{clearLabel ?? placeholder}</span>
+              </button>
+            )}
             <div className="max-h-[260px] overflow-y-auto py-1">
               {filtered.length > 0 ? (
                 filtered.map((o) => {

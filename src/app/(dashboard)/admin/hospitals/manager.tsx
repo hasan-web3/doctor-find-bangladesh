@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteHospital } from "@/actions/admin-content";
 import { Toast, StatusBadge, ConfirmButton } from "@/components/admin/ui";
@@ -114,9 +115,34 @@ export function HospitalsManager({
               return (
                 <tr key={h.id} className={cn(isNew && NEW_ROW_CLASS)}>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-sm font-semibold text-ink">
-                    <span className="flex items-center gap-2">{name.bn}{isNew && <NewFlag />}</span>
+                    <span className="flex items-center gap-2">
+                      {/* Opens the public profile in a new tab, so the admin
+                          keeps their place in the list. */}
+                      <Link
+                        prefetch={false}
+                        href={`/hospitals/${h.slug}`}
+                        target="_blank"
+                        className="text-left hover:text-brand-600"
+                      >
+                        {name.bn}
+                      </Link>
+                      {isNew && <NewFlag />}
+                    </span>
                   </td>
-                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-mute">{name.en || "..."}</td>
+                  <td className="border-b border-[#F1F5F9] px-3.5 py-3 font-latin text-[13px] text-ink-mute">
+                    {name.en ? (
+                      <Link
+                        prefetch={false}
+                        href={`/hospitals/${h.slug}`}
+                        target="_blank"
+                        className="hover:text-brand-600"
+                      >
+                        {name.en}
+                      </Link>
+                    ) : (
+                      "..."
+                    )}
+                  </td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{h.area_bn || "..."}</td>
                   <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                     <StatusBadge tone={h.active ? "green" : "gray"}>{h.active ? "সক্রিয়" : "নিষ্ক্রিয়"}</StatusBadge>
@@ -143,6 +169,14 @@ export function HospitalsManager({
                       >
                         এডিট
                       </button>
+                      <Link
+                        prefetch={false}
+                        href={`/hospitals/${h.slug}`}
+                        target="_blank"
+                        className="rounded-lg border border-line bg-white px-[11px] py-1.5 text-[12.5px] text-ink-mute"
+                      >
+                        দেখুন
+                      </Link>
                       <ConfirmButton
                         onConfirm={() =>
                           startTransition(async () => {

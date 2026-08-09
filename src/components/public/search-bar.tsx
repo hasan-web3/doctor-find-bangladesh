@@ -233,6 +233,7 @@ export function SearchBar({
               onChange={(id) => { setDistrictId(id); setThanaId(null); }}
               placeholder={d.select_district ?? (locale === "bn" ? "জেলা নির্বাচন করুন" : "Select district")}
               emptyLabel={locale === "bn" ? "কোনো জেলা নেই" : "No districts"}
+              clearable
             />
           </div>
           {districtSlug && (
@@ -243,6 +244,7 @@ export function SearchBar({
                 onChange={setThanaId}
                 placeholder={d.select_area}
                 emptyLabel={locale === "bn" ? "কোনো শহর / গ্রাম নেই" : "No towns / villages"}
+                clearable
               />
             </div>
           )}

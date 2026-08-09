@@ -172,6 +172,8 @@ export function HospitalDoctorList({ departments, settings, locale, d, initialDo
                 }}
                 placeholder={d.filter_by_department || "Filter by department..."}
                 emptyLabel={d.no_results || "No results"}
+                clearable
+                clearLabel={locale === "bn" ? "বিভাগ নির্বাচন করুন" : "Select department"}
               />
             </div>
           )}

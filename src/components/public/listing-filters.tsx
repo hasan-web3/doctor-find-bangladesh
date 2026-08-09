@@ -22,7 +22,7 @@ type FilterDict = Pick<Dict,
   "filters" | "clear_all" | "filter_specialty" | "filter_area" | "filter_gender" |
   "male" | "female" | "filter_fee" | "max" | "apply_filters" |
   "search_doctor_placeholder" | "sort_fee_asc" | "sort_fee_desc" | "sort_experience" |
-  "clear_search"> & {
+  "clear_search" | "select_area"> & {
   filter_hospital?: string;
   select_district?: string;
 };
@@ -141,8 +141,9 @@ export function ListingFilters({
           options={specOptions}
           value={currentSpecs.map((s) => specIdx.slugToId.get(s)).filter((n): n is number => !!n)}
           onChange={(ids) => setParams([], { specialty: ids.map((id) => specIdx.idToSlug.get(id)!).filter(Boolean) })}
-          placeholder={locale === "bn" ? "বিভাগ নির্বাচন করুন" : "Pick specialties"}
+          placeholder={locale === "bn" ? "বিভাগ নির্বাচন করুন" : "Select specialty"}
           emptyLabel={locale === "bn" ? "কোনো বিভাগ নেই" : "No specialties"}
+          clearable
         />
       </div>
 
@@ -162,6 +163,7 @@ export function ListingFilters({
               }}
               placeholder={d.select_district ?? (locale === "bn" ? "জেলা নির্বাচন করুন" : "Select district")}
               emptyLabel={locale === "bn" ? "কোনো জেলা নেই" : "No districts"}
+              clearable
             />
           </div>
         </>
@@ -176,8 +178,9 @@ export function ListingFilters({
               options={thanaOptions}
               value={currentThana ? thanaIdx.slugToId.get(currentThana) ?? null : null}
               onChange={(id) => setParams([["area", id ? thanaIdx.idToSlug.get(id) ?? null : null]])}
-              placeholder={d.filter_area}
+              placeholder={d.select_area}
               emptyLabel={locale === "bn" ? "কোনো শহর / গ্রাম নেই" : "No towns / villages"}
+              clearable
             />
           </div>
         </>
@@ -194,8 +197,9 @@ export function ListingFilters({
               options={hospitalOptions}
               value={currentHospital ? hospitalIdx.slugToId.get(currentHospital) ?? null : null}
               onChange={(id) => setParams([["hospital", id ? hospitalIdx.idToSlug.get(id) ?? null : null]])}
-              placeholder={locale === "bn" ? "হাসপাতাল নির্বাচন করুন" : "Pick a hospital"}
+              placeholder={locale === "bn" ? "হাসপাতাল নির্বাচন করুন" : "Select hospital"}
               emptyLabel={locale === "bn" ? "কোনো হাসপাতাল নেই" : "No hospitals"}
+              clearable
             />
           </div>
         </>

@@ -24,6 +24,8 @@ export function SearchableSelect({
   disabled = false,
   searchable = true,
   ariaLabel,
+  clearable = false,
+  clearLabel,
 }: {
   options: Option[];
   value: number | null;
@@ -35,6 +37,15 @@ export function SearchableSelect({
   disabled?: boolean;
   searchable?: boolean;
   ariaLabel?: string;
+  /**
+   * Filters (as opposed to form fields) need a way back to "nothing selected".
+   * With this on, the list gets a first row carrying the placeholder text —
+   * picking it clears the value, i.e. the filter stops applying. Off by default
+   * so required form fields cannot be emptied from the dropdown.
+   */
+  clearable?: boolean;
+  /** Text of that row. Defaults to the placeholder, which callers localize. */
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -90,6 +101,21 @@ export function SearchableSelect({
                 className="w-full rounded-md border border-line bg-page px-2.5 py-1.5 text-left text-sm outline-none focus:border-brand-500 focus:bg-white"
               />
             </div>
+          )}
+          {clearable && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null);
+                setOpen(false);
+                setQ("");
+              }}
+              className={`flex w-full items-center border-b border-line px-3 py-2 text-left text-sm hover:bg-brand-50 ${
+                value == null ? "bg-brand-50 font-semibold text-brand-700" : "text-ink-mute"
+              }`}
+            >
+              <span className="flex-1 truncate">{clearLabel ?? placeholder}</span>
+            </button>
           )}
           <div className="max-h-[260px] overflow-y-auto py-1">
             {filtered.length > 0 ? (
@@ -150,6 +176,8 @@ export function SearchableMultiSelect({
   onAddClick,
   emptyLabel = "কোনো ফলাফল নেই",
   primaryHint,
+  clearable = false,
+  clearLabel,
 }: {
   options: Option[];
   value: number[];
@@ -159,6 +187,9 @@ export function SearchableMultiSelect({
   onAddClick?: () => void;
   emptyLabel?: string;
   primaryHint?: string;
+  /** See SearchableSelect — first row drops every selection, so nothing filters. */
+  clearable?: boolean;
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -241,6 +272,17 @@ export function SearchableMultiSelect({
                 className="w-full rounded-md border border-line bg-page px-2.5 py-1.5 text-left text-sm outline-none focus:border-brand-500 focus:bg-white"
               />
             </div>
+            {clearable && (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className={`flex w-full items-center border-b border-line px-3 py-2 text-left text-sm hover:bg-brand-50 ${
+                  value.length === 0 ? "bg-brand-50 font-semibold text-brand-700" : "text-ink-mute"
+                }`}
+              >
+                <span className="flex-1 truncate">{clearLabel ?? placeholder}</span>
+              </button>
+            )}
             <div className="max-h-[260px] overflow-y-auto py-1">
               {filtered.length > 0 ? (
                 filtered.map((o) => {
