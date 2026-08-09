@@ -9,10 +9,10 @@ import { ShownDistrictProvider } from "@/components/public/shown-district-contex
 import { GeoLinkClouds } from "@/components/public/geo-link-clouds";
 import { LinkCloud } from "@/components/public/link-cloud";
 import {
-  searchDoctors, getSpecialties, getAreas, searchHospitals,
+  searchDoctors, getSpecialties, getHospitalOptions,
   getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict, geoSearchPrefs,
   getDistrictHubLinks, getDistrictLinks, getPopularCombos, getRecentlyUpdatedDoctors,
-  type DoctorSearchParams, type Area,
+  type DoctorSearchParams,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
@@ -76,12 +76,12 @@ export default async function DoctorsPage({ params }: Props) {
 
   const sanitizedPerPage = 12;
 
-  const [settings, specialties, areas, hospitalData, geo, searchDistricts, searchThanas] = await Promise.all([
-    getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, searchHospitals({}, locale), STATIC_GEO,
+  // No `getAreas` here: the thana filter is fed by getThanasForSearch() below.
+  // This page used to also fetch the full 619-row area list and never read it.
+  const [settings, specialties, hospitals, geo, searchDistricts, searchThanas] = await Promise.all([
+    getSettings(), getSpecialties(locale), getHospitalOptions(locale), STATIC_GEO,
     getDistrictsForSearch(), getThanasForSearch(),
   ]);
-
-  const hospitals = hospitalData.rows;
 
   const display = await resolveDisplayDistrict(geo, locale);
   const geoDistrictName = display?.name ?? null;

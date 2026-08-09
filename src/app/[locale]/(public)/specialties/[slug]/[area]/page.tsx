@@ -4,7 +4,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorCard } from "@/components/public/doctor-card";
 import { LinkCloud } from "@/components/public/link-cloud";
-import { getSpecialtyBySlug, getAreaBySlug, getAreas, searchDoctors, countDoctorsFor, type Area } from "@/lib/data";
+import { getSpecialtyBySlug, getAreaBySlug, searchDoctors, countDoctorsFor } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { Pagination } from "@/components/public/pagination";

@@ -30,10 +30,10 @@ const AreaMap = dynamic(() =>
   import("@/components/public/area-map").then((m) => m.AreaMap),
 );
 import {
-  getSpecialties, getAreas, searchHospitals,
+  getSpecialties, getAreasLight, getHospitalOptions,
   getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
   getDistrictsForSearch, getThanasForSearch, getBusiestAreaByDistrict, resolveDisplayDistrict,
-  getNearbyAreas, type Area, type Specialty,
+  getNearbyAreas, type Specialty,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO, haversineKm } from "@/lib/geo";
@@ -93,17 +93,16 @@ export default async function HomePage({ params }: Props) {
   const L = (path: string) => localeHref(locale, path);
 
   const [
-    settings, specialties, areas, slides, faqs, testimonials, hospitalData, blogResult,
+    settings, specialties, areas, slides, faqs, testimonials, hospitals, blogResult,
     geo, mapsConfig, searchDistricts, searchThanas, busiestAreas,
   ] = await Promise.all([
-    getSettings(), getSpecialties(locale), getAreas(locale) as Promise<Area[]>, getHeroSlides(locale),
-    getFaqs("home", null, locale), getTestimonials(locale), searchHospitals({}, locale),
+    getSettings(), getSpecialties(locale), getAreasLight(locale), getHeroSlides(locale),
+    getFaqs("home", null, locale), getTestimonials(locale), getHospitalOptions(locale),
     getBlogPosts(locale, { perPage: 3 }), STATIC_GEO, getEnabledConfig("google_maps"),
     getDistrictsForSearch(), getThanasForSearch(), getBusiestAreaByDistrict(),
   ]);
 
   const blog = blogResult.rows;
-  const hospitals = hospitalData.rows;
 
   // For the homepage, we leverage getHomepageDoctors's precise ranking:
   // 1. Featured doctors within 100km of the user

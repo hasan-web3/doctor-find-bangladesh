@@ -9,11 +9,11 @@ import { FaqBlock } from "@/components/public/faq-block";
 import { JsonLd } from "@/components/json-ld";
 import { ldFaq, ldItemList } from "@/lib/seo-utils";
 import {
-  searchDoctors, getSpecialties, getAreas, searchHospitals,
+  searchDoctors, getSpecialties, getHospitalOptions,
   getDistrictsForSearch, getThanasForSearch,
   getDistrictBySlug, countDoctorsFor,
   getAllDistrictSlugs, getDistrictHubLinks, getFaqs,
-  type DoctorSearchParams, type Area,
+  type DoctorSearchParams,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
@@ -90,20 +90,19 @@ export default async function DistrictDoctorsPage({ params }: Props) {
 
   const sanitizedPerPage = 12;
 
-  const [settings, district, specialties, allThanas, hospitalData, geo, allDistricts, allSearchThanas] = await Promise.all([
+  // No `getAreas` here: the thana filter is fed by getThanasForSearch() below.
+  // This page used to also fetch the full 619-row area list and never read it.
+  const [settings, district, specialties, hospitals, geo, allDistricts, allSearchThanas] = await Promise.all([
     getSettings(),
     getDistrictBySlug(slug, locale),
     getSpecialties(locale),
-    getAreas(locale) as Promise<Area[]>,
-    searchHospitals({}, locale),
+    getHospitalOptions(locale),
     STATIC_GEO,
     getDistrictsForSearch(),
     getThanasForSearch(),
   ]);
 
   if (!district) notFound();
-
-  const hospitals = hospitalData.rows;
 
   // Canonical, unfiltered first page. Filters/sort/pagination are applied
   // client-side against the API, so this render is the same for everyone.

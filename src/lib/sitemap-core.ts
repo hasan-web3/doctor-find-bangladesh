@@ -3,7 +3,7 @@ import { asc, desc, eq, sql } from "drizzle-orm";
 import { db, blogPosts, doctors as doctorsT, redirects } from "@/db";
 import { siteUrl } from "./seo-utils";
 import { localeHref } from "./i18n";
-import { getSpecialties, getAreas, type Area } from "./data";
+import { getAllSpecialtySlugs, getAllActiveAreaSlugs } from "./data";
 
 // Google accepts up to 50 000 URLs OR 50 MB per sub-sitemap — whichever hits
 // first. Each <url> block with the hreflang cluster is ~600 bytes; chunking
@@ -346,18 +346,23 @@ function neutralPath(url: string): string {
   return pathname.startsWith("/en/") ? pathname.slice(3) : pathname;
 }
 
-// Slugs the PAGES can actually resolve. getSpecialties/getAreas are
-// unstable_cache-backed; the sitemap queries the DB directly. When rows are
-// inserted outside a server action — a seed script, a manual SQL insert — no
-// revalidateTag() fires, so the cache keeps serving the old list while the DB
-// has more. The sitemap then advertises a slug whose page renders a soft 404.
-// Intersecting with the cached readers keeps the two in lockstep: a new row
-// enters the sitemap on the same revalidation that makes its page work.
+// Slugs the PAGES can actually resolve. These readers are unstable_cache-backed;
+// the sitemap queries the DB directly. When rows are inserted outside a server
+// action — a seed script, a manual SQL insert — no revalidateTag() fires, so the
+// cache keeps serving the old list while the DB has more. The sitemap then
+// advertises a slug whose page renders a soft 404. Intersecting with the cached
+// readers keeps the two in lockstep: a new row enters the sitemap on the same
+// revalidation that makes its page work.
+//
+// Slug-ONLY readers, deliberately. This used to call getSpecialties() and
+// getAreas(), which return every SEO field for all 619 areas — about 1 MB pulled
+// across the wire to build a Set of strings, and pulled once per sitemap section.
+// Same cache tags as before, so the lockstep guarantee above is unchanged.
 async function resolvableSlugs(): Promise<{ specialties: Set<string>; areas: Set<string> }> {
-  const [specs, areas] = await Promise.all([getSpecialties("bn"), getAreas("bn") as Promise<Area[]>]);
+  const [specs, areas] = await Promise.all([getAllSpecialtySlugs(), getAllActiveAreaSlugs()]);
   return {
-    specialties: new Set(specs.map((s) => s.slug)),
-    areas: new Set(areas.map((a) => a.slug)),
+    specialties: new Set(specs),
+    areas: new Set(areas),
   };
 }
 

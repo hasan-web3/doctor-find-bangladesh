@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import { and, asc, desc, eq, exists, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { haversineKm } from "./geo";
 import { db } from "@/db";
 import {
@@ -44,6 +44,19 @@ export type Area = {
   lat: number | null; lng: number | null; intro: string;
   meta_title: string; meta_description: string; active: boolean; sort: number;
   doctor_count: number;
+};
+
+// The subset of `Area` that list views, filter dropdowns and link chips
+// actually render. Deliberately excludes `intro` / `meta_title` /
+// `meta_description`: those three JSONB columns are 89% of the `areas` table's
+// byte weight (measured: 835 KB of 997 KB across 619 rows) and are rendered
+// ONLY on the thana detail page, which reads a single row via getAreaBySlugs().
+// Shipping them with every list read was the second-largest source of Supabase
+// egress in the app.
+export type AreaLight = {
+  id: number; slug: string; name: string;
+  district_id: number | null; district: string; district_slug: string | null;
+  lat: number | null; lng: number | null;
 };
 
 export type District = {
@@ -310,14 +323,20 @@ export const getSpecialties = unstable_cache(
   { revalidate: 86400, tags: ["specialties"] }
 );
 
-export const getAreas = unstable_cache(
-  async (locale: Locale, raw = false) => {
-    const doctorCount = sql<number>`(
-      SELECT COUNT(DISTINCT c.doctor_id)::int FROM chambers c
-      JOIN doctors d ON d.id = c.doctor_id AND d.active
-      WHERE c.area_id = "areas"."id" AND c.visible
-    )`.as("doctor_count");
-
+// The thana list every listing page, filter dropdown and link chip reads.
+//
+// This replaced a reader that also selected `intro`, `meta_title` and
+// `meta_description` for all 619 rows — 1.6 KB per row where ~130 B is used, so
+// roughly 1 MB per call to render a set of name+slug chips. Those three columns
+// now travel only on the single-row detail reads below.
+//
+// NOT tagged "doctors" any more either, because it no longer carries a
+// doctor_count: nothing here changes when a doctor is edited, and the old tag
+// meant every doctor mutation threw away a megabyte-sized entry that several
+// pages then re-fetched. Ordering is unchanged (`sort`, then `id`) so callers
+// that slice the head of this list see exactly what they saw before.
+export const getAreasLight = unstable_cache(
+  async (locale: Locale): Promise<AreaLight[]> => {
     const rows = await db
       .select({
         id: areasT.id,
@@ -328,57 +347,162 @@ export const getAreas = unstable_cache(
         districtSlug: districts.slug,
         lat: areasT.lat,
         lng: areasT.lng,
-        intro: areasT.intro,
-        metaTitle: areasT.metaTitle,
-        metaDescription: areasT.metaDescription,
-        active: areasT.active,
-        sort: areasT.sort,
-        doctorCount,
       })
       .from(areasT)
       .leftJoin(districts, eq(areasT.districtId, districts.id))
       .where(eq(areasT.active, true))
       .orderBy(asc(areasT.sort), asc(areasT.id));
 
-    if (raw) return rows.map(a => ({ ...a, name_ml: a.name, district_ml: a.district }));
-
-    return rows.map((a): Area => ({
+    return rows.map((a): AreaLight => ({
       id: a.id, slug: a.slug,
-      name: ml(a.name, locale), district_id: a.districtId, district: ml(a.district, locale),
+      name: ml(a.name, locale),
+      district_id: a.districtId, district: ml(a.district, locale),
       district_slug: a.districtSlug,
       lat: a.lat, lng: a.lng,
-      intro: ml(a.intro, locale), meta_title: ml(a.metaTitle, locale),
-      meta_description: ml(a.metaDescription, locale),
-      active: a.active, sort: a.sort,
-      doctor_count: a.doctorCount,
     }));
   },
-  ["areas-list"],
-  { tags: ["areas", "doctors"] }
+  ["areas-light-v1"],
+  { revalidate: 86400, tags: ["areas", "districts"] }
+);
+
+// Active thana slugs, for the sitemap's "can this URL actually resolve?" check.
+// Same tag as the readers the pages use, so the two stay in lockstep — but ~12 KB
+// instead of the 1 MB the full list used to cost for a Set of strings.
+export const getAllActiveAreaSlugs = unstable_cache(
+  async () =>
+    (await db.select({ slug: areasT.slug }).from(areasT).where(eq(areasT.active, true)))
+      .map((r) => r.slug),
+  ["all-active-area-slugs-v1"],
+  { tags: ["areas"] }
 );
 
 export const getSpecialtyBySlug = async (slug: string, locale: Locale) =>
   (await getSpecialties(locale)).find((s) => s.slug === slug) ?? null;
 
-export const getAreaBySlug = async (slug: string, locale: Locale) =>
-  (await getAreas(locale) as Area[]).find((a) => a.slug === slug) ?? null;
+// ---------- single-row detail reads ----------
+// These used to load all 619 areas and `.find()` the one wanted. `areas.slug`
+// carries a UNIQUE constraint (src/db/schema.ts), so the slug lookup resolves to
+// at most one row and the filter belongs in SQL. Full column set here — the
+// detail page renders `intro` and both meta fields — but for ONE row that is
+// ~1.6 KB rather than ~1 MB.
+const areaDoctorCountSql = sql<number>`(
+  SELECT COUNT(DISTINCT c.doctor_id)::int FROM chambers c
+  JOIN doctors d ON d.id = c.doctor_id AND d.active
+  WHERE c.area_id = "areas"."id" AND c.visible
+)`.as("doctor_count");
 
-export const getAreaBySlugs = async (districtSlug: string, areaSlug: string, locale: Locale) =>
-  (await getAreas(locale) as Area[]).find((a) => a.slug === areaSlug && a.district_slug === districtSlug) ?? null;
+async function selectAreaRow(where: SQL | undefined, locale: Locale): Promise<Area | null> {
+  const [a] = await db
+    .select({
+      id: areasT.id,
+      slug: areasT.slug,
+      name: areasT.name,
+      districtId: areasT.districtId,
+      district: areasT.district,
+      districtSlug: districts.slug,
+      lat: areasT.lat,
+      lng: areasT.lng,
+      intro: areasT.intro,
+      metaTitle: areasT.metaTitle,
+      metaDescription: areasT.metaDescription,
+      active: areasT.active,
+      sort: areasT.sort,
+      doctorCount: areaDoctorCountSql,
+    })
+    .from(areasT)
+    .leftJoin(districts, eq(areasT.districtId, districts.id))
+    .where(where)
+    .limit(1);
 
-export const getDistrictBySlug = async (slug: string, locale: Locale) => {
-  const allDistricts = await db.select().from(districts).where(eq(districts.active, true));
-  const district = allDistricts.find(d => d.slug === slug);
-  if (!district) return null;
-
+  if (!a) return null;
   return {
-    ...district,
-    name: ml(district.name, locale),
-    intro: ml(district.intro, locale),
-    meta_title: ml(district.metaTitle, locale),
-    meta_description: ml(district.metaDescription, locale),
+    id: a.id, slug: a.slug,
+    name: ml(a.name, locale), district_id: a.districtId, district: ml(a.district, locale),
+    district_slug: a.districtSlug,
+    lat: a.lat, lng: a.lng,
+    intro: ml(a.intro, locale), meta_title: ml(a.metaTitle, locale),
+    meta_description: ml(a.metaDescription, locale),
+    active: a.active, sort: a.sort,
+    doctor_count: a.doctorCount,
   };
-};
+}
+
+export const getAreaBySlug = unstable_cache(
+  async (slug: string, locale: Locale) =>
+    selectAreaRow(and(eq(areasT.slug, slug), eq(areasT.active, true)), locale),
+  ["area-by-slug-v1"],
+  // Safe to tag "doctors" here (unlike the list readers): these detail readers
+  // are reached only from the thana pages, never from the shared layout, so the
+  // tag cannot cascade a doctor edit across the whole site. Matches the
+  // freshness the previous getAreas-backed lookup had.
+  { revalidate: 86400, tags: ["areas", "districts", "doctors"] }
+);
+
+export const getAreaBySlugs = unstable_cache(
+  async (districtSlug: string, areaSlug: string, locale: Locale) =>
+    selectAreaRow(
+      and(
+        eq(areasT.slug, areaSlug),
+        eq(areasT.active, true),
+        eq(districts.slug, districtSlug),
+      ),
+      locale,
+    ),
+  ["area-by-slugs-v1"],
+  { revalidate: 86400, tags: ["areas", "districts", "doctors"] }
+);
+
+// One district, by slug.
+//
+// This was the single largest egress consumer in the application: a bare
+// `db.select()` (which Drizzle expands to ALL 13 columns, including the three
+// fat SEO JSONB fields) over ALL 64 active districts, filtered in JS with
+// `.find()`, uncached, and called twice per render — once in generateMetadata
+// and once in the page body. Measured at ~200 KB transferred per page render to
+// deliver ~1.6 KB of useful data.
+//
+// `districts.slug` is UNIQUE, so the lookup is a one-row index hit. `cache()`
+// wraps the cached reader so the metadata call and the body call share one
+// result within a single render.
+export const getDistrictBySlug = cache(
+  unstable_cache(
+    async (slug: string, locale: Locale) => {
+      const [d] = await db
+        .select({
+          id: districts.id,
+          slug: districts.slug,
+          name: districts.name,
+          lat: districts.lat,
+          lng: districts.lng,
+          intro: districts.intro,
+          metaTitle: districts.metaTitle,
+          metaDescription: districts.metaDescription,
+          // Dropped vs the old `select()`: active (implied by the WHERE),
+          // sort, priority_enabled, created_at, updated_at — none are read by
+          // any caller.
+        })
+        .from(districts)
+        .where(and(eq(districts.slug, slug), eq(districts.active, true)))
+        .limit(1);
+
+      if (!d) return null;
+      return {
+        id: d.id,
+        slug: d.slug,
+        lat: d.lat,
+        lng: d.lng,
+        name: ml(d.name, locale),
+        intro: ml(d.intro, locale),
+        meta_title: ml(d.metaTitle, locale),
+        meta_description: ml(d.metaDescription, locale),
+      };
+    },
+    ["district-by-slug-v1"],
+    // Not layout-reachable, so "districts" cannot cascade site-wide.
+    // revalidateDistrict() purges this tag on every admin edit.
+    { revalidate: 86400, tags: ["districts"] }
+  )
+);
 
 // Lightweight district + thana list for the hero search bar. Bangla + English
 // names both sent so the client-side SearchableSelect matches either.
@@ -555,7 +679,7 @@ export const getDistrictsForGeo = unstable_cache(
 //
 // Counts a doctor as belonging to a thana in the same two ways the public
 // area listing does — a visible chamber here, OR their linked hospital sits
-// here. `getAreas`/`getAreasForGeo` count chambers only, which reports zero
+// here. `getAreasLight`/`getAreasForGeo` count chambers only, which reports zero
 // everywhere on datasets where doctors are attached through hospitals, so
 // neither can be reused for this.
 export const getBusiestAreaByDistrict = unstable_cache(
@@ -602,6 +726,72 @@ export const getBusiestAreaByDistrict = unstable_cache(
 );
 
 // ---------- hospitals ----------
+
+// Everything the hospital FILTER dropdowns and the homepage hospital rail
+// render — and nothing else.
+//
+// Three public pages (homepage, /doctors, /districts/<slug>/doctors) used to
+// call `searchHospitals({}, locale)` for this. That reader selects
+// `description`, `departments`, `gallery`, `address`, `map_url` and both meta
+// fields: 7,375 bytes per hospital row (measured), against the ~200 B these
+// surfaces actually use. It also ran an unused `count(*)` on every call.
+//
+// searchHospitals() itself is unchanged and still backs /hospitals and
+// /api/hospitals, which genuinely render the heavy fields.
+export type HospitalOption = {
+  id: number; slug: string; name: string;
+  area: string; area_slug: string | null; district_slug: string | null;
+  image_url: string | null; lat: number | null; lng: number | null;
+  doctor_count: number;
+};
+
+export const getHospitalOptions = unstable_cache(
+  async (locale: Locale): Promise<HospitalOption[]> => {
+    const doctorCount = sql<number>`(
+      SELECT COUNT(*)::int FROM doctors d
+      WHERE d.hospital_id = "hospitals"."id" AND d.active
+    )`.as("doctor_count");
+
+    const rows = await db
+      .select({
+        id: hospitalsT.id,
+        slug: hospitalsT.slug,
+        name: hospitalsT.name,
+        imageUrl: hospitalsT.imageUrl,
+        lat: hospitalsT.lat,
+        lng: hospitalsT.lng,
+        areaMl: areasT.name,
+        areaSlug: areasT.slug,
+        districtSlug: districts.slug,
+        doctorCount,
+      })
+      .from(hospitalsT)
+      .leftJoin(areasT, eq(areasT.id, hospitalsT.areaId))
+      .leftJoin(districts, eq(districts.id, areasT.districtId))
+      .where(eq(hospitalsT.active, true))
+      // Same order searchHospitals uses with no geo, so the homepage rail and
+      // the filter lists keep the order they had.
+      .orderBy(asc(hospitalsT.sort), asc(hospitalsT.id));
+
+    return rows.map((h): HospitalOption => ({
+      id: h.id,
+      slug: h.slug,
+      name: ml(h.name, locale),
+      area: ml(h.areaMl, locale),
+      area_slug: h.areaSlug ?? null,
+      district_slug: h.districtSlug ?? null,
+      image_url: h.imageUrl,
+      lat: h.lat,
+      lng: h.lng,
+      doctor_count: h.doctorCount,
+    }));
+  },
+  ["hospital-options-v1"],
+  // Not layout-reachable, so "doctors" is safe here and keeps doctor_count
+  // accurate; revalidateHospital() purges both tags.
+  { revalidate: 86400, tags: ["hospitals", "doctors"] }
+);
+
 export async function searchHospitals(
   p: { page?: number; perPage?: number },
   locale: Locale,
