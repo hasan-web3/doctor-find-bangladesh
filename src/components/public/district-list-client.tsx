@@ -147,9 +147,21 @@ export function DistrictListClient({ locale, initialDistricts, initialTotal }: P
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-heading text-base font-semibold leading-snug text-ink">{district.name}</div>
-                  <div className="mt-1 text-sm text-ink-mute">
-                    {district.doctor_count > 0 ? `${num(district.doctor_count, locale)} ${d.doctors_unit}` : ""}
-                    {district.thana_count > 0 ? ` · ${num(district.thana_count, locale)} ${d.nav_areas}` : ""}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-ink-mute">
+                    {district.doctor_count > 0 ? (
+                      <span>{num(district.doctor_count, locale)} {d.doctors_unit}</span>
+                    ) : (
+                      // Say so plainly. This slot used to render an empty
+                      // string, so a district with no doctors was visually
+                      // identical to one whose count had not loaded, and the
+                      // click led to an empty page with no warning.
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-ink-faint">
+                        {d.coming_soon}
+                      </span>
+                    )}
+                    {district.thana_count > 0 ? (
+                      <span>· {num(district.thana_count, locale)} {d.nav_areas}</span>
+                    ) : null}
                   </div>
                 </div>
               </Link>

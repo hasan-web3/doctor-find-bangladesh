@@ -272,17 +272,32 @@ async function fetchCoveredSpecialties(): Promise<SpecialtyRow[]> {
 
 type HospitalRow = Covered & { hospital_slug: string };
 
-// hospital -> thana -> district, AND hospital -> doctor. Priority 2 after
-// doctors, so this chain is enforced just as strictly.
+// ---------------------------------------------------------------------------
+// HOSPITALS ARE THE ONE DELIBERATE EXCEPTION TO THE COVERAGE CHAIN.
+//
+// Every other section refuses to advertise a URL whose page has nothing to
+// show, because for a thana page or a specialty hub the doctor list IS the
+// page — take the doctors away and nothing is left.
+//
+// A hospital page is not like that. It carries its own name, address, phone,
+// departments, description, gallery, map and FAQ, and every one of those is
+// useful to somebody looking that hospital up, whether or not we have listed a
+// doctor there yet. That is why the page is deliberately NOT `noindex` — and a
+// page we intend to have indexed has to be in the sitemap. Advertising it from
+// /hospitals while withholding it here was the inconsistency.
+//
+// The JOIN is therefore LEFT, and the thana/district JOINs are gone: doctor
+// count still sets PRIORITY through coveragePriority() below, it just no longer
+// decides whether the URL exists. A hospital with no thana recorded is still a
+// real page.
+// ---------------------------------------------------------------------------
 async function fetchCoveredHospitals(): Promise<HospitalRow[]> {
   const res = await db.execute<HospitalRow>(sql`
     SELECT h.slug AS hospital_slug,
            COUNT(DISTINCT d.id)::int AS doctor_count,
            GREATEST(MAX(d.updated_at), MAX(h.updated_at)) AS updated_at
       FROM hospitals h
-      JOIN doctors d ON d.hospital_id = h.id AND d.active
-      JOIN areas a ON a.id = h.area_id AND a.active
-      JOIN districts dist ON dist.id = a.district_id AND dist.active
+      LEFT JOIN doctors d ON d.hospital_id = h.id AND d.active
      WHERE h.active
      GROUP BY h.slug
      ORDER BY doctor_count DESC, h.slug

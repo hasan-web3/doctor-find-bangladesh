@@ -281,6 +281,10 @@ const bn = {
   hub_area_specialties_desc: "এই এলাকায় যে বিশেষজ্ঞ বিভাগগুলোর ডাক্তার আছেন। সরাসরি আপনার প্রয়োজনের বিভাগে যান।",
   hub_specialty_areas_title_tpl: "এলাকা অনুযায়ী {s} ডাক্তার",
   hub_specialty_areas_desc: "যে এলাকাগুলোতে এই বিভাগের ডাক্তার আছেন। আপনার কাছের এলাকা বেছে নিন।",
+  // Shown on a listing card whose entity has no doctors yet. The card used to
+  // render nothing at all in that slot, which reads as a listing that failed to
+  // load rather than a place we do not cover yet.
+  coming_soon: "শীঘ্রই আসছে",
   hub_popular_searches_title: "জনপ্রিয় খোঁজ",
   hub_popular_searches_desc: "যে বিভাগ ও এলাকার সমন্বয়গুলো সবচেয়ে বেশি খোঁজা হয়। এক ক্লিকেই সেই তালিকায় যান।",
   hub_recent_doctors_title: "সদ্য হালনাগাদ হওয়া ডাক্তার",
@@ -618,6 +622,7 @@ const en: typeof bn = {
   hub_area_specialties_desc: "The specialties that currently have doctors in this area. Go straight to the one you need.",
   hub_specialty_areas_title_tpl: "{s} Doctors by Area",
   hub_specialty_areas_desc: "Areas that currently have doctors in this specialty. Pick the one nearest to you.",
+  coming_soon: "Coming soon",
   hub_popular_searches_title: "Popular Searches",
   hub_popular_searches_desc: "The specialty and area combinations people look for most. Jump straight to the list.",
   hub_recent_doctors_title: "Recently Updated Doctors",

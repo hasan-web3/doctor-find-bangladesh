@@ -151,10 +151,14 @@ export async function Footer({ locale }: { locale: Locale }) {
         <div>
           <div className="mb-3.5 font-heading text-[15px] font-bold text-white">{d.footer_popular_specs}</div>
           <div className="flex flex-col gap-[9px]">
-            {[...specialties]
-              // Specialties that actually have doctors listed first — no point
-              // pointing the footer at empty landing pages.
-              .sort((a, b) => Number(b.doctor_count > 0) - Number(a.doctor_count > 0))
+            {specialties
+              // Only specialties that actually have doctors. Sorting them first
+              // and then taking six was not enough: with fewer than six
+              // non-empty specialties the slice padded the gap with empty ones,
+              // so the footer of EVERY page linked to landing pages that render
+              // nothing and are marked noindex. Showing four real links beats
+              // showing six of which two are dead.
+              .filter((s) => s.doctor_count > 0)
               .slice(0, 6)
               .map((s) => (
               <Link key={s.id} href={L(`/specialties/${s.slug}`)} className="text-sm text-ink-ghost transition-colors hover:text-brand-300">

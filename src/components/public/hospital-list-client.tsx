@@ -111,13 +111,30 @@ export function HospitalListClient({ pageTitle, locale, d, initialHospitals, ini
               <Link href={localeHref(locale, `/hospitals/${h.slug}`)} className="mb-2 block font-heading text-[17px] font-semibold leading-normal text-ink hover:text-brand-700">
                 {h.name}
               </Link>
-              <div className="mb-3.5 flex items-center gap-1.5 text-sm text-ink-faint">
-                <span className="text-brand-600">◉</span>
-                {h.area || d.khulna}, {d.khulna}
-              </div>
-              <div className="mb-4 flex gap-4 border-t border-line pt-3.5 text-[13.5px] text-ink-mute">
+              {/* The place line used to be `{h.area || "Khulna"}, "Khulna"` —
+                  a hard-coded city printed on every hospital in the country,
+                  and doubled up when the thana was missing. The row now carries
+                  a real district (see getHospitalBySlug / searchHospitals), so
+                  it names the thana and district it actually has and prints
+                  nothing when it has neither. */}
+              {(h.area || h.district) && (
+                <div className="mb-3.5 flex items-center gap-1.5 text-sm text-ink-faint">
+                  <span className="text-brand-600">◉</span>
+                  {[h.area, h.district].filter(Boolean).join(", ")}
+                </div>
+              )}
+              <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3.5 text-[13.5px] text-ink-mute">
                 {h.departments.length > 0 && <span>{num(h.departments.length, locale)}{d.departments_count_suffix}</span>}
-                {h.doctor_count > 0 && <span>{num(h.doctor_count, locale)}{d.doctors_count_suffix}</span>}
+                {h.doctor_count > 0 ? (
+                  <span>{num(h.doctor_count, locale)}{d.doctors_count_suffix}</span>
+                ) : (
+                  // Not hidden and not de-indexed: a hospital profile is worth
+                  // reading for its address, departments and phone even with no
+                  // doctors listed. It just says which it is.
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-ink-faint">
+                    {d.coming_soon}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2">
                 <Link

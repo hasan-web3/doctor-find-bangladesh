@@ -156,9 +156,17 @@ export function AreaListClient({ locale, initialAreas, initialTotal }: Props) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-heading text-base font-semibold leading-snug text-ink">{area.name}</div>
-                  <div className="mt-1 text-sm text-ink-mute">
-                    {area.district}
-                    {area.doctor_count > 0 ? ` · ${num(area.doctor_count, locale)} ${d.doctors_unit}` : ""}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-ink-mute">
+                    <span>{area.district}</span>
+                    {area.doctor_count > 0 ? (
+                      <span>· {num(area.doctor_count, locale)} {d.doctors_unit}</span>
+                    ) : (
+                      // See the note in district-list-client: an empty slot
+                      // reads as a broken card, not as "not covered yet".
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-ink-faint">
+                        {d.coming_soon}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>

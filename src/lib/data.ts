@@ -828,7 +828,19 @@ export async function searchHospitals(
     )`;
     orderClauses.unshift(sql`${distanceSql} ASC NULLS LAST`);
   }
-  
+
+  // A hospital with doctors listed outranks one without, ahead of BOTH the
+  // distance and the curated sort. This listing was the only one on the site
+  // with no doctors-first tier at all, so an empty hospital could sit at
+  // position one purely because of its `sort` value or its coordinates.
+  //
+  // Note this is ordering, not filtering: an empty hospital page is still
+  // worth visiting (address, departments, phone, map) and stays reachable and
+  // indexable. It simply stops outranking hospitals you can book in.
+  orderClauses.unshift(
+    sql`((SELECT COUNT(*) FROM doctors d WHERE d.hospital_id = "hospitals"."id" AND d.active) > 0) DESC`
+  );
+
   const doctorCountSubquery = sql<number>`(
       SELECT COUNT(*)::int FROM doctors d
       WHERE d.hospital_id = "hospitals"."id" AND d.active
@@ -2131,30 +2143,6 @@ export async function searchDistricts(
   }
   
   const whereSql = sql.join(conditions, sql` AND `);
-  const orderParts = [];
-
-  // District ranking uses ONLY district coordinates — no chamber, no hospital.
-  // The visitor's own district pins to the top, then nearest-first.
-  if (p.preferDistrictId != null) {
-    orderParts.push(sql`CASE WHEN districts.id = ${p.preferDistrictId} THEN 0 ELSE 1 END ASC`);
-  }
-  if (p.preferLat != null && p.preferLng != null) {
-    // acos() clamped to [-1, 1] — see the note in searchAreas.
-    orderParts.push(sql`
-      6371 * acos(LEAST(1, GREATEST(-1,
-        cos(radians(${p.preferLat})) * cos(radians(districts.lat))
-        * cos(radians(districts.lng) - radians(${p.preferLng}))
-        + sin(radians(${p.preferLat})) * sin(radians(districts.lat))
-      ))
-    ) ASC NULLS LAST`);
-  }
-  orderParts.push(sql`districts.sort ASC`);
-  orderParts.push(sql`districts.id ASC`);
-
-  const orderSql = sql.join(orderParts, sql`, `);
-
-  const perPage = Math.min(p.perPage || 24, 48);
-  const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
 
   const thanaCountSubquery = sql`(
     SELECT COUNT(*)::int FROM ${areasT}
@@ -2166,6 +2154,10 @@ export async function searchDistricts(
   //   2. They have no chamber (or all hidden) but their profile-linked
   //      hospital sits in a thana of this district.
   // DISTINCT so a doctor with BOTH still counts once.
+  //
+  // Declared BEFORE the ORDER BY is assembled because the ordering now uses it
+  // (see the tier below); it used to sit further down, which is why this
+  // listing was the only one with no doctors-first ranking at all.
   const doctorCountSubquery = sql`(
     SELECT COUNT(DISTINCT doc.id)::int
     FROM ${doctorsT} doc
@@ -2189,6 +2181,37 @@ export async function searchDistricts(
       )
     )
   )`;
+
+  const orderParts = [];
+
+  // District ranking uses ONLY district coordinates — no chamber, no hospital.
+  // The visitor's own district pins to the top, then nearest-first.
+  if (p.preferDistrictId != null) {
+    orderParts.push(sql`CASE WHEN districts.id = ${p.preferDistrictId} THEN 0 ELSE 1 END ASC`);
+  }
+  // A district somebody can actually book in outranks an empty one, exactly as
+  // searchAreas already does. Deliberately AFTER the visitor's own district
+  // pin: someone browsing /districts wants to find their own district in the
+  // list whether or not it has doctors yet, and the card now says so plainly
+  // rather than looking like a listing that failed to load.
+  orderParts.push(sql`(${doctorCountSubquery} > 0) DESC`);
+  if (p.preferLat != null && p.preferLng != null) {
+    // acos() clamped to [-1, 1] — see the note in searchAreas.
+    orderParts.push(sql`
+      6371 * acos(LEAST(1, GREATEST(-1,
+        cos(radians(${p.preferLat})) * cos(radians(districts.lat))
+        * cos(radians(districts.lng) - radians(${p.preferLng}))
+        + sin(radians(${p.preferLat})) * sin(radians(districts.lat))
+      ))
+    ) ASC NULLS LAST`);
+  }
+  orderParts.push(sql`districts.sort ASC`);
+  orderParts.push(sql`districts.id ASC`);
+
+  const orderSql = sql.join(orderParts, sql`, `);
+
+  const perPage = Math.min(p.perPage || 24, 48);
+  const offset = (Math.max(p.page || 1, 1) - 1) * perPage;
 
   const rowsQuery = db.execute<{
     id: number; slug: string; name: MLText;

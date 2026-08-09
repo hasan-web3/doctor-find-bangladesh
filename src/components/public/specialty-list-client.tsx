@@ -81,9 +81,16 @@ export function SpecialtyListClient({ initialSpecialties, locale }: Props) {
                 <span className="block break-words text-[15px] font-semibold leading-tight text-ink">
                   {s.name}
                 </span>
-                {s.doctor_count > 0 && (
+                {s.doctor_count > 0 ? (
                   <span className="mt-0.5 block text-[12.5px] text-ink-ghost">
                     {num(s.doctor_count, locale)} {d.doctors_unit}
+                  </span>
+                ) : (
+                  // See district-list-client: an empty slot reads as a card
+                  // that failed to load rather than a specialty with nobody
+                  // listed yet. These are already sorted to the bottom.
+                  <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-ink-faint">
+                    {d.coming_soon}
                   </span>
                 )}
               </span>
