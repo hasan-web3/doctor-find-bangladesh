@@ -293,10 +293,21 @@ export const getSpecialties = unstable_cache(
   // shared layout (the footer's specialty links), and a page's cache entry
   // inherits every tag it reads — so a "doctors" tag here would make one doctor
   // edit invalidate every page on the site. The count is an informational
-  // number next to a link; letting it lag until the next specialty edit or the
-  // route's own revalidate window is the right trade for keeping invalidation
-  // targeted.
-  { tags: ["specialties"] }
+  // number next to a link; letting it lag is the right trade for keeping
+  // invalidation targeted.
+  //
+  // `revalidate` is what makes that trade honest. Without it this entry is
+  // INFINITE, and the page's own window cannot save it: a page re-render at
+  // 24h re-reads the very same cached entry and gets the very same stale count.
+  // So the count only moved when someone edited a specialty — adding fifty
+  // doctors changed nothing. The number now self-heals within a day.
+  //
+  // Why exactly 86400 and not less: a page's revalidate is clamped to the
+  // SHORTEST revalidate of any cache entry it reads (see searchDoctorsCached),
+  // and this one is reached from the layout, so it clamps EVERY page. 86400
+  // matches the longest page window on the site, which makes the clamp a no-op.
+  // Lowering this silently shortens every route in the app.
+  { revalidate: 86400, tags: ["specialties"] }
 );
 
 export const getAreas = unstable_cache(
@@ -529,7 +540,14 @@ export const getDistrictsForGeo = unstable_cache(
   // Not tagged "doctors" — this is the district list the shared layout hands to
   // <LocationProvider>/<GeoShell>, so a "doctors" tag here would make one doctor
   // edit invalidate every cached page. See getSpecialties for the full argument.
-  { tags: ["districts", "areas"] }
+  //
+  // Same reason for `revalidate` as getSpecialties: `doctorCount` here is the
+  // "X জন ডাক্তার" shown against each district in the picker, and an untagged
+  // infinite entry meant that number never moved when doctors were added. It
+  // also feeds the no-doctors substitution notice, so a stale zero told a
+  // visitor their district was empty when it was not. 86400 for the clamp
+  // reason documented on getSpecialties.
+  { revalidate: 86400, tags: ["districts", "areas"] }
 );
 
 // The thana with the most doctors in each district, used to preselect the
@@ -1616,7 +1634,7 @@ export async function expirePromotions() {
   return expired.length;
 }
 
-export const getNearbyAreas = async (
+const getNearbyAreasUncached = async (
   locale: Locale,
   districtId: number | null,
   lat: number | null,
@@ -1734,6 +1752,30 @@ export const getNearbyAreas = async (
       district_slug: a.districtSlug
     }));
 };
+
+// This was a bare async function — the only reader in the shared layout that
+// was not cached at all. The footer calls it on EVERY page, so every ISR
+// re-render of every route ran the correlated doctor-count subquery above
+// against Postgres. Harmless for Active CPU (it runs per render, not per
+// request) but it was pointless load on Supabase, and the result is identical
+// for every visitor.
+//
+// Cache key includes the arguments, and the argument space is small and
+// bounded: the footer passes (locale, null, null, null), the homepage passes
+// STATIC_GEO's fixed coordinates, and /api/districts/[slug]/areas passes a
+// district id with null coords. Nothing here is per-visitor, so this cannot
+// fill the data cache with single-use entries.
+//
+// Tags deliberately exclude "doctors" even though the ranking depends on
+// doctor counts — this is layout-reachable, and see getSpecialties for what a
+// "doctors" tag in the layout does to site-wide invalidation. `revalidate`
+// covers the count drift instead, at 86400 for the clamp reason documented
+// there.
+export const getNearbyAreas = unstable_cache(
+  getNearbyAreasUncached,
+  ["nearby-areas-v1"],
+  { revalidate: 86400, tags: ["areas", "districts"] }
+);
 
 
 export type AreaSearchParams = {
