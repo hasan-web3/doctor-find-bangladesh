@@ -35,6 +35,17 @@ export function DoctorCard({
   const tone = TONES[doctor.id % TONES.length];
   const L = (path: string) => localeHref(locale, path);
   const detailsHref = L(`/doctors/${doctor.slug}`);
+  // The card names the DISTRICT, not the thana. A card can appear anywhere on
+  // the site — the /doctors listing, a specialty hub, a slider on someone
+  // else's profile — so "বয়রা" or "খুলনা সদর" told a reader nothing unless they
+  // already knew which district that thana belongs to. The district is the unit
+  // people actually search and think in ("ঢাকা", "খুলনা", "বাগেরহাট").
+  //
+  // `district` is resolved chamber-first then hospital (see cardSelect in
+  // data.ts), so it agrees with the listing the card came from. Falls back to
+  // the thana when a doctor has no district linked, so the line never
+  // disappears. The exact chamber address, with its thana, is on the profile.
+  const place = doctor.district || doctor.area;
   // Call the doctor's own chamber when there is one; the site helpline is only
   // the fallback for doctors with no visible chamber (or none carrying a
   // number). `num()` renders it in Bangla digits on bn and Latin digits on en.
@@ -101,13 +112,13 @@ export function DoctorCard({
               <span className="line-clamp-1">{doctor.hospital}</span>
             </div>
           )}
-          {(doctor.chamber || doctor.area) && (
+          {(doctor.chamber || place) && (
             <div className="flex items-center gap-1.5 text-[13.5px] text-ink-mute">
               <span aria-hidden className="text-[13px] text-brand-600">◉</span>
               <span className="line-clamp-1">
                 {doctor.chamber}
-                {doctor.chamber && doctor.area ? ", " : ""}
-                {doctor.area}
+                {doctor.chamber && place ? ", " : ""}
+                {place}
               </span>
             </div>
           )}
