@@ -5,7 +5,7 @@ import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
 import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty } from "@/lib/data";
-import { LinkCloud } from "@/components/public/link-cloud";
+import { GeoOrderedLinkCloud } from "@/components/public/geo-ordered-link-cloud";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -105,7 +105,11 @@ export default async function SpecialtyPage({ params }: Props) {
     // /specialties/<this>/<thana>. Same destinations the thana pages link to,
     // approached from the other axis, so the combination pages sit in a two-way
     // link graph instead of hanging off a single thread.
-    getAreasForSpecialty(spec.slug, locale),
+    //
+    // Capped at 80: a common specialty can span every district in the country,
+    // and the block only ever renders 30 chips. Shipping the rest would be dead
+    // payload on a page that already carries a doctor grid.
+    getAreasForSpecialty(spec.slug, locale).then((rows) => rows.slice(0, 80)),
     // Canonical first page only. ?page= / ?perPage= / ?q= are applied by
     // <SpecialtyDoctorListClient> after mount — reading them here would force
     // this route to render per request and it would never be cached.
@@ -187,15 +191,19 @@ export default async function SpecialtyPage({ params }: Props) {
         />
       </div>
 
+      {/* The full candidate set already sits in the cached HTML (capped at 80
+          rows below), so following the visitor's district here is a client-side
+          sort with no request and no failure mode. Crawlers index the canonical
+          order; a reader sees their own district's thanas lifted to the top. */}
       <div className="mx-auto max-w-site px-5">
-        <LinkCloud
+        <GeoOrderedLinkCloud
           title={d.hub_specialty_areas_title_tpl.replace("{s}", spec.name)}
           description={d.hub_specialty_areas_desc}
           items={specialtyAreas}
-          href={(a) => L(`/specialties/${spec.slug}/${a.slug}`)}
+          hrefTemplate={L(`/specialties/${spec.slug}/{slug}`)}
           locale={locale}
           countSuffix={d.doctors_unit}
-          limit={36}
+          limit={30}
           moreHref={L("/areas")}
           moreLabel={d.view_all_areas}
         />

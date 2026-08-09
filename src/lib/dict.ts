@@ -281,6 +281,15 @@ const bn = {
   hub_area_specialties_desc: "এই এলাকায় যে বিশেষজ্ঞ বিভাগগুলোর ডাক্তার আছেন। সরাসরি আপনার প্রয়োজনের বিভাগে যান।",
   hub_specialty_areas_title_tpl: "এলাকা অনুযায়ী {s} ডাক্তার",
   hub_specialty_areas_desc: "যে এলাকাগুলোতে এই বিভাগের ডাক্তার আছেন। আপনার কাছের এলাকা বেছে নিন।",
+  hub_popular_searches_title: "জনপ্রিয় খোঁজ",
+  hub_popular_searches_desc: "যে বিভাগ ও এলাকার সমন্বয়গুলো সবচেয়ে বেশি খোঁজা হয়। এক ক্লিকেই সেই তালিকায় যান।",
+  hub_recent_doctors_title: "সদ্য হালনাগাদ হওয়া ডাক্তার",
+  hub_recent_doctors_desc: "যেসব প্রোফাইলের তথ্য, চেম্বার বা সময়সূচি সবচেয়ে সম্প্রতি যাচাই ও হালনাগাদ করা হয়েছে।",
+  hub_districts_title: "জেলা অনুযায়ী ডাক্তার",
+  hub_districts_desc: "সারা বাংলাদেশের যে জেলাগুলোতে আমাদের যাচাইকৃত ডাক্তার আছেন। আপনার জেলা বেছে নিন।",
+  view_all_districts: "সব জেলা দেখুন",
+  hub_nearby_areas_title_tpl: "{d} জেলার আশপাশের এলাকা",
+  hub_nearby_areas_desc: "একই জেলার অন্য থানা ও উপজেলার ডাক্তার দেখুন।",
   hub_related_title: "সম্পর্কিত পেজ",
   hub_all_area_doctors_tpl: "{a} এলাকার সব ডাক্তার",
   hub_all_district_doctors_tpl: "{d} জেলার সব ডাক্তার",
@@ -289,6 +298,9 @@ const bn = {
   view_all_hospitals: "সব হাসপাতাল দেখুন",
   // Fallback body copy for a district that has no admin-written intro yet.
   // {d} is the district name with the Bangla possessive already applied.
+  // Pipe-separated so one dictionary entry can produce the `knowsAbout` array
+  // in the Organization JSON-LD. See ldOrganization in seo-utils.ts.
+  org_knows_about: "বিশেষজ্ঞ ডাক্তার ডিরেক্টরি|ডাক্তারের চেম্বার ও সময়সূচি|হাসপাতাল ও ক্লিনিক|ডাক্তার অ্যাপয়েন্টমেন্ট|বাংলাদেশের স্বাস্থ্যসেবা তথ্য",
   district_intro_fallback_tpl: "{d} যাচাইকৃত ডাক্তারদের সম্পূর্ণ তালিকা এক জায়গায়। প্রতিটি প্রোফাইলে ডিগ্রি, অভিজ্ঞতা, চেম্বারের ঠিকানা, বসার সময় ও ভিজিট ফি দেওয়া আছে, তাই যাওয়ার আগেই আপনি জানতে পারবেন কোথায় কখন যেতে হবে। বিভাগ, এলাকা বা হাসপাতাল অনুযায়ী ফিল্টার করে আপনার কাছের ডাক্তার বেছে নিন এবং সরাসরি অ্যাপয়েন্টমেন্ট নিন।",
   district_faq_title: "সাধারণ জিজ্ঞাসা",
 
@@ -606,12 +618,22 @@ const en: typeof bn = {
   hub_area_specialties_desc: "The specialties that currently have doctors in this area. Go straight to the one you need.",
   hub_specialty_areas_title_tpl: "{s} Doctors by Area",
   hub_specialty_areas_desc: "Areas that currently have doctors in this specialty. Pick the one nearest to you.",
+  hub_popular_searches_title: "Popular Searches",
+  hub_popular_searches_desc: "The specialty and area combinations people look for most. Jump straight to the list.",
+  hub_recent_doctors_title: "Recently Updated Doctors",
+  hub_recent_doctors_desc: "Profiles whose details, chambers or schedules were verified and updated most recently.",
+  hub_districts_title: "Doctors by District",
+  hub_districts_desc: "Districts across Bangladesh where we have verified doctors. Pick yours.",
+  view_all_districts: "View all districts",
+  hub_nearby_areas_title_tpl: "Nearby Areas in {d}",
+  hub_nearby_areas_desc: "Doctors in the other thanas and upazilas of the same district.",
   hub_related_title: "Related pages",
   hub_all_area_doctors_tpl: "All doctors in {a}",
   hub_all_district_doctors_tpl: "All doctors in {d}",
   view_all_areas: "View all areas",
   view_all_specialties: "View all specialties",
   view_all_hospitals: "View all hospitals",
+  org_knows_about: "Specialist doctor directory|Doctor chambers and schedules|Hospitals and clinics|Doctor appointments|Healthcare information in Bangladesh",
   district_intro_fallback_tpl: "The complete list of verified doctors in {d}, in one place. Every profile carries degrees, experience, chamber address, sitting hours and visit fee, so you know where to go and when before you leave home. Filter by specialty, area or hospital to find a doctor near you and book directly.",
   district_faq_title: "Frequently Asked Questions",
 

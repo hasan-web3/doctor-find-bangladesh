@@ -55,6 +55,28 @@ function ldPostalAddress(address: string): JsonLd | undefined {
   return { "@type": "PostalAddress", streetAddress: value, addressCountry: "BD" };
 }
 
+// ---------------------------------------------------------------------------
+// WHY THIS IS `Organization` AND NOT `MedicalOrganization`.
+//
+// It was briefly typed `["MedicalOrganization", "Organization"]` on the theory
+// that a health site should say so. That was wrong on two counts:
+//
+//   1. schema.org defines MedicalOrganization as a body that PROVIDES care —
+//      a hospital, clinic or institution. This site is a directory. Its own
+//      About page states, in both languages, that it runs no chamber and gives
+//      no medical care, so the markup contradicted the page.
+//   2. MedicalOrganization is a subtype of LocalBusiness, so declaring it put
+//      the site through Google's local-business validation and invited it to be
+//      read as one physical business at one address. This directory covers
+//      every district in Bangladesh; being pinned to the office's own city is
+//      the opposite of what it needs.
+//
+// Plain `Organization` describes a publisher accurately. `knowsAbout` carries
+// the topical expertise that MedicalOrganization was reached for, without
+// claiming to be a care provider, and `areaServed` states the national scope.
+// The office address stays — it is a real trust signal and Organization.address
+// means "where the company is", not "where the site applies".
+// ---------------------------------------------------------------------------
 export function ldOrganization(input: {
   identity: BrandIdentity;
   helpline: string;
@@ -64,26 +86,35 @@ export function ldOrganization(input: {
   email?: string;
   /** Official brand profiles (Facebook / YouTube / Instagram) for sameAs. */
   socialUrls?: string[];
+  /** Already localized site description. */
+  description?: string;
+  /** Brand card (the site-wide OG image); falls back to the logo. */
+  imageUrl?: string;
+  /** Localized subject-matter labels for `knowsAbout`. */
+  knowsAbout?: string[];
 }): JsonLd {
   const { name, alternateName } = input.identity;
   const address = ldPostalAddress(input.address || "");
   const email = (input.email || "").trim();
+  const description = (input.description || "").trim();
+  const logo = input.logoUrl || siteUrl("/icon.svg");
+  const image = (input.imageUrl || "").trim() || logo;
+  const knowsAbout = (input.knowsAbout || []).map((v) => v.trim()).filter(Boolean);
   const sameAs = (input.socialUrls || [])
     .map((u) => (typeof u === "string" ? u.trim() : ""))
     .filter((u) => /^https?:\/\//i.test(u));
   return {
     "@context": "https://schema.org",
-    // MedicalOrganization is a subtype of Organization, so every existing
-    // `{"@id": ORG_ID()}` reference (article publisher, WebSite publisher)
-    // still resolves to this node. Declaring both keeps generic Organization
-    // consumers happy while telling Google this is a health entity, which is
-    // what a YMYL directory should be saying about itself.
-    "@type": ["MedicalOrganization", "Organization"],
+    "@type": "Organization",
     "@id": ORG_ID(),
     name,
     ...(alternateName.length > 0 ? { alternateName } : {}),
     url: siteUrl("/"),
-    logo: input.logoUrl || siteUrl("/icon.svg"),
+    logo,
+    // `logo` feeds the knowledge panel; `image` is the generic one Google's
+    // Organization validator asks for. Same asset is fine and expected.
+    image,
+    ...(description ? { description } : {}),
     // Duplicated at the top level as well as inside contactPoint: Google reads
     // Organization.telephone/email directly, and several validators do not
     // descend into contactPoint for the NAP check.
@@ -91,6 +122,7 @@ export function ldOrganization(input: {
     ...(email ? { email } : {}),
     ...(address ? { address } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
+    ...(knowsAbout.length > 0 ? { knowsAbout } : {}),
     areaServed: { "@type": "Country", name: "Bangladesh" },
     contactPoint: {
       "@type": "ContactPoint",

@@ -3,7 +3,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { LinkCloud } from "@/components/public/link-cloud";
-import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs, getSpecialtiesInArea } from "@/lib/data";
+import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs, getSpecialtiesInArea, getSiblingAreas } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -79,7 +79,7 @@ export default async function AreaPage({ params }: Props) {
 
   // Fetch initial data for the client component.
   // The client component will re-fetch if filters are applied.
-  const [settings, allSpecialties, faqs, areaSpecialties, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, faqs, areaSpecialties, siblingAreas, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
     getFaqs("area", area.id, locale),
@@ -91,6 +91,13 @@ export default async function AreaPage({ params }: Props) {
     // so Googlebot could never follow one. This is the page that should point
     // at them, because it is the closest topical parent they have.
     getSpecialtiesInArea(area.slug, locale),
+    // Neighbouring thanas of the same district. This page IS a place, so there
+    // is nothing to personalise: the sibling set is the same for every visitor
+    // and stays in the cached HTML. It links thanas to each other instead of
+    // making the district hub the only route between them.
+    area.district_slug
+      ? getSiblingAreas(area.district_slug, area.slug, locale)
+      : Promise.resolve([]),
     searchDoctors({
       area: area.slug,
       page: 1,
@@ -155,6 +162,18 @@ export default async function AreaPage({ params }: Props) {
           locale={locale}
           countSuffix={d.doctors_unit}
           limit={30}
+        />
+
+        <LinkCloud
+          title={d.hub_nearby_areas_title_tpl.replace("{d}", area.district)}
+          description={d.hub_nearby_areas_desc}
+          items={siblingAreas}
+          href={(a) => localeHref(locale, `/area/doctors/${a.district_slug}/${a.slug}`)}
+          locale={locale}
+          countSuffix={d.doctors_unit}
+          limit={24}
+          moreHref={area.district_slug ? localeHref(locale, `/districts/${area.district_slug}/doctors`) : undefined}
+          moreLabel={d.hub_all_district_doctors_tpl.replace("{d}", area.district)}
         />
 
         {area.district_slug && (

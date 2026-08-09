@@ -87,6 +87,11 @@ export default async function PublicLayout({
                 address: t(settings.address, locale),
                 email: settings.email,
                 socialUrls: [settings.facebook, settings.youtube, settings.instagram],
+                description: t(settings.seo_default_description, locale),
+                imageUrl: settings.seo_default_og_image,
+                // Topical expertise without claiming to BE a care provider.
+                // See the long note above ldOrganization in seo-utils.ts.
+                knowsAbout: d.org_knows_about.split("|"),
               }),
               ldWebsite(identity, locale),
             ]}

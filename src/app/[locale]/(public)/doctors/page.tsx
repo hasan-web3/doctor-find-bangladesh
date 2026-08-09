@@ -6,16 +6,19 @@ import { ListingFilters, SortSelect, ListingSearch } from "@/components/public/l
 import { DoctorListClient } from "@/components/public/doctor-list-client";
 import { DoctorsPageHeading } from "@/components/public/doctors-page-heading";
 import { ShownDistrictProvider } from "@/components/public/shown-district-context";
+import { GeoLinkClouds } from "@/components/public/geo-link-clouds";
+import { LinkCloud } from "@/components/public/link-cloud";
 import {
   searchDoctors, getSpecialties, getAreas, searchHospitals,
   getDistrictsForSearch, getThanasForSearch, resolveDisplayDistrict, geoSearchPrefs,
+  getDistrictHubLinks, getDistrictLinks, getPopularCombos, getRecentlyUpdatedDoctors,
   type DoctorSearchParams, type Area,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
-import { isLocale, type Locale } from "@/lib/i18n";
+import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive } from "@/lib/bn";
 
 // ISR: highest-traffic listing.
@@ -76,7 +79,9 @@ export default async function DoctorsPage({ params }: Props) {
 
   const hospitals = hospitalData.rows;
 
-  const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
+  const display = await resolveDisplayDistrict(geo, locale);
+  const geoDistrictName = display?.name ?? null;
+  const canonicalDistrictSlug = display?.slug ?? null;
 
   const geoPrefs = await geoSearchPrefs(geo, locale);
 
@@ -94,7 +99,19 @@ export default async function DoctorsPage({ params }: Props) {
     priorityDistrictId: geoPrefs.priorityDistrictId,
   };
 
-  const { rows, total } = await searchDoctors(query, locale);
+  // Both are visitor-independent, so they stay inside the cached HTML.
+  // `canonicalHub` is the server-rendered starting point <GeoLinkClouds> swaps
+  // out once the browser knows which district the cards belong to; an empty hub
+  // is fine and simply renders nothing until then.
+  const [{ rows, total }, canonicalHub, districtLinks, popularCombos, recentDoctors] = await Promise.all([
+    searchDoctors(query, locale),
+    canonicalDistrictSlug
+      ? getDistrictHubLinks(canonicalDistrictSlug, locale)
+      : Promise.resolve({ thanas: [], specialties: [], hospitals: [] }),
+    getDistrictLinks(locale),
+    getPopularCombos(locale, 24),
+    getRecentlyUpdatedDoctors(locale, 12),
+  ]);
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
@@ -154,7 +171,69 @@ export default async function DoctorsPage({ params }: Props) {
           />
         </div>
       </div>
+
+      {/* ------------------------------------------------------------------
+          SUPPORTING CONTENT + CRAWL PATHS.
+
+          Two different kinds of block, on purpose:
+
+          1. <GeoLinkClouds> is district-scoped and follows the cards. The
+             SERVER renders the canonical district's version into the cached
+             HTML (so a crawl sees complete, consistent content and first paint
+             costs no request); after hydration it follows the same district the
+             doctor list publishes, which is the visitor's own when that
+             district has doctors and the nearest one when it does not.
+
+          2. The district cloud below is identical for everyone. It is the
+             stable crawl path from the site's most-linked listing to every
+             district hub, and it must not move around per visitor.
+          ------------------------------------------------------------------ */}
+      <GeoLinkClouds
+        initial={canonicalHub}
+        canonicalDistrictName={geoDistrictName}
+        canonicalDistrictSlug={canonicalDistrictSlug}
+        locale={locale}
+        d={d}
+      />
       </ShownDistrictProvider>
+
+      <LinkCloud
+        title={d.hub_districts_title}
+        description={d.hub_districts_desc}
+        items={districtLinks}
+        href={(x) => localeHref(locale, `/districts/${x.slug}/doctors`)}
+        locale={locale}
+        countSuffix={d.doctors_unit}
+        limit={64}
+        moreHref={localeHref(locale, "/districts")}
+        moreLabel={d.view_all_districts}
+      />
+
+      {/* One hop from the site's most-linked listing straight to the specialty
+          × thana combination pages. Everything else reaches them three levels
+          deep (district -> thana -> combination). Static for every visitor, so
+          it is a crawl path that does not move. */}
+      <LinkCloud
+        title={d.hub_popular_searches_title}
+        description={d.hub_popular_searches_desc}
+        items={popularCombos}
+        href={(x) => localeHref(locale, `/specialties/${x.slug}/${x.slug2}`)}
+        locale={locale}
+        countSuffix={d.doctors_unit}
+        limit={24}
+      />
+
+      {/* Real freshness: these are the profiles that actually changed most
+          recently, in the same order the doctors sitemap section uses. */}
+      <LinkCloud
+        title={d.hub_recent_doctors_title}
+        description={d.hub_recent_doctors_desc}
+        items={recentDoctors}
+        href={(x) => localeHref(locale, `/doctors/${x.slug}`)}
+        locale={locale}
+        countSuffix={d.doctors_unit}
+        limit={12}
+      />
     </div>
   );
 }

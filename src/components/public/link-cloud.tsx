@@ -58,11 +58,17 @@ export function LinkCloud({
       )}
 
       <ul className="m-0 flex list-none flex-wrap gap-2.5 p-0">
+        {/* `slug` alone is not unique as a key: the popular-searches block lists
+            the same specialty in several thanas, so the second slug has to be
+            part of it or React reuses the wrong node. */}
         {shown.map((item) => (
-          <li key={`${item.slug}-${item.district_slug ?? ""}`}>
+          <li key={`${item.slug}-${item.slug2 ?? ""}-${item.district_slug ?? ""}`}>
             <Link
               href={href(item)}
-              className="group flex items-center gap-2 rounded-full border border-brand-100 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-600 hover:text-white"
+              // min-h-11 = 44px, the minimum touch target. Chips that carry a
+              // count badge clear it on their own; the ones without (popular
+              // searches, recent doctors) came out at 41px without this.
+              className="group flex min-h-11 items-center gap-2 rounded-full border border-brand-100 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-600 hover:text-white"
             >
               <span className="leading-snug">
                 {item.name}

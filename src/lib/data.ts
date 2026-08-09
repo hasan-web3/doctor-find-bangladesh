@@ -2127,6 +2127,11 @@ export type HubLink = {
   /** Second line on the chip — the thana for a hospital, the district for a thana. */
   context?: string | null;
   district_slug?: string | null;
+  /**
+   * Second path segment for destinations that need two slugs, e.g. the
+   * specialty × thana combination pages (`/specialties/<slug>/<slug2>`).
+   */
+  slug2?: string | null;
   doctor_count: number;
 };
 
@@ -2207,6 +2212,128 @@ export const getDistrictHubLinks = unstable_cache(
   ["district-hub-links-v1"],
   { tags: ["districts", "areas", "specialties", "hospitals", "doctors"] }
 );
+
+/**
+ * Every district that has doctors, as link chips, busiest first.
+ *
+ * Rendered on /doctors so the main listing links to every district landing page
+ * that has something on it. This block is deliberately NOT geo-aware: it is the
+ * same for every visitor and for Googlebot, which is what makes it a reliable
+ * crawl path to the district hubs from the site's most-linked listing.
+ *
+ * Reuses getDistrictsForGeo(), which the shared layout already reads on every
+ * request, so this costs no additional query and inherits its tags — notably
+ * NOT "doctors", so it cannot cascade a doctor edit across the site.
+ */
+export const getDistrictLinks = async (locale: Locale): Promise<HubLink[]> => {
+  const rows = await getDistrictsForGeo();
+  return rows
+    .filter((r) => r.doctorCount > 0)
+    .sort((a, b) => b.doctorCount - a.doctorCount)
+    .map((r) => ({
+      slug: r.slug,
+      name: ml(r.name, locale),
+      doctor_count: r.doctorCount,
+    }));
+};
+
+/**
+ * The busiest specialty × thana combinations site-wide.
+ *
+ * Rendered on /doctors as "popular searches". Two reasons it earns its place:
+ *
+ *   1. It states, in the page's own words, what people actually look for here
+ *      ("Cardiologist in Boyra"), which is supporting content the bare listing
+ *      never had.
+ *   2. It is a ONE-hop link from the site's most-linked listing straight to the
+ *      combination pages. Without it the only route is
+ *      /doctors -> district -> thana -> combination, three hops deep, which is
+ *      where crawl budget goes to die.
+ *
+ * Same coverage chain as everything else, so every pair listed has doctors.
+ */
+export const getPopularCombos = unstable_cache(
+  async (locale: Locale, limit = 24): Promise<HubLink[]> => {
+    const res = await db.execute<{
+      specialty_slug: string; specialty_ml: MLText;
+      area_slug: string; area_ml: MLText;
+      doctor_count: number;
+    }>(sql`
+      WITH ${DOCTOR_AREA_CTE}
+      SELECT s.slug AS specialty_slug, s.name AS specialty_ml,
+             a.slug AS area_slug, a.name AS area_ml,
+             COUNT(DISTINCT d.id)::int AS doctor_count
+        FROM doctor_area da
+        JOIN doctors d ON d.id = da.doctor_id AND d.active
+        JOIN doctor_specialties ds ON ds.doctor_id = d.id
+        JOIN specialties s ON s.id = ds.specialty_id AND s.active
+        JOIN areas a ON a.id = da.area_id AND a.active
+        JOIN districts dist ON dist.id = a.district_id AND dist.active
+       GROUP BY s.slug, s.name, s.sort, a.slug, a.name, a.sort
+       ORDER BY doctor_count DESC, s.sort, a.sort
+       LIMIT ${limit}
+    `);
+    return res.rows.map((r) => ({
+      slug: r.specialty_slug,
+      slug2: r.area_slug,
+      name: ml(r.specialty_ml, locale),
+      context: ml(r.area_ml, locale) || null,
+      doctor_count: r.doctor_count,
+    }));
+  },
+  ["popular-combos-v1"],
+  { tags: ["specialties", "areas", "doctors"] }
+);
+
+/**
+ * Most recently updated doctor profiles.
+ *
+ * A freshness signal that is true rather than manufactured: it reflects real
+ * edits, and it hands crawlers a short, always-current list of profile URLs
+ * from a page they visit often. Ordered exactly like the `doctors` sitemap
+ * section, so the two never disagree about what changed last.
+ */
+export const getRecentlyUpdatedDoctors = unstable_cache(
+  async (locale: Locale, limit = 12): Promise<HubLink[]> => {
+    const res = await db.execute<{
+      slug: string; name_ml: MLText; specialty_ml: MLText;
+    }>(sql`
+      SELECT d.slug, d.name AS name_ml,
+             (SELECT s.name FROM doctor_specialties ds
+                JOIN specialties s ON s.id = ds.specialty_id
+               WHERE ds.doctor_id = d.id
+               ORDER BY ds.is_primary DESC, s.sort LIMIT 1) AS specialty_ml
+        FROM doctors d
+       WHERE d.active
+       ORDER BY d.updated_at DESC, d.slug
+       LIMIT ${limit}
+    `);
+    return res.rows.map((r) => ({
+      slug: r.slug,
+      name: ml(r.name_ml, locale),
+      context: ml(r.specialty_ml, locale) || null,
+      doctor_count: 0,
+    }));
+  },
+  ["recent-doctors-v1"],
+  { tags: ["doctors"] }
+);
+
+/**
+ * Sibling thanas: the other thanas of a district that have doctors.
+ *
+ * Rendered on a thana page so neighbouring thanas link to each other instead of
+ * every one of them being reachable only from its district. Excludes the thana
+ * being viewed so a page never links to itself.
+ */
+export const getSiblingAreas = async (
+  districtSlug: string,
+  excludeAreaSlug: string,
+  locale: Locale
+): Promise<HubLink[]> => {
+  const hub = await getDistrictHubLinks(districtSlug, locale);
+  return hub.thanas.filter((a) => a.slug !== excludeAreaSlug);
+};
 
 /**
  * The specialties actually practised inside ONE thana.
