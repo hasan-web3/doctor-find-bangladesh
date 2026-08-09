@@ -136,7 +136,11 @@ export default async function SpecialtyAreaPage({ params }: Props) {
       <div className="mx-auto max-w-site px-5 py-9">
         {rows.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 min-[900px]:grid-cols-3">
+            {/* Same grid as every other doctor listing (specialty, thana,
+                hospital). This page was the one that stopped at three columns,
+                so a wide screen left a column of empty space beside the cards
+                while its sibling pages filled it. */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 min-[1400px]:grid-cols-4">
               {rows.map((doc) => (
                 <DoctorCard key={doc.id} doctor={doc} helpline={settings.helpline} locale={locale} d={d} />
               ))}
