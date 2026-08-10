@@ -13,6 +13,7 @@ import {
   doctorSpecialties,
   doctors as doctorsT,
   faqs as faqsT,
+  faqDisabled,
   heroSlides,
   hospitals as hospitalsT,
   promotions as promotionsT,
@@ -23,6 +24,7 @@ import {
 } from "@/db/schema";
 import { t, type Locale, type MLText } from "./i18n";
 import type { GeoResult } from "./geo";
+import type { FaqSeed } from "./faq-defaults";
 
 // ==========================================================================
 // Public data-layer readers. Everything here returns already-localized strings
@@ -1649,6 +1651,175 @@ export const getFaqs = unstable_cache(
   ["faqs"],
   { tags: ["faqs"] }
 );
+
+// ---------------------------------------------------------------------------
+// Raw FAQ rows for one entity, INCLUDING inactive ones.
+//
+// getFaqs() above filters to `active`, which is right for hand-written FAQs but
+// wrong here: an inactive row carrying an `auto_key` is a TOMBSTONE. It is how
+// the dashboard deletes a generated FAQ, and dropping it would let the deleted
+// answer come straight back on the next render.
+// ---------------------------------------------------------------------------
+// EVERY stored FAQ row, in ONE cached read.
+//
+// This used to be keyed per entity, which meant a separate cache entry and a
+// separate query for every district, thana, specialty, hospital and doctor on
+// the site. A full build of a few thousand doctor pages issued a few thousand
+// queries to fetch, almost always, nothing at all — because generated FAQs have
+// no rows and only overrides and hand-written entries are stored here.
+//
+// The table is small BY DESIGN (it holds exceptions, not defaults), so reading
+// it whole once and filtering in memory collapses all of that into a single
+// query per revalidation. If it ever grows past a few thousand rows, revisit
+// this — but that would mean an admin had hand-edited most FAQs on the site.
+const getAllFaqRows = unstable_cache(
+  async () => {
+    return db
+      .select({
+        id: faqsT.id,
+        scope: faqsT.scope,
+        refId: faqsT.refId,
+        question: faqsT.question,
+        answer: faqsT.answer,
+        sort: faqsT.sort,
+        active: faqsT.active,
+        auto_key: faqsT.autoKey,
+      })
+      .from(faqsT)
+      .orderBy(asc(faqsT.sort), asc(faqsT.id));
+  },
+  ["faq-rows-all-v1"],
+  { tags: ["faqs"] }
+);
+
+export async function getFaqRows(scope: string, refId: number | null) {
+  const all = await getAllFaqRows();
+  return all.filter((r) => r.scope === scope && (refId === null ? r.refId === null : r.refId === refId));
+}
+
+/**
+ * `ref_id` value that means "the whole scope" in the `faq_disabled` denylist.
+ * Entity ids are bigserial and start at 1, so 0 can never be a real entity.
+ */
+export const FAQ_SCOPE_ALL = 0;
+
+/**
+ * Every FAQ block that has been switched off, as a `"scope:refId"` key set.
+ *
+ * A denylist, so this is empty until an admin actually turns something off and
+ * the common case costs one tiny indexed read. Cached under the "faqs" tag, so
+ * toggling purges FAQ consumers and nothing else — deliberately not stored in
+ * site_settings, whose tag forces a layout-wide purge of the entire site.
+ */
+// Returns an ARRAY, not a Set. `unstable_cache` round-trips its result through
+// JSON, and a Set serialises to `{}` — the cached value then had no `.has`
+// method and every prerender of a doctor page died with "f.has is not a
+// function". The Set is rebuilt by the caller below.
+const getDisabledFaqList = unstable_cache(
+  async (): Promise<string[]> => {
+    try {
+      const rows = await db.select({ scope: faqDisabled.scope, refId: faqDisabled.refId }).from(faqDisabled);
+      return rows.map((r) => `${r.scope}:${r.refId}`);
+    } catch {
+      // Table arrives in migrations/019. Before it is applied, nothing is
+      // disabled, which is the correct default.
+      return [];
+    }
+  },
+  ["faq-disabled-v1"],
+  { tags: ["faqs"] }
+);
+
+export async function getDisabledFaqKeys(): Promise<Set<string>> {
+  return new Set(await getDisabledFaqList());
+}
+
+export type ResolvedFaq = { id: number; question: string; answer: string };
+
+/**
+ * The FAQ list a public page should render: generated defaults, with the
+ * admin's edits and deletions applied on top.
+ *
+ *   seed with no matching row      -> the generated answer
+ *   row with the seed's auto_key   -> that row REPLACES the generated answer
+ *   same row with active = false   -> the generated answer is SUPPRESSED
+ *   row with auto_key NULL         -> an ordinary hand-written FAQ, appended
+ *
+ * Generated entries keep the seed order so the sequence is predictable across
+ * every entity of a scope; hand-written ones follow, in the admin's own sort.
+ * Virtual entries get negative ids, which are only ever used as React keys and
+ * can never collide with a real row.
+ */
+export async function getFaqsWithDefaults(
+  scope: string,
+  refId: number | null,
+  seeds: FaqSeed[],
+  locale: Locale
+): Promise<ResolvedFaq[]> {
+  // Off switches first: no point resolving anything the page will not render.
+  // Scope-wide beats per-entity, and either one silences the block completely,
+  // generated and hand-written alike.
+  const disabled = await getDisabledFaqKeys();
+  if (disabled.has(`${scope}:${FAQ_SCOPE_ALL}`)) return [];
+  if (refId !== null && disabled.has(`${scope}:${refId}`)) return [];
+
+  let rows: Awaited<ReturnType<typeof getFaqRows>>;
+  try {
+    rows = await getFaqRows(scope, refId);
+  } catch {
+    // The `district` enum value and the `auto_key` column each arrive in a
+    // migration. If this code is live before one of them is applied, degrade to
+    // the generated defaults instead of taking the page down with it.
+    rows = [];
+  }
+
+  const overrides = new Map<string, (typeof rows)[number]>();
+  const manual: typeof rows = [];
+  for (const r of rows) {
+    if (r.auto_key) overrides.set(r.auto_key, r);
+    else if (r.active) manual.push(r);
+  }
+
+  // A hand-written FAQ that asks the same question as a generated one WINS, and
+  // the generated twin is dropped. Without this the two sit side by side: the
+  // district page shipped fifteen entries with five questions repeated
+  // verbatim, in the visible list and in the FAQPage JSON-LD, which is worse
+  // than either version alone. The admin wrote theirs deliberately, so theirs
+  // is the one that survives.
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+  // Two hand-written FAQs can ask the same question as each other, not just as
+  // a generated one — the same answer twice on the page and twice inside the
+  // FAQPage JSON-LD. First one wins, the rest are dropped.
+  const seenManual = new Set<string>();
+  const manualLocalized: ResolvedFaq[] = [];
+  for (const r of manual) {
+    const question = ml(r.question, locale);
+    const key = norm(question);
+    if (!key || seenManual.has(key)) continue;
+    seenManual.add(key);
+    manualLocalized.push({ id: r.id, question, answer: ml(r.answer, locale) });
+  }
+  const manualQuestions = seenManual;
+
+  const out: ResolvedFaq[] = [];
+  seeds.forEach((seed, i) => {
+    const hit = overrides.get(seed.key);
+    if (hit) {
+      if (!hit.active) return; // tombstone: admin deleted this generated FAQ
+      out.push({ id: hit.id, question: ml(hit.question, locale), answer: ml(hit.answer, locale) });
+      return;
+    }
+    if (manualQuestions.has(norm(ml(seed.question, locale)))) return; // superseded
+    out.push({ id: -(i + 1), question: ml(seed.question, locale), answer: ml(seed.answer, locale) });
+  });
+
+  out.push(...manualLocalized);
+
+  // An answer that localized to an empty string would render a blank card and,
+  // worse, an empty acceptedAnswer in the FAQPage JSON-LD.
+  return out.filter((f) => f.question.trim() && f.answer.trim());
+}
 
 export const getTestimonials = unstable_cache(
   async (locale: Locale) => {

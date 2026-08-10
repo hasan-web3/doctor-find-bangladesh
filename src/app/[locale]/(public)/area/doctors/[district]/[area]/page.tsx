@@ -3,7 +3,9 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { LinkCloud } from "@/components/public/link-cloud";
-import { getAreaBySlugs, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, getAllAreaSlugPairs, getSpecialtiesInArea, getSiblingAreas } from "@/lib/data";
+import { getAreaBySlugs, getSpecialties, getFaqsWithDefaults, searchDoctors, countDoctorsFor, getAllAreaSlugPairs, getSpecialtiesInArea, getSiblingAreas } from "@/lib/data";
+import { areaFaqSeeds } from "@/lib/faq-defaults";
+import { FaqAccordion } from "@/components/public/faq-accordion";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -79,10 +81,9 @@ export default async function AreaPage({ params }: Props) {
 
   // Fetch initial data for the client component.
   // The client component will re-fetch if filters are applied.
-  const [settings, allSpecialties, faqs, areaSpecialties, siblingAreas, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, areaSpecialties, siblingAreas, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
-    getFaqs("area", area.id, locale),
     // The specialties that actually have doctors in THIS thana. Rendered below
     // as links to /specialties/<specialty>/<thana> — the combination pages.
     // Those pages are a whole section of the sitemap and, until this block
@@ -111,6 +112,21 @@ export default async function AreaPage({ params }: Props) {
       priorityDistrictId: area.district_id ?? null,
     }, locale),
   ]);
+
+  // Generated from this thana's own data, then overlaid with any admin edits.
+  // Returns nothing when the thana has no doctors, which is exactly when the
+  // page is marked noindex and left out of the sitemap.
+  const faqs = await getFaqsWithDefaults(
+    "area",
+    area.id,
+    areaFaqSeeds({
+      name: area.name,
+      district: area.district,
+      doctorCount: initialDoctorData.total,
+      specialties: areaSpecialties.map((s) => s.name),
+    }),
+    locale
+  );
 
   const pageTitle = locale === "bn" ? `${area.name}-এর ডাক্তার ও চেম্বার` : `Doctors in ${area.name}`;
   
@@ -194,17 +210,13 @@ export default async function AreaPage({ params }: Props) {
         )}
       </div>
 
+      {/* Same click-to-expand accordion as the homepage and the district page.
+          The answers stay in the server HTML and are only collapsed with CSS,
+          so nothing is hidden from Google. See faq-accordion.tsx. */}
       {faqs.length > 0 && (
         <div className="mx-auto max-w-[820px] px-5 pb-[60px]">
-          <h3 className="mb-[18px] mt-0 text-center font-heading text-[22px] font-bold text-ink">{d.faq_title}</h3>
-          <div className="flex flex-col gap-3">
-            {faqs.map((f) => (
-              <div key={f.id} className="rounded-[14px] border border-line bg-white px-5 py-[18px]">
-                <div className="mb-[7px] text-base font-semibold text-ink">{f.question}</div>
-                <p className="m-0 text-[14.5px] leading-relaxed text-ink-mute">{f.answer}</p>
-              </div>
-            ))}
-          </div>
+          <h2 className="mb-[18px] mt-0 text-center font-heading text-[22px] font-bold text-ink">{d.faq_title}</h2>
+          <FaqAccordion faqs={faqs} />
         </div>
       )}
     </div>

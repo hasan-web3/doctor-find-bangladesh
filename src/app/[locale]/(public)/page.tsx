@@ -31,7 +31,7 @@ const AreaMap = dynamic(() =>
 );
 import {
   getSpecialties, getAreasLight, getHospitalOptions,
-  getHeroSlides, getFaqs, getTestimonials, getBlogPosts, getHomepageDoctors,
+  getHeroSlides, getFaqsWithDefaults, getTestimonials, getBlogPosts, getHomepageDoctors,
   getDistrictsForSearch, getThanasForSearch, getBusiestAreaByDistrict, resolveDisplayDistrict,
   getNearbyAreas, type Specialty,
 } from "@/lib/data";
@@ -97,7 +97,10 @@ export default async function HomePage({ params }: Props) {
     geo, mapsConfig, searchDistricts, searchThanas, busiestAreas,
   ] = await Promise.all([
     getSettings(), getSpecialties(locale), getAreasLight(locale), getHeroSlides(locale),
-    getFaqs("home", null, locale), getTestimonials(locale), getHospitalOptions(locale),
+    // Empty seed list: the homepage has no entity to generate from, so its
+    // FAQs stay hand-written. It goes through the same resolver anyway so the
+    // scope-level off switch applies here too.
+    getFaqsWithDefaults("home", null, [], locale), getTestimonials(locale), getHospitalOptions(locale),
     getBlogPosts(locale, { perPage: 3 }), STATIC_GEO, getEnabledConfig("google_maps"),
     getDistrictsForSearch(), getThanasForSearch(), getBusiestAreaByDistrict(),
   ]);

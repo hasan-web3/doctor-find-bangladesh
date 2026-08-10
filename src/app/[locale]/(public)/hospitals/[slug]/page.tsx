@@ -3,7 +3,9 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { Icon } from "@/components/icons";
-import { getHospitalBySlug, getFaqs, searchDoctors, geoSearchPrefs, getAllHospitalSlugs } from "@/lib/data";
+import { getHospitalBySlug, getFaqsWithDefaults, searchDoctors, geoSearchPrefs, getAllHospitalSlugs } from "@/lib/data";
+import { hospitalFaqSeeds } from "@/lib/faq-defaults";
+import { FaqAccordion } from "@/components/public/faq-accordion";
 import { db } from "@/db";
 import { doctorSpecialties, specialties as specialtiesT } from "@/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
@@ -88,9 +90,8 @@ export default async function HospitalPage({ params }: Props) {
   }
 
   const geo = STATIC_GEO;
-  const [settings, faqs, initialDoctorData, maps, departmentSpecs] = await Promise.all([
+  const [settings, initialDoctorData, maps, departmentSpecs] = await Promise.all([
     getSettings(),
-    getFaqs("hospital", h.id, locale),
     searchDoctors({
       hospitalId: h.id,
       page: 1,
@@ -114,6 +115,23 @@ export default async function HospitalPage({ params }: Props) {
           )
       : Promise.resolve([] as { slug: string; name: { bn?: string; en?: string } }[]),
   ]);
+
+  // Generated from this hospital's own address, departments and doctor list,
+  // then overlaid with any admin edits. This is the one generator with no
+  // doctor-count gate, matching the sitemap: a hospital page carries useful
+  // content of its own even before a doctor is listed there.
+  const faqs = await getFaqsWithDefaults(
+    "hospital",
+    h.id,
+    hospitalFaqSeeds({
+      name: h.name,
+      area: h.area,
+      district: h.district,
+      doctorCount: initialDoctorData.total,
+      departments: h.departments,
+    }),
+    locale
+  );
 
   const departmentDetails = h.departments
     .map((deptName) => {
@@ -244,14 +262,7 @@ export default async function HospitalPage({ params }: Props) {
       {faqs.length > 0 && (
         <div className="mt-10">
           <h2 className="mb-3.5 mt-0 font-heading text-xl font-bold text-ink">{d.faq_title}</h2>
-          <div className="flex flex-col gap-3">
-            {faqs.map((f) => (
-              <div key={f.id} className="rounded-[14px] border border-line bg-white px-5 py-[18px]">
-                <div className="mb-[7px] text-base font-semibold text-ink">{f.question}</div>
-                <p className="m-0 text-[14.5px] leading-relaxed text-ink-mute">{f.answer}</p>
-              </div>
-            ))}
-          </div>
+          <FaqAccordion faqs={faqs} />
         </div>
       )}
     </div>

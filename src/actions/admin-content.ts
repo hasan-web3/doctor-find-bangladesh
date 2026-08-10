@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { sanitizeHtml } from "@/lib/sanitize";
 import {
   db,
@@ -10,12 +10,14 @@ import {
   blogPosts,
   districts,
   faqs,
+  faqDisabled,
   heroSlides,
   hospitals,
   reviews,
   specialties,
   testimonials,
 } from "@/db";
+import { FAQ_SCOPE_ALL } from "@/lib/data";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import {
@@ -663,6 +665,9 @@ const faqSchema = z.object({
   answer: mlRequired("বাংলা উত্তর দিন"),
   sort: z.coerce.number().default(0),
   active: z.boolean().default(true),
+  // Set when this row overrides a GENERATED FAQ (see src/lib/faq-defaults.ts).
+  // Null for ordinary hand-written FAQs.
+  auto_key: z.string().trim().min(1).nullable().optional(),
 });
 
 export async function saveFaq(payload: unknown): Promise<ActionResult> {
@@ -671,17 +676,80 @@ export async function saveFaq(payload: unknown): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message || "তথ্য যাচাই ব্যর্থ" };
   const f = parsed.data;
   const refId = f.scope === "home" ? null : f.ref_id || null;
+  const autoKey = f.auto_key ?? null;
+
   if (f.id) {
     await db
       .update(faqs)
-      .set({ scope: f.scope, refId, question: f.question, answer: f.answer, sort: f.sort, active: f.active })
+      .set({ scope: f.scope, refId, question: f.question, answer: f.answer, sort: f.sort, active: f.active, autoKey })
       .where(eq(faqs.id, f.id));
+  } else if (autoKey) {
+    // First edit of a generated FAQ: it has no row yet, so this MATERIALISES
+    // it. Looked up rather than relying on ON CONFLICT so the code does not
+    // depend on the partial index's name, and so a second save from a stale
+    // dashboard tab updates the existing override instead of failing.
+    const [existing] = await db
+      .select({ id: faqs.id })
+      .from(faqs)
+      .where(
+        and(
+          eq(faqs.scope, f.scope),
+          refId === null ? isNull(faqs.refId) : eq(faqs.refId, refId),
+          eq(faqs.autoKey, autoKey)
+        )
+      )
+      .limit(1);
+    if (existing) {
+      await db
+        .update(faqs)
+        .set({ question: f.question, answer: f.answer, sort: f.sort, active: f.active })
+        .where(eq(faqs.id, existing.id));
+    } else {
+      await db.insert(faqs).values({
+        scope: f.scope, refId, question: f.question, answer: f.answer,
+        sort: f.sort, active: f.active, autoKey,
+      });
+    }
   } else {
     await db.insert(faqs).values({ scope: f.scope, refId, question: f.question, answer: f.answer, sort: f.sort, active: f.active });
   }
+
   await audit("save", "faqs", f.id);
   revalidatePublic(["faqs"]);
   return { ok: true, message: "FAQ সংরক্ষণ হয়েছে" };
+}
+
+// ---------------- FAQ on/off switches ----------------
+//
+// Denylist semantics (migrations/019): a row means OFF, no row means ON.
+// `refId === null` targets the whole scope via the FAQ_SCOPE_ALL sentinel, so
+// one call covers "turn every district's FAQ off" and "turn Khulna's off".
+const faqToggleSchema = z.object({
+  scope: z.enum(["home", "specialty", "area", "hospital", "doctor", "district"]),
+  ref_id: z.coerce.number().nullable().optional(),
+  enabled: z.boolean(),
+});
+
+export async function setFaqEnabled(payload: unknown): Promise<ActionResult> {
+  await requireSession();
+  const parsed = faqToggleSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, message: "তথ্য যাচাই ব্যর্থ" };
+  const { scope, enabled } = parsed.data;
+  const refId = parsed.data.ref_id ?? FAQ_SCOPE_ALL;
+
+  if (enabled) {
+    await db.delete(faqDisabled).where(and(eq(faqDisabled.scope, scope), eq(faqDisabled.refId, refId)));
+  } else {
+    await db
+      .insert(faqDisabled)
+      .values({ scope, refId })
+      // Already off: a double-click, or two dashboards open at once.
+      .onConflictDoNothing();
+  }
+
+  await audit("save", "faq_disabled", refId, { scope, enabled });
+  revalidatePublic(["faqs"]);
+  return { ok: true, message: enabled ? "FAQ চালু হয়েছে" : "FAQ বন্ধ হয়েছে" };
 }
 
 export async function deleteFaq(id: number): Promise<ActionResult> {

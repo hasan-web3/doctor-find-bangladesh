@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
-import { getDoctorBySlug, getFaqs, searchDoctors, geoSearchPrefs, getAllDoctorSlugs } from "@/lib/data";
+import { getDoctorBySlug, getFaqsWithDefaults, searchDoctors, geoSearchPrefs, getAllDoctorSlugs } from "@/lib/data";
+import { doctorFaqSeeds } from "@/lib/faq-defaults";
+import { FaqAccordion } from "@/components/public/faq-accordion";
 import { getSettings } from "@/lib/settings";
 import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldPhysician, ldFaq } from "@/lib/seo-utils";
@@ -116,7 +118,23 @@ export default async function DoctorDetailPage({ params }: Props) {
     .filter((s) => s.url);
 
 
-  const docFaqs = await getFaqs("doctor", doc.id, locale);
+  // Generated from this doctor's own chambers, schedule and fee, then overlaid
+  // with any admin edits. Deliberately the shortest generated set on the site:
+  // the profile already shows this information in structured form, so these
+  // only answer the questions people actually type into search.
+  const docFaqs = await getFaqsWithDefaults(
+    "doctor",
+    doc.id,
+    doctorFaqSeeds({
+      name: doc.name,
+      specialty: doc.specialties[0]?.name || "",
+      district: doc.district || "",
+      chamberNames: doc.chambers.map((c) => c.name),
+      hasSchedule: doc.chambers.some((c) => c.schedule.length > 0),
+      fee: doc.chambers[0]?.fee ?? null,
+    }),
+    locale
+  );
   const primaryChamber = doc.chambers[0];
   const fee = primaryChamber?.fee;
   const helplineDisplay = locale === "bn" ? settings.helpline_bn : settings.helpline;
@@ -349,13 +367,8 @@ export default async function DoctorDetailPage({ params }: Props) {
               {docFaqs.length > 0 && (
                 <>
                   <h2 className="mb-3 font-heading text-lg font-bold text-ink">{d.faq_title}</h2>
-                  <div className="mb-5 flex flex-col gap-3">
-                    {docFaqs.map((f) => (
-                      <div key={f.id} className="rounded-[14px] border border-line p-4">
-                        <div className="mb-1.5 text-[15px] font-semibold text-ink">{f.question}</div>
-                        <p className="m-0 text-sm leading-relaxed text-ink-mute">{f.answer}</p>
-                      </div>
-                    ))}
+                  <div className="mb-5">
+                    <FaqAccordion faqs={docFaqs} />
                   </div>
                 </>
               )}

@@ -5,31 +5,34 @@ import { X } from "lucide-react";
 import { saveFaq } from "@/actions/admin-content";
 import { Field, inputCls, Toggle, Toast, MLInput } from "@/components/admin/ui";
 import { type ML, emptyML } from "@/lib/utils";
-
-// Keep in sync with SCOPES in ./manager.tsx, faqSchema in admin-content.ts and
-// the faq_scope enum in src/db/schema.ts.
-const SCOPES = [
-  ["home", "হোমপেজ"], ["specialty", "বিভাগ"], ["district", "জেলা"], ["area", "থানা / উপজেলা"], ["hospital", "হাসপাতাল"], ["doctor", "ডাক্তার"],
-] as const;
-
-type Opt = { id: number; name_bn: string };
-type Refs = { specialty: Opt[]; district: Opt[]; area: Opt[]; hospital: Opt[]; doctor: Opt[] };
+import { scopeLabel } from "./scopes";
 
 export type FaqDraft = {
   id?: number; scope: string; ref_id: number | null; question: ML; answer: ML; sort: number; active: boolean;
+  /**
+   * Present when this draft came from a GENERATED FAQ. Saving carries it
+   * through so the row overrides that specific generated answer instead of
+   * becoming a second, duplicate FAQ next to it.
+   */
+  auto_key?: string | null;
 };
 
-export const EMPTY_FAQ: FaqDraft = {
-    scope: "home", ref_id: null, question: { ...emptyML }, answer: { ...emptyML }, sort: 0, active: true
-};
+// Scope and ref_id come from the page's URL, so a draft is always created
+// already filed under the right entity. There is no scope <select> and no
+// entity <select> in this form any more — those two dropdowns were what forced
+// the screen to load every specialty, area, hospital and doctor up front.
+export function emptyFaq(scope: string, refId: number | null, sort = 0): FaqDraft {
+  return { scope, ref_id: refId, question: { ...emptyML }, answer: { ...emptyML }, sort, active: true };
+}
 
 export function FaqForm({
     initial,
-    refs,
+    refLabel,
     onFinished,
 }: {
     initial: FaqDraft;
-    refs: Refs;
+    /** Read-only name of what this FAQ is filed under, e.g. "খুলনা". */
+    refLabel: string;
     onFinished: () => void;
 }) {
     const [pending, startTransition] = useTransition();
@@ -37,10 +40,6 @@ export function FaqForm({
     const [draft, setDraft] = useState(initial);
 
     const submit = () => {
-        if (draft.scope !== "home" && !draft.ref_id) {
-            setResult({ ok: false, message: "কোন পেজে দেখাবে তা নির্বাচন করুন" });
-            return;
-        }
         startTransition(async () => {
             const res = await saveFaq(draft);
             setResult(res);
@@ -91,25 +90,22 @@ export function FaqForm({
                 <div className="flex flex-col gap-5">
                     <div className="rounded-2xl border border-line bg-white p-6">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                            <Field label="স্কোপ">
-                            <select className={inputCls} value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value, ref_id: null })}>
-                                {SCOPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                            </select>
+                            <Field label="কোথায় দেখাবে">
+                              {/* Fixed by the page you came from, shown so there is
+                                  never any doubt about where this FAQ will appear. */}
+                              <div className="flex h-[42px] items-center rounded-[10px] border border-line bg-page px-3 text-sm font-semibold text-ink">
+                                {scopeLabel(draft.scope)}
+                                {draft.ref_id !== null ? `: ${refLabel}` : ""}
+                              </div>
                             </Field>
-                            {draft.scope !== "home" && (
-                            <Field label="কোন পেজে">
-                                <select className={inputCls} value={draft.ref_id ?? ""} onChange={(e) => setDraft({ ...draft, ref_id: e.target.value ? Number(e.target.value) : null })}>
-                                <option value="">নির্বাচন করুন</option>
-                                {(refs[draft.scope as keyof Refs] || []).map((o) => <option key={o.id} value={o.id}>{o.name_bn}</option>)}
-                                </select>
+                            <Field label="ক্রম" hint="ছোট সংখ্যা আগে দেখাবে">
+                              <input type="number" className={inputCls} value={draft.sort} onChange={(e) => setDraft({ ...draft, sort: Number(e.target.value) || 0 })} />
                             </Field>
-                            )}
-                            <Field label="ক্রম">
-                            <input type="number" className={inputCls} value={draft.sort} onChange={(e) => setDraft({ ...draft, sort: Number(e.target.value) || 0 })} />
+                            <Field label="অবস্থা">
+                              <div className="flex h-[42px] items-center">
+                                <Toggle checked={draft.active} onChange={(v) => setDraft({ ...draft, active: v })} label="সক্রিয়" />
+                              </div>
                             </Field>
-                        </div>
-                        <div className="mt-4">
-                            <Toggle checked={draft.active} onChange={(v) => setDraft({ ...draft, active: v })} label="সক্রিয়" />
                         </div>
                     </div>
                     <div className="rounded-2xl border border-line bg-white p-6">
@@ -120,7 +116,7 @@ export function FaqForm({
                     </div>
                 </div>
             </div>
-            
+
             {/* Sticky Footer */}
             <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-line bg-white/80 p-4 backdrop-blur-sm">
                 <div className="flex justify-end gap-3">

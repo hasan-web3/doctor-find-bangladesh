@@ -507,9 +507,27 @@ export const faqs = pgTable(
     answer: jsonb("answer").$type<ML>().notNull(),
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
+    // Set only on rows that override a GENERATED FAQ (migrations/018).
+    // NULL = an ordinary hand-written FAQ. A row carrying a key replaces the
+    // generated answer with that key; the same row with active = false
+    // suppresses it. See src/lib/faq-defaults.ts.
+    autoKey: text("auto_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ scopeIdx: index("idx_faqs_scope").on(t.scope, t.refId, t.active) })
+);
+
+// Denylist of FAQ blocks that are switched off (migrations/019).
+// A row means "off"; no row means "on". `refId = 0` is the scope-wide switch,
+// any other value names a single entity. See FAQ_SCOPE_ALL in src/lib/data.ts.
+export const faqDisabled = pgTable(
+  "faq_disabled",
+  {
+    scope: faqScope("scope").notNull(),
+    refId: bigint("ref_id", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.scope, t.refId] }) })
 );
 
 export const testimonials = pgTable("testimonials", {

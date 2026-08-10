@@ -4,8 +4,10 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqs, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqsWithDefaults, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty } from "@/lib/data";
+import { specialtyFaqSeeds } from "@/lib/faq-defaults";
 import { GeoOrderedLinkCloud } from "@/components/public/geo-ordered-link-cloud";
+import { FaqAccordion } from "@/components/public/faq-accordion";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata, findRedirect } from "@/lib/seo";
@@ -97,10 +99,9 @@ export default async function SpecialtyPage({ params }: Props) {
     notFound();
   }
 
-  const [settings, allSpecialties, faqs, specialtyAreas, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, specialtyAreas, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
-    getFaqs("specialty", spec.id, locale),
     // The thanas where this specialty actually has doctors, linked as
     // /specialties/<this>/<thana>. Same destinations the thana pages link to,
     // approached from the other axis, so the combination pages sit in a two-way
@@ -120,6 +121,19 @@ export default async function SpecialtyPage({ params }: Props) {
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),
   ]);
+
+  // Generated from this specialty's own coverage, then overlaid with any admin
+  // edits. Empty when the specialty has no doctors, matching the noindex rule.
+  const faqs = await getFaqsWithDefaults(
+    "specialty",
+    spec.id,
+    specialtyFaqSeeds({
+      name: spec.name,
+      doctorCount: initialDoctorData.total,
+      areas: specialtyAreas.map((a) => a.name),
+    }),
+    locale
+  );
 
   const suggestedSpecialties = allSpecialties.filter((s) => s.id !== spec.id);
 
@@ -220,17 +234,10 @@ export default async function SpecialtyPage({ params }: Props) {
 
       {faqs.length > 0 && (
         <div className="mx-auto max-w-[820px] px-5 pb-[60px] pt-[34px]">
-          <h3 className="mb-[18px] mt-0 text-center font-heading text-[22px] font-bold text-ink">
-            {locale === "bn" ? `${spec.name} ${d.spec_faq_suffix}` : `${spec.name} ${d.spec_faq_suffix}`}
-          </h3>
-          <div className="flex flex-col gap-3">
-            {faqs.map((f) => (
-              <div key={f.id} className="rounded-[14px] border border-line bg-white px-5 py-[18px]">
-                <div className="mb-[7px] text-base font-semibold text-ink">{f.question}</div>
-                <p className="m-0 text-[14.5px] leading-relaxed text-ink-mute">{f.answer}</p>
-              </div>
-            ))}
-          </div>
+          <h2 className="mb-[18px] mt-0 text-center font-heading text-[22px] font-bold text-ink">
+            {spec.name} {d.spec_faq_suffix}
+          </h2>
+          <FaqAccordion faqs={faqs} />
         </div>
       )}
     </ShownDistrictProvider>

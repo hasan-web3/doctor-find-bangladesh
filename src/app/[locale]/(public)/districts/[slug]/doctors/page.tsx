@@ -12,9 +12,10 @@ import {
   searchDoctors, getSpecialties, getHospitalOptions,
   getDistrictsForSearch, getThanasForSearch,
   getDistrictBySlug, countDoctorsFor,
-  getAllDistrictSlugs, getDistrictHubLinks, getFaqs,
+  getAllDistrictSlugs, getDistrictHubLinks, getFaqsWithDefaults,
   type DoctorSearchParams,
 } from "@/lib/data";
+import { districtFaqSeeds } from "@/lib/faq-defaults";
 import { getSettings } from "@/lib/settings";
 import { STATIC_GEO } from "@/lib/geo";
 import { buildMetadata } from "@/lib/seo";
@@ -123,18 +124,28 @@ export default async function DistrictDoctorsPage({ params }: Props) {
   // The doctor list, the FAQ block and the internal-link hub are all
   // district-scoped and independent, so they are fetched together. None of them
   // reads searchParams, cookies or headers, so the page stays fully static/ISR.
-  const [{ rows, total }, faqs, hub] = await Promise.all([
+  const [{ rows, total }, hub] = await Promise.all([
     searchDoctors(query, locale),
-    // `.catch` is deliberate and is about DEPLOY ORDER, not about hiding bugs.
-    // The `district` value of the faq_scope enum arrives in migrations/017; if
-    // this code ships before that migration is applied, Postgres rejects the
-    // comparison with "invalid input value for enum faq_scope" and would take
-    // the whole district page down with it. Degrading to "no FAQs yet" keeps
-    // the page serving, and the block appears by itself once the migration and
-    // the first district FAQ are in place.
-    getFaqs("district", district.id, locale).catch(() => []),
     getDistrictHubLinks(slug, locale),
   ]);
+
+  // FAQs are GENERATED from this district's own data and then have the admin's
+  // edits applied on top. Nothing has to be written by hand for a district to
+  // get its block: the seeds name the real thanas, specialties and hospitals
+  // below, and return an empty list when the district has no doctors, which is
+  // the same condition that keeps it out of the sitemap.
+  const faqs = await getFaqsWithDefaults(
+    "district",
+    district.id,
+    districtFaqSeeds({
+      name: district.name,
+      doctorCount: total,
+      thanas: hub.thanas.map((x) => x.name),
+      specialties: hub.specialties.map((x) => x.name),
+      hospitals: hub.hospitals.map((x) => x.name),
+    }),
+    locale
+  );
 
   const pageTitle = districtTitle(district.name, locale);
   const pageSub = total > 0
