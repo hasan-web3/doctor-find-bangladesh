@@ -73,10 +73,36 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
   const title = (ovTitle || input.noTemplate) ? rawTitle : template.replace("%s", rawTitle);
   const description = ovDesc || input.description || t(settings.seo_default_description, locale);
 
-  const ogImage =
-    ov?.og_image_url ||
-    input.ogImage ||
-    siteUrl(`/api/og?title=${encodeURIComponent(input.ogTitle || rawTitle)}&subtitle=${encodeURIComponent(input.ogSubtitle || "")}&locale=${locale}`);
+  // Order of preference for the share card:
+  //   1. per-URL admin override
+  //   2. the page's own image (doctor photo, blog cover, hospital photo)
+  //   3. on the HOME PAGE ONLY, the brand card uploaded in admin > SEO settings
+  //   4. the generated /api/og card, titled with this page's own title
+  //
+  // Step 3 used to be missing entirely: `seo_default_og_image` was read only by
+  // brandOgImage() (the intake form), so an admin who uploaded a brand card saw
+  // the home page keep advertising the generated card instead.
+  //
+  // It is deliberately scoped to "/" rather than applied as a site-wide
+  // fallback. The uploaded card is one fixed image; letting it cover every
+  // image-less page (specialties, districts, contact, FAQ) would give all of
+  // them an identical preview, whereas the generated card carries each page's
+  // own title and so describes what was actually shared. The brand card's job
+  // is to represent the domain itself, which is exactly the home page — the
+  // same reasoning brandOgImage() below applies for the intake form.
+  const generatedOg = siteUrl(
+    `/api/og?title=${encodeURIComponent(input.ogTitle || rawTitle)}&subtitle=${encodeURIComponent(input.ogSubtitle || "")}&locale=${locale}`
+  );
+  const brandCard = input.path === "/" ? settings.seo_default_og_image?.trim() : "";
+  const ogImage = ov?.og_image_url?.trim() || input.ogImage || brandCard || generatedOg;
+
+  // width/height are a layout hint the crawlers trust BEFORE they fetch the
+  // file. Declaring 1200x630 over a portrait doctor photo or an arbitrary
+  // upload makes Facebook fall back to its small thumbnail card once the real
+  // pixels disagree, so only the generated card — the one image whose size we
+  // actually control — carries dimensions.
+  const ogImageEntry =
+    ogImage === generatedOg ? { url: ogImage, width: 1200, height: 630 } : { url: ogImage };
 
   const q = input.canonicalQuery && input.canonicalQuery.startsWith("?") ? input.canonicalQuery : "";
   const bnUrl = siteUrl(localeHref("bn", input.path)) + q;
@@ -104,7 +130,7 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
           modifiedTime: input.article?.modifiedTime,
           section: input.article?.section,
           authors: input.article?.authors,
-          images: [{ url: ogImage, width: 1200, height: 630 }],
+          images: [ogImageEntry],
         }
       : {
           title,
@@ -114,7 +140,7 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
           locale: ogLocale(locale),
           alternateLocale: locale === "bn" ? "en_US" : "bn_BD",
           type: "website",
-          images: [{ url: ogImage, width: 1200, height: 630 }],
+          images: [ogImageEntry],
         };
 
   return {
