@@ -21,10 +21,10 @@ export default async function AdminBlogPage({ searchParams }: { searchParams: Pr
   const [postsRes, totalRes, catsRes] = await Promise.all([
     db.execute<{
       id: number; slug: string; title: string; published: boolean;
-      published_at: string | null; category: string | null; views: number;
+      published_at: string | null; category: string | null;
     }>(sql`
       SELECT p.id, p.slug, p.title->>'bn' AS title, p.published, p.published_at::text,
-        c.name->>'bn' AS category, 0 AS views
+        c.name->>'bn' AS category
       FROM blog_posts p LEFT JOIN blog_categories c ON c.id = p.category_id
       WHERE ${searchCond}
       ORDER BY p.updated_at DESC

@@ -8,7 +8,6 @@ import { type PostInitial, PostForm } from "./post-form";
 import { FullPageModal } from "@/components/admin/full-page-modal";
 import { StatusBadge } from "@/components/admin/ui";
 import { Pagination } from "@/components/admin/pagination";
-import { bnNum } from "@/lib/bn";
 import { date as fmtDate } from "@/lib/i18n";
 import { DeletePostButton } from "./delete-button";
 import { emptyML } from "@/lib/utils";
@@ -27,7 +26,6 @@ type Row = {
   published: boolean;
   published_at: string | null;
   category: string | null;
-  views: number;
 };
 
 export function BlogList({
@@ -92,7 +90,7 @@ export function BlogList({
         <table className="w-full min-w-[680px] border-collapse">
             <thead>
             <tr>
-                {["আর্টিকেল", "ক্যাটাগরি", "প্রকাশের তারিখ", "ভিউ", "স্ট্যাটাস", "অ্যাকশন"].map((h) => (
+                {["আর্টিকেল", "ক্যাটাগরি", "প্রকাশের তারিখ", "স্ট্যাটাস", "অ্যাকশন"].map((h) => (
                 <th key={h} className="border-b border-line px-3.5 py-3 text-left text-[12.5px] font-semibold text-ink-ghost">{h}</th>
                 ))}
             </tr>
@@ -109,7 +107,6 @@ export function BlogList({
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">
                         {p.published_at ? fmtDate(p.published_at, "en") : "..."}
                     </td>
-                    <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{bnNum(p.views)}</td>
                     <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                         <StatusBadge tone={p.published ? "green" : "gray"}>{p.published ? "প্রকাশিত" : "ড্রাফট"}</StatusBadge>
                     </td>

@@ -48,6 +48,13 @@ const cspDirectives: Record<string, string[]> = {
     "https://connect.facebook.net",
     "https://va.vercel-scripts.com",
     "https://vercel.live",
+    // Cloudflare Web Analytics. The domain sits behind Cloudflare, which
+    // INJECTS beacon.min.js into the HTML on its way out of the edge — after
+    // Next.js has already written this header — so the script arrives from a
+    // host our own CSP never listed and the browser blocks it. The beacon
+    // POSTs its payload to https://cloudflareinsights.com/cdn-cgi/rum, which
+    // connect-src already covers via `https:`.
+    "https://static.cloudflareinsights.com",
   ],
   "style-src": [
     "'self'",
