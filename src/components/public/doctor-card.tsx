@@ -30,7 +30,7 @@ export function DoctorCard({
   doctor: DoctorCardData;
   helpline: string;
   locale: Locale;
-  d: Pick<Dict, "verified_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short" | "years_plus">;
+  d: Pick<Dict, "verified_badge" | "bmdc_badge" | "new_profile" | "fee" | "taka" | "details" | "book_appointment" | "call_short" | "years_plus">;
 }) {
   const tone = TONES[doctor.id % TONES.length];
   const L = (path: string) => localeHref(locale, path);
@@ -83,9 +83,12 @@ export function DoctorCard({
             </span>
           </div>
         )}
-        {doctor.verified && (
+        {/* One badge, never two. BMDC is checked first: it is the claim a
+            visitor can go and confirm on the Council's register, so it
+            outranks the plain badge if a row ever carries both. */}
+        {(doctor.bmdc_verified || doctor.verified) && (
           <span className="absolute right-3 top-3 inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[11.5px] font-bold text-accent-text shadow-[0_2px_6px_rgba(15,23,42,.12)] backdrop-blur">
-            {d.verified_badge}
+            {doctor.bmdc_verified ? d.bmdc_badge : d.verified_badge}
           </span>
         )}
       </Link>
@@ -126,7 +129,11 @@ export function DoctorCard({
             <span className="text-[12.5px] font-semibold text-brand-700">
               {doctor.experience_years != null && doctor.experience_years > 0
                 ? `${EXP_LABEL[locale]} ${num(doctor.experience_years, locale)}${d.years_plus}`
-                : doctor.verified
+                : // Either badge suppresses "new profile" — a doctor whose BMDC
+                  // registration we looked up is plainly not an unchecked entry,
+                  // and labelling them new alongside the badge read as a
+                  // contradiction.
+                  doctor.verified || doctor.bmdc_verified
                   ? ""
                   : d.new_profile}
             </span>

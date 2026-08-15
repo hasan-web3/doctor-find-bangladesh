@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { getBlogPosts, getBlogCategories } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
-import { isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
-import { AnimatedGrid } from "@/components/animated-grid";
-import { BlogListClient } from "@/components/public/blog-list-client";
+import { isLocale, type Locale } from "@/lib/i18n";
+import { BlogListClient, BLOG_PER_PAGE } from "@/components/public/blog-list-client";
 import { BlogCategoryChips } from "@/components/public/blog-category-chips";
-import { Pagination } from "@/components/public/pagination";
 
 // ISR: listing. New posts still surface immediately — publishing calls
 // revalidateBlogPost(), which purges this path. Nothing here is time-triggered
@@ -44,15 +39,10 @@ export default async function BlogPage({ params }: Props) {
   const locale: Locale = raw;
   const d = getDict(locale);
 
-  const page = 1;
-  const perPage = 12;
-
   const [{ rows: posts, total }, categories] = await Promise.all([
-    getBlogPosts(locale, { page, perPage }),
+    getBlogPosts(locale, { page: 1, perPage: BLOG_PER_PAGE }),
     getBlogCategories(locale),
   ]);
-
-  const totalPages = Math.ceil(total / perPage);
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">
@@ -62,22 +52,10 @@ export default async function BlogPage({ params }: Props) {
 
       <BlogCategoryChips categories={categories} locale={locale} allLabel={d.all} />
 
-      {posts.length > 0 ? (
-        <>
-          <BlogListClient posts={posts} locale={locale} d={d} />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            perPage={perPage}
-            locale={locale}
-            showPerPageSelector
-          />
-        </>
-      ) : (
-        <AnimatedGrid className="rounded-2xl border border-dashed border-line bg-white p-12 text-center text-ink-faint">
-          {d.no_articles}
-        </AnimatedGrid>
-      )}
+      {/* Cards, empty state and pager all live inside the client component —
+          the row set changes with ?category=/?page= after mount, so the server
+          cannot decide which of the three to show. */}
+      <BlogListClient posts={posts} total={total} locale={locale} d={d} />
     </div>
   );
 }

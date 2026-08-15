@@ -37,7 +37,11 @@ export default async function NewDoctorPage() {
           name: { ...emptyML }, slug: "", degrees: { ...emptyML }, bio: { ...emptyML }, gender: null,
           experience_years: null, patients_served: { ...emptyML }, treated_conditions: { ...emptyML },
           hospital_id: null,
+          // A new profile starts on the weaker badge. BMDC verification is a
+          // claim about a lookup someone actually performed, so it is never a
+          // default — the admin turns it on after checking the register.
           verified: true, active: true,
+          bmdc_verified: false, bmdc_no: "", bmdc_reg_year: null, bmdc_valid_till: "",
           meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
           social_links: EMPTY_SOCIAL_LINKS(),
           specialty_ids: [],

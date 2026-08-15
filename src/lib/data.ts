@@ -88,9 +88,18 @@ export type Hospital = {
   active: boolean; doctor_count: number;
 };
 
+// The two verification badges a doctor can carry. They are mutually exclusive
+// at the database level (see migrations/020_doctor_bmdc.sql), so the UI only
+// ever has to render one — but `bmdc` is checked first everywhere regardless,
+// so a row that somehow held both would still show the stronger, checkable
+// claim rather than the weaker one.
 export type DoctorCardData = {
   id: number; slug: string; name: string; degrees: string; photo_url: string | null;
   verified: boolean;
+  bmdc_verified: boolean;
+  // Only the number rides along on cards. Registration year and expiry are
+  // profile-page detail and would be dead weight in every listing query.
+  bmdc_no: string | null;
   specialty: string; specialty_slug: string | null;
   hospital: string; hospital_slug: string | null;
   chamber: string; area: string; area_slug: string | null; fee: number | null;
@@ -109,6 +118,13 @@ export type DoctorCardData = {
 export type DoctorFull = Omit<DoctorCardData, "hospital"> & {
   bio: string; gender: string | null; experience_years: number | null;
   patients_served: string; photo_key: string | null; active: boolean;
+  // BMDC detail the profile shows and the explainer modal quotes. `bmdc_no`
+  // and `bmdc_verified` come from DoctorCardData; these two are profile-only.
+  // `bmdc_valid_till` is an ISO yyyy-mm-dd string, never a Date: the value is a
+  // calendar day, and serialising it through a Date would shift it by a
+  // timezone on the way to the client component.
+  bmdc_reg_year: number | null;
+  bmdc_valid_till: string | null;
   // Locale-resolved list of conditions this doctor treats (stored in DB as
   // bilingual `{ bn: [], en: [] }` JSONB). Empty array when unset.
   treated_conditions: string[];
@@ -142,6 +158,7 @@ type CardRow = {
   id: number; slug: string;
   name_ml: MLText; degrees_ml: MLText;
   photo_url: string | null; verified: boolean;
+  bmdc_verified: boolean; bmdc_no: string | null;
   specialty_ml: MLText | null; specialty_slug: string | null;
   hospital_ml: MLText | null; hospital_slug: string | null;
   chamber_ml: MLText | null; area_ml: MLText | null; area_slug: string | null;
@@ -153,6 +170,7 @@ type CardRow = {
 
 const cardSelect = sql`
   d.id, d.slug, d.name AS name_ml, d.degrees AS degrees_ml, d.photo_url, d.verified,
+  d.bmdc_verified, d.bmdc_no,
   -- Cards print ONE specialty. A doctor whose only specialty is free text has
   -- no row in doctor_specialties, so fall back to their first custom entry —
   -- otherwise their card renders with a blank specialty line. The ->0 lookup
@@ -238,6 +256,8 @@ function mapDoctorCard(row: CardRow, locale: Locale): DoctorCardData {
     degrees: ml(row.degrees_ml, locale),
     photo_url: row.photo_url ?? null,
     verified: row.verified,
+    bmdc_verified: row.bmdc_verified,
+    bmdc_no: row.bmdc_no ?? null,
     specialty: ml(row.specialty_ml, locale),
     specialty_slug: row.specialty_slug ?? null,
     hospital: ml(row.hospital_ml, locale),
@@ -1465,13 +1485,20 @@ export const getDoctorBySlug = unstable_cache(
       social_links: SocialLinks | null;
       treated_conditions: { bn?: string[]; en?: string[] } | null;
       custom_specialties: MLText[] | null;
+      bmdc_reg_year: number | null;
+      bmdc_valid_till: string | null;
     }>(sql`
       SELECT ${cardSelect},
         d.bio AS bio_ml, d.gender, d.experience_years, d.patients_served AS patients_ml, d.photo_key,
         d.active, d.hospital_id, d.meta_title AS mt_ml, d.meta_description AS md_ml,
         d.social_links,
         d.treated_conditions,
-        d.custom_specialties
+        d.custom_specialties,
+        d.bmdc_reg_year,
+        -- Cast to text so the driver hands back "2029-12-31" rather than a
+        -- Date built in the server's timezone, which can land a day early or
+        -- late once it is serialised down to the client.
+        d.bmdc_valid_till::text AS bmdc_valid_till
       ${cardFrom} WHERE d.slug = ${slug}
     `);
     const doc = docRes.rows[0];
@@ -1548,6 +1575,8 @@ export const getDoctorBySlug = unstable_cache(
       })(),
       photo_key: doc.photo_key,
       active: doc.active,
+      bmdc_reg_year: doc.bmdc_reg_year ?? null,
+      bmdc_valid_till: doc.bmdc_valid_till ?? null,
       meta_title: ml(doc.mt_ml, locale),
       meta_description: ml(doc.md_ml, locale),
       social_links: doc.social_links ?? {},
@@ -1958,6 +1987,20 @@ export const getBlogCategories = unstable_cache(
     const rows = await db
       .select({ id: blogCategories.id, slug: blogCategories.slug, name: blogCategories.name })
       .from(blogCategories)
+      // Only categories that actually hold a published post get a chip. A chip
+      // for an empty category is a dead end — it filters the feed down to
+      // nothing — and admins create categories before writing for them, so the
+      // row exists long before any post does. EXISTS rather than a join +
+      // GROUP BY: we only need "is there at least one", and Postgres can stop
+      // at the first matching row.
+      .where(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(blogPosts)
+            .where(and(eq(blogPosts.categoryId, blogCategories.id), eq(blogPosts.published, true)))
+        )
+      )
       .orderBy(asc(blogCategories.sort), asc(blogCategories.id));
     return rows.map((c) => ({ id: c.id, slug: c.slug, name: ml(c.name, locale) }));
   },

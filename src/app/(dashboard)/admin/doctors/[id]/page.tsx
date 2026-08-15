@@ -20,9 +20,24 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
     custom_specialties: MLRaw[] | null;
     hospital_id: number | null;
     verified: boolean; active: boolean;
+    bmdc_verified: boolean; bmdc_no: string | null;
+    bmdc_reg_year: number | null; bmdc_valid_till_month: string | null;
     meta_title: MLRaw; meta_description: MLRaw; photo_url: string | null;
     social_links: Partial<SocialLinksDraft> | null;
-  }>(sql`SELECT * FROM doctors WHERE id=${doctorId}`);
+  }>(sql`
+    SELECT *,
+      -- YYYY-MM, not the stored day: the form edits month precision, which is
+      -- what the BMDC register publishes. saveDoctor expands it back to the
+      -- last day of the month.
+      --
+      -- to_char rather than the raw column because the pg driver turns a DATE
+      -- into a JS Date in the server's timezone, which can land in the previous
+      -- month once it is serialised into the form. Same treatment the promotion
+      -- dates get in admin-priority.ts. Aliased rather than shadowing
+      -- bmdc_valid_till so nothing depends on which duplicate column name the
+      -- driver keeps.
+      to_char(bmdc_valid_till, 'YYYY-MM') AS bmdc_valid_till_month
+    FROM doctors WHERE id=${doctorId}`);
   const doc = docRows[0];
   if (!doc) notFound();
 
@@ -88,6 +103,10 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
     custom_specialties: (doc.custom_specialties ?? []).map(toML),
     hospital_id: doc.hospital_id ?? null,
     verified: doc.verified,
+    bmdc_verified: doc.bmdc_verified,
+    bmdc_no: doc.bmdc_no ?? '',
+    bmdc_reg_year: doc.bmdc_reg_year ?? null,
+    bmdc_valid_till: doc.bmdc_valid_till_month ?? '',
     active: doc.active,
     meta_title: toML(doc.meta_title),
     meta_description: toML(doc.meta_description),

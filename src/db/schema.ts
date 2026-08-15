@@ -189,6 +189,16 @@ export const doctors = pgTable(
     photoKey: text("photo_key"),
     photoUrl: text("photo_url"),
     verified: boolean("verified").notNull().default(false),
+    // BMDC registration, checked against the Council's own register at
+    // https://verify.bmdc.org.bd. A stronger claim than `verified`, and
+    // mutually exclusive with it — see the CHECK constraints below and
+    // migrations/020_doctor_bmdc.sql.
+    bmdcVerified: boolean("bmdc_verified").notNull().default(false),
+    bmdcNo: text("bmdc_no"),
+    bmdcRegYear: integer("bmdc_reg_year"),
+    // `date`, not timestamp: a registration lapses on a calendar day, and a
+    // timezone-shifted timestamp would move that day for half the world.
+    bmdcValidTill: date("bmdc_valid_till"),
     active: boolean("active").notNull().default(true),
     metaTitle: jsonb("meta_title").$type<ML>().notNull().default(mlEmpty),
     metaDescription: jsonb("meta_description").$type<ML>().notNull().default(mlEmpty),
@@ -200,6 +210,17 @@ export const doctors = pgTable(
   },
   (t) => ({
     genderCk: check("doctors_gender_check", sql`${t.gender} IN ('male', 'female', 'other')`),
+    // One badge or the other, never both. "Neither" stays legal.
+    singleVerificationCk: check(
+      "doctors_single_verification_check",
+      sql`NOT (${t.verified} AND ${t.bmdcVerified})`
+    ),
+    // A BMDC badge with no number behind it is the unfounded trust claim this
+    // whole feature exists to avoid.
+    bmdcNoRequiredCk: check(
+      "doctors_bmdc_no_required_check",
+      sql`NOT ${t.bmdcVerified} OR (${t.bmdcNo} IS NOT NULL AND length(btrim(${t.bmdcNo})) > 0)`
+    ),
     hospitalIdx: index("idx_doctors_hospital").on(t.hospitalId),
   })
 );

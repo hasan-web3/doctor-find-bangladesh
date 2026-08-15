@@ -21,9 +21,15 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
   const [rowsRes, totalRes, spRes, arRes, hoRes, diRes] = await Promise.all([
     db.execute<{
       id: number; slug: string; name_bn: string; verified: boolean; active: boolean;
+      bmdc_verified: boolean; bmdc_valid_till: string | null;
       specialty_bn: string | null; area_bn: string | null; promo_ends: string | null;
     }>(sql`
       SELECT d.id, d.slug, d.name->>'bn' AS name_bn, d.verified, d.active,
+        d.bmdc_verified,
+        -- to_char, not the raw date: the driver would hand back a JS Date built
+        -- in the server's timezone, and the list colours cells by how close the
+        -- date is to today, so a one-day shift is a wrong warning.
+        to_char(d.bmdc_valid_till, 'YYYY-MM-DD') AS bmdc_valid_till,
         -- Same fallback the public card uses: a doctor whose only specialty is
         -- free text has no doctor_specialties row, so show their first custom
         -- entry instead of an empty cell.

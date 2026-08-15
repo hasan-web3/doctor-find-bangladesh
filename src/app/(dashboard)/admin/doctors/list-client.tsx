@@ -13,6 +13,7 @@ import { date as fmtDate } from "@/lib/i18n";
 import { DeleteDoctorButton } from "./delete-button";
 import { EMPTY_SOCIAL_LINKS } from "@/lib/utils";
 import { DebouncedSearch } from "@/components/admin/debounced-search";
+import { bmdcExpiry, formatBmdcMonth, todayIso } from "@/lib/bmdc";
 
 const emptyML = { bn: "", en: "" };
 
@@ -20,7 +21,10 @@ const NEW_DOCTOR: DoctorInitial = {
   name: { ...emptyML }, slug: "", degrees: { ...emptyML }, bio: { ...emptyML }, gender: null,
   experience_years: null, patients_served: { ...emptyML }, treated_conditions: { ...emptyML },
   hospital_id: null,
+  // See the note on the same defaults in ./new/page.tsx: BMDC verification is
+  // never a default, because it asserts a lookup someone actually did.
   verified: true, active: true,
+  bmdc_verified: false, bmdc_no: "", bmdc_reg_year: null, bmdc_valid_till: "",
   meta_title: { ...emptyML }, meta_description: { ...emptyML }, photo_url: null,
   social_links: EMPTY_SOCIAL_LINKS(),
   specialty_ids: [],
@@ -42,8 +46,12 @@ type AreaOpt = {
 };
 type Row = {
   id: number; slug: string; name_bn: string; verified: boolean; active: boolean;
+  bmdc_verified: boolean;
+  /** ISO yyyy-mm-dd, or null when the doctor has no BMDC record. */
+  bmdc_valid_till: string | null;
   specialty_bn: string | null; area_bn: string | null; promo_ends: string | null;
 };
+
 
 export function DoctorsList({
   rows,
@@ -80,6 +88,12 @@ export function DoctorsList({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isDeleting, startDelete] = useTransition();
+
+  // "Today" is resolved once per render, not once per row, so every BMDC date
+  // in the table is judged against the same day even if the render straddles
+  // midnight. Keyed on `rows` rather than [] so a page navigation refreshes it
+  // on a tab that has been left open for days.
+  const today = useMemo(() => todayIso(), [rows]);
 
   const visibleIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
@@ -210,7 +224,7 @@ export function DoctorsList({
                   className="h-4 w-4 cursor-pointer accent-brand-600"
                 />
               </th>
-              {["ডাক্তার", "বিভাগ", "থানা / উপজেলা", "স্ট্যাটাস", "প্রমোশন মেয়াদ", "অ্যাকশন"].map((h) => (
+              {["ডাক্তার", "বিভাগ", "থানা / উপজেলা", "স্ট্যাটাস", "BMDC মেয়াদ", "প্রমোশন মেয়াদ", "অ্যাকশন"].map((h) => (
                 <th key={h} className="border-b border-line px-3.5 py-3 text-left text-[12.5px] font-semibold text-ink-ghost">{h}</th>
               ))}
             </tr>
@@ -231,12 +245,49 @@ export function DoctorsList({
                   <button onClick={() => handleEdit(d.id)} className="hover:text-brand-600 text-left">
                     {d.name_bn}
                   </button>
-                  {d.verified && <span className="mr-1.5 text-xs text-accent-text"> ✓</span>}
+                  {d.bmdc_verified ? (
+                    <span className="ml-1.5 rounded px-1 py-0.5 text-[10px] font-bold text-accent-text" title="BMDC ভেরিফায়েড">
+                      BMDC ✓
+                    </span>
+                  ) : d.verified ? (
+                    <span className="mr-1.5 text-xs text-accent-text" title="ভেরিফায়েড"> ✓</span>
+                  ) : null}
                 </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{d.specialty_bn || "..."}</td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13.5px] text-ink-mute">{d.area_bn || "..."}</td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3">
                   <StatusBadge tone={d.active ? "green" : "amber"}>{d.active ? "সক্রিয়" : "নিষ্ক্রিয়"}</StatusBadge>
+                </td>
+                <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px]">
+                  {(() => {
+                    const state = bmdcExpiry(d.bmdc_valid_till, today);
+                    if (state === "none") return <span className="text-ink-faint">...</span>;
+                    return (
+                      <span
+                        className={
+                          state === "expired"
+                            ? "font-bold text-[#DC2626]"
+                            : state === "soon"
+                              ? "font-bold text-[#D97706]"
+                              : "text-ink-faint"
+                        }
+                        title={
+                          state === "expired"
+                            ? "মেয়াদ শেষ হয়ে গেছে"
+                            : state === "soon"
+                              ? "দুই মাসের মধ্যে মেয়াদ শেষ হবে"
+                              : undefined
+                        }
+                      >
+                        {/* mm/yyyy, matching how the BMDC register prints it.
+                            The stored value is the last day of that month, but
+                            showing "31/07/2029" would look like a precision the
+                            register never gave us. */}
+                        <span className="font-latin">{formatBmdcMonth(d.bmdc_valid_till)}</span>
+                        {(state === "expired" || state === "soon") && " ⚠"}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="border-b border-[#F1F5F9] px-3.5 py-3 text-[13px] text-ink-faint">
                   {d.promo_ends ? fmtDate(d.promo_ends, "en") : "..."}

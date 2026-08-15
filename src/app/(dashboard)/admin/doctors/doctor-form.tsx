@@ -11,6 +11,7 @@ import {
   quickCreateSpecialty,
 } from "@/actions/admin-quick-create";
 import { Field, inputCls, Toggle, Toast, ImageUpload, MLInput } from "@/components/admin/ui";
+import { MonthField } from "@/components/admin/month-field";
 import { ScheduleDayPicker, scheduleToRangesByDay } from "@/components/admin/schedule-picker";
 import {
   SearchableSelect,
@@ -61,6 +62,18 @@ export type DoctorInitial = {
   treated_conditions: ML;
   hospital_id: number | null;
   verified: boolean; active: boolean;
+  // BMDC registration, checked on https://verify.bmdc.org.bd. Mutually
+  // exclusive with `verified` — see setBadge() below and the CHECK constraint
+  // in migrations/020_doctor_bmdc.sql.
+  bmdc_verified: boolean;
+  bmdc_no: string;
+  bmdc_reg_year: number | null;
+  /**
+   * "YYYY-MM", or "" when unset. Month precision, because that is what the
+   * BMDC register publishes. The save action expands it to the last day of the
+   * month before it reaches the date column.
+   */
+  bmdc_valid_till: string;
   meta_title: ML; meta_description: ML; photo_url: string | null;
   social_links: SocialLinksDraft;
   specialty_ids: number[];
@@ -130,6 +143,14 @@ export function DoctorForm({
 
   const set = <K extends keyof DoctorInitial>(key: K, value: DoctorInitial[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // The two badges are one choice, not two independent switches, so they are
+  // set together in a single state update. Doing it as two set() calls would
+  // leave a render where both are true, and whichever one React flushed last
+  // would win — a race the database's CHECK constraint would then reject with
+  // an error the admin cannot act on.
+  const setBadge = (badge: "verified" | "bmdc" | "none") =>
+    setForm((f) => ({ ...f, verified: badge === "verified", bmdc_verified: badge === "bmdc" }));
 
   const setChamber = (i: number, patch: Partial<ChamberDraft>) =>
     set("chambers", form.chambers.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
@@ -228,9 +249,65 @@ export function DoctorForm({
                 }}
               />
               <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
-                <Toggle checked={form.verified} onChange={(v) => set("verified", v)} label="ভেরিফায়েড" />
+                {/* One badge or the other, never both — switching one on turns
+                    the other off in the same update, so the admin never has to
+                    clear the first before setting the second. The database
+                    enforces the same rule, so a stale tab cannot save both. */}
+                <Toggle
+                  checked={form.verified}
+                  onChange={(v) => setBadge(v ? "verified" : "none")}
+                  label="ভেরিফায়েড"
+                />
+                <Toggle
+                  checked={form.bmdc_verified}
+                  onChange={(v) => setBadge(v ? "bmdc" : "none")}
+                  label="BMDC ভেরিফায়েড"
+                />
+                <p className="m-0 text-xs leading-relaxed text-ink-ghost">
+                  দুটির যেকোনো একটি বাছুন। BMDC ভেরিফায়েড দিলে নিচের রেজিস্ট্রেশন নম্বরটি আবশ্যক।
+                </p>
                 <Toggle checked={form.active} onChange={(v) => set("active", v)} label="সক্রিয় (পাবলিক সাইটে দেখাবে)" />
               </div>
+
+              {/* BMDC detail. Only rendered when the badge is on: an empty
+                  registration block on every other doctor is noise, and the
+                  fields are meaningless without the flag. */}
+              {form.bmdc_verified && (
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
+                  <div className="text-[13px] font-bold text-ink">BMDC তথ্য</div>
+                  <Field
+                    label="BMDC রেজিস্ট্রেশন নম্বর"
+                    hint="verify.bmdc.org.bd এ যেভাবে আছে, হুবহু সেভাবে লিখুন।"
+                  >
+                    <input
+                      className={inputCls + " font-latin"}
+                      value={form.bmdc_no}
+                      onChange={(e) => set("bmdc_no", e.target.value)}
+                      placeholder="A-12345"
+                    />
+                  </Field>
+                  <Field label="রেজিস্ট্রেশনের বছর">
+                    <input
+                      className={inputCls + " font-latin"}
+                      type="number"
+                      inputMode="numeric"
+                      min={1950}
+                      max={new Date().getFullYear()}
+                      value={form.bmdc_reg_year ?? ""}
+                      onChange={(e) =>
+                        set("bmdc_reg_year", e.target.value === "" ? null : Number(e.target.value))
+                      }
+                      placeholder="2015"
+                    />
+                  </Field>
+                  <MonthField
+                    label="রেজিস্ট্রেশনের মেয়াদ (Valid Till)"
+                    hint="BMDC রেজিস্টারে যেভাবে থাকে, শুধু মাস ও বছর। যেমন 07/2029।"
+                    value={form.bmdc_valid_till}
+                    onChange={(month) => set("bmdc_valid_till", month)}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-6">
               <MLInput label="নাম" required value={form.name} onChange={(v) => set("name", v)} />

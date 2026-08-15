@@ -14,6 +14,7 @@ import { JsonLd } from "@/components/json-ld";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { DoctorSlider } from "@/components/public/doctor-slider";
 import { DoctorPhoto } from "@/components/public/doctor-photo";
+import { BmdcBadge } from "@/components/public/bmdc-badge";
 import { LazyMap } from "@/components/public/lazy-map";
 import {
   Facebook,
@@ -182,11 +183,23 @@ export default async function DoctorDetailPage({ params }: Props) {
             <div className="min-w-[220px] flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-2.5">
                 <h1 className="m-0 font-heading text-[26px] font-bold text-ink">{doc.name}</h1>
-                {doc.verified && (
+                {/* One badge, never two — see the same rule on the card and
+                    the CHECK constraint in migrations/020_doctor_bmdc.sql. Only
+                    the BMDC badge is interactive, because only it has a public
+                    register behind it to explain. */}
+                {doc.bmdc_verified && doc.bmdc_no ? (
+                  <BmdcBadge
+                    regNo={doc.bmdc_no}
+                    regYear={doc.bmdc_reg_year}
+                    validTill={doc.bmdc_valid_till}
+                    locale={locale}
+                    d={d}
+                  />
+                ) : doc.verified ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent-text">
                     {d.verified_badge}
                   </span>
-                )}
+                ) : null}
               </div>
               {doc.specialties.length > 0 && (
                 <div className="mb-2 text-base font-semibold text-brand-600">

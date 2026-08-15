@@ -1,4 +1,5 @@
 import { localeHref, type Locale, type MLText } from "./i18n";
+import { BMDC_VERIFY_URL } from "./bmdc";
 import type { DoctorFull } from "./data";
 
 export function siteUrl(path = ""): string {
@@ -260,6 +261,36 @@ export function ldPhysician(doc: DoctorFull, locale: Locale): JsonLd {
     // profiles (LinkedIn, ResearchGate, verified socials). Big E-E-A-T signal
     // for medical entities — emitted only when at least one URL is present.
     ...(sameAs.length > 0 ? { sameAs } : {}),
+    // BMDC registration as a machine-readable credential.
+    //
+    // A doctor directory is YMYL: Google weighs whether the site can show its
+    // practitioners are who it says they are. A registration number issued by
+    // the national medical council is the strongest such signal available, and
+    // `identifier` / PropertyValue is the property schema.org provides for
+    // exactly this.
+    //
+    // GATED ON `bmdc_verified` AND on the number existing, which are the same
+    // two conditions the visible badge on the profile is gated on. That
+    // matters: Google's structured-data policy is that markup must reflect
+    // content the reader can also see. Emitting a registration number that the
+    // page does not display would be marking up invisible content, which is a
+    // spam-policy violation rather than a trust signal. The two must move
+    // together, so if the badge is ever made conditional on something else,
+    // this has to follow.
+    ...(doc.bmdc_verified && doc.bmdc_no
+      ? {
+          identifier: {
+            "@type": "PropertyValue",
+            // Named as the register calls it, not as our UI labels it, so the
+            // value is interpretable without our page for context.
+            name: "BMDC Registration Number",
+            value: doc.bmdc_no,
+            // The authority that issued it. Without this the number is just a
+            // string; with it, it points at a register that can be checked.
+            url: BMDC_VERIFY_URL,
+          },
+        }
+      : {}),
   };
   // Reviews are emitted as testimonial-style Review nodes. schema.org's Review
   // type requires reviewRating, so without a rating we can't emit them — the
