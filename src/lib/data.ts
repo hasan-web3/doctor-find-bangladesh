@@ -1275,7 +1275,6 @@ async function searchDoctorsUncached(
     const userLat = params.preferLat;
     const userLng = params.preferLng;
     const userAreaId = params.preferAreaId;
-    const userDistrictId = params.preferDistrictId;
 
     // Rank of this doctor in the visitor's district's curated order, or a
     // sentinel that sorts last for everyone not pinned. Both switches have to
@@ -1313,6 +1312,34 @@ async function searchDoctorsUncached(
         ), 2147483647) ASC`
       : null;
 
+    // The doctor's badge, strongest claim first.
+    //
+    // BMDC registration outranks our own `verified` tick because it is the one
+    // a visitor can check for themselves against the public register, which is
+    // exactly what the badge on the card tells them. The two are mutually
+    // exclusive at the database level (migrations/020_doctor_bmdc.sql); the
+    // CASE still tests bmdc first so a row that somehow carried both ranks by
+    // the stronger claim, the same way every other surface renders it.
+    const badgeRankSql = sql`(CASE WHEN d.bmdc_verified THEN 1 WHEN d.verified THEN 2 ELSE 3 END)`;
+
+    // "Is this doctor in the visitor's own district?"
+    //
+    // This tier sits above every quality signal on purpose: a plain doctor the
+    // visitor can reach today is worth more to them than a BMDC-registered one
+    // in the next district. Without it the ranking was distance-only, and since
+    // neighbouring district capitals sit well inside the 100 km band, a
+    // Barguna visitor got Khulna's verified doctors ahead of Barguna's own.
+    //
+    // Reads `dist.id` — the district `cardFrom` already resolved for the card
+    // (chamber's thana, else the chamber's own district, else the hospital's
+    // thana for a doctor with no visible chamber). Re-deriving it here is what
+    // let the two disagree: the old ranking located a doctor by their profile
+    // hospital's coordinates while their card, and the district listing they
+    // appear in, named the district of their chamber.
+    const ownDistrictSql = params.preferDistrictId
+      ? sql`(CASE WHEN dist.id = ${params.preferDistrictId} THEN 0 ELSE 1 END) ASC`
+      : null;
+
     // If a specific sort order is requested (e.g., by fee), use it.
     if (params.sort) {
       const orderParts = [];
@@ -1326,7 +1353,11 @@ async function searchDoctorsUncached(
         case "experience": orderParts.push(sql`d.experience_years DESC NULLS LAST`); break;
       }
       // Even with an explicit sort, we still use quality signals as a tie-breaker.
-      orderParts.push(sql`(CASE WHEN d.verified THEN 1 ELSE 2 END)`);
+      // No own-district tier here: /api/doctors already drops `preferDistrict`
+      // when the visitor picks a sort, because someone who asked for "cheapest
+      // first" means it, and a district tier above the sort would silently
+      // re-group the list they just ordered.
+      orderParts.push(badgeRankSql);
       orderParts.push(sql`d.updated_at DESC`);
       orderParts.push(sql`d.id DESC`);
       orderSql = sql.join(orderParts, sql`, `);
@@ -1388,10 +1419,19 @@ async function searchDoctorsUncached(
 
       // Priority ladder:
       //   0. Pinned in this district's curated order (by position)
-      //   1. Verified  ≤ 100 km
-      //   2. Normal    ≤ 100 km
-      //   3. Verified  > 100 km (or unknown distance)
-      //   4. Normal    > 100 km
+      //   1. In the visitor's own district
+      //   2. Badge, banded by distance:
+      //        BMDC ≤ 100 km, verified ≤ 100 km, normal ≤ 100 km,
+      //        then the same three > 100 km (or unknown distance)
+      //   3. Distance
+      //
+      // The band is what keeps the badge from dragging a far doctor up: outside
+      // the visitor's district a BMDC doctor 300 km away must not outrank a
+      // verified one 90 km away, so the badge only orders doctors already in
+      // the same distance band. Inside the visitor's own district every doctor
+      // is in the near band anyway, so there the ladder reads exactly as asked:
+      // BMDC, then verified, then normal.
+      //
       // Within each tier, ORDER BY distance ASC so the physically closest
       // doctor bubbles to the top. `NULLS LAST` keeps doctors with no usable
       // coord out of the way. The user's IP-derived coords come from the
@@ -1399,11 +1439,10 @@ async function searchDoctorsUncached(
       // IP-API fetch per request.
       orderSql = sql`
         ${priorityRankSql ? sql`${priorityRankSql},` : sql``}
+        ${ownDistrictSql ? sql`${ownDistrictSql},` : sql``}
         CASE
-          WHEN d.verified AND (${minDistanceSql}) <= 100 THEN 1
-          WHEN (${minDistanceSql}) <= 100 THEN 2
-          WHEN d.verified THEN 3
-          ELSE 4
+          WHEN (${minDistanceSql}) <= 100 THEN ${badgeRankSql}
+          ELSE 3 + ${badgeRankSql}
         END ASC,
         (${minDistanceSql}) ASC NULLS LAST,
         d.updated_at DESC,
@@ -1411,22 +1450,25 @@ async function searchDoctorsUncached(
       `;
     } else {
       // Fallback if no coordinates are available, but we have area/district IDs.
+      //
+      // Same ladder as above minus the distance steps: own district, then own
+      // thana inside it, then badge. This branch used to interleave place and
+      // badge (verified-in-district above normal-in-thana), which contradicted
+      // the rule the geo branch follows — place first, quality second — so the
+      // same visitor could get a different order purely because their
+      // coordinates failed to resolve.
+      //
+      // The district test now goes through `dist.id` like everywhere else; the
+      // hand-rolled chamber-only COALESCE it replaced could not see a doctor
+      // whose district comes from their hospital.
       orderSql = sql`
         ${priorityRankSql ? sql`${priorityRankSql},` : sql``}
-        CASE
-          -- 1. Verified in user's area
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 1
-          -- 2. Verified in user's district
-          WHEN d.verified AND EXISTS (SELECT 1 FROM chambers cd LEFT JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND COALESCE(ad.district_id, cd.district_id) = ${userDistrictId ?? null}) THEN 2
-          -- 3. Normal in user's area
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cg WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}) THEN 3
-          -- 4. Normal in user's district
-          WHEN d.active AND EXISTS (SELECT 1 FROM chambers cd LEFT JOIN areas ad ON ad.id = cd.area_id WHERE cd.doctor_id = d.id AND cd.visible AND COALESCE(ad.district_id, cd.district_id) = ${userDistrictId ?? null}) THEN 4
-          -- 5. Other verified
-          WHEN d.verified THEN 5
-          -- 6. Anything else
-          ELSE 6
-        END ASC,
+        ${ownDistrictSql ? sql`${ownDistrictSql},` : sql``}
+        CASE WHEN EXISTS (
+          SELECT 1 FROM chambers cg
+          WHERE cg.doctor_id = d.id AND cg.visible AND cg.area_id = ${userAreaId ?? null}
+        ) THEN 0 ELSE 1 END ASC,
+        ${badgeRankSql} ASC,
         d.updated_at DESC,
         d.id DESC
       `;
