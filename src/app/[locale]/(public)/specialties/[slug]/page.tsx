@@ -4,7 +4,8 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { SpecialtySlider } from "@/components/public/specialty-slider";
-import { getSpecialtyBySlug, getSpecialties, getFaqsWithDefaults, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty } from "@/lib/data";
+import { getSpecialtyBySlug, getSpecialties, getFaqsWithDefaults, searchDoctors, countDoctorsFor, resolveDisplayDistrict, geoSearchPrefs, getAllSpecialtySlugs, getAreasForSpecialty, getDistrictsForSpecialty } from "@/lib/data";
+import { LinkCloud } from "@/components/public/link-cloud";
 import { specialtyFaqSeeds } from "@/lib/faq-defaults";
 import { GeoOrderedLinkCloud } from "@/components/public/geo-ordered-link-cloud";
 import { FaqAccordion } from "@/components/public/faq-accordion";
@@ -14,7 +15,7 @@ import { buildMetadata, findRedirect } from "@/lib/seo";
 import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
-import { withPossessive as bnPossessive } from "@/lib/bn";
+import { withPossessive as bnPossessive, withSpecialistSuffix } from "@/lib/bn";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
 import { ShownDistrictProvider } from "@/components/public/shown-district-context";
 import { DistrictText } from "@/components/public/district-text";
@@ -45,27 +46,40 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const [spec, geo] = await Promise.all([getSpecialtyBySlug(slug, locale), STATIC_GEO]);
   if (!spec) return {};
 
-  const districtName = (await resolveDisplayDistrict(geo, locale))?.name || (locale === "bn" ? "খুলনা" : "Khulna");
-  const isIpDetected = geo.source === "ip-name" || geo.source === "ip-nearest";
+  // -------------------------------------------------------------------------
+  // THIS IS THE NATIONAL PAGE FOR THE SPECIALTY. No district in the copy.
+  //
+  // It used to name whichever district the site resolved as canonical, which
+  // was fine while exactly one district had doctors: /specialties/cardiology
+  // WAS, in effect, the Khulna cardiology page. Now that
+  // /districts/<district>/<specialty> covers that intent properly, leaving the
+  // district here would give two URLs the same "খুলনার সেরা হৃদরোগ ডাক্তার"
+  // heading, competing for one query. One URL can only answer one question.
+  //
+  //   /specialties/cardiology        -> the specialty itself, nationwide
+  //   /districts/khulna/cardiology   -> "খুলনায় হৃদরোগ বিশেষজ্ঞ"
+  //   /specialties/cardiology/boyra  -> the thana long tail
+  //
+  // An admin `meta_title` still wins, as everywhere else.
+  // -------------------------------------------------------------------------
   // getSpecialties() already localizes these to plain strings (see the
   // projection in src/lib/data.ts). Passing one back through ml() localizes it
   // a SECOND time, and t() given a string instead of an MLText object returns
   // "" — which is why every specialty page fell back to the site default title.
   // Every other public page (area, blog, doctor, hospital, district) reads the
   // field directly; this one was the outlier.
-  // Parenthesised: `a || b ? x : y` binds as `(a || b) ? x : y`, which would
-  // hand every specialty the "near you" wording as soon as an override existed.
   const title = spec.meta_title || (
-    isIpDetected
-      ? (locale === "bn" ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors Near You`)
-      : (locale === "bn" ? `${bnPossessive(districtName)} সেরা ${spec.name} ডাক্তার` : `Best ${spec.name} Doctors in ${districtName}`)
+    locale === "bn"
+      ? `${withSpecialistSuffix(spec.name)} ডাক্তারদের তালিকা`
+      : `${spec.name} Specialist Doctors`
   );
-  
+
   const description = spec.meta_description || (
-    isIpDetected
-      ? (locale === "bn" ? `আপনার সবচেয়ে কাছের অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists near you with chamber addresses, schedules and visit fees.`)
-      : (locale === "bn" ? `${bnPossessive(districtName)} অভিজ্ঞ ও যাচাইকৃত ${spec.name} বিশেষজ্ঞ ডাক্তারদের তালিকা, চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি।` : `Experienced, verified ${spec.name} specialists in ${districtName} with chamber addresses, schedules and visit fees.`)
+    locale === "bn"
+      ? `বাংলাদেশের অভিজ্ঞ ও যাচাইকৃত ${withSpecialistSuffix(spec.name)} ডাক্তারদের তালিকা। জেলা অনুযায়ী বেছে নিয়ে চেম্বারের ঠিকানা, বসার সময় ও ভিজিট ফি দেখুন।`
+      : `Experienced, verified ${spec.name} specialists across Bangladesh. Browse by district to see chamber addresses, sitting hours and visit fees.`
   );
+
 
   // Specialty hub with no doctors yet — thin. Matches the sitemap's rule.
   const doctorCount = await countDoctorsFor({ specialty: spec.slug });
@@ -99,7 +113,7 @@ export default async function SpecialtyPage({ params }: Props) {
     notFound();
   }
 
-  const [settings, allSpecialties, specialtyAreas, initialDoctorData] = await Promise.all([
+  const [settings, allSpecialties, specialtyAreas, specialtyDistricts, initialDoctorData] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
     // The thanas where this specialty actually has doctors, linked as
@@ -111,6 +125,10 @@ export default async function SpecialtyPage({ params }: Props) {
     // and the block only ever renders 30 chips. Shipping the rest would be dead
     // payload on a page that already carries a doctor grid.
     getAreasForSpecialty(spec.slug, locale).then((rows) => rows.slice(0, 80)),
+    // The districts where this specialty has doctors, linked as
+    // /districts/<district>/<this>. The reverse of the specialty cloud on each
+    // district page, so the two page types point at each other.
+    getDistrictsForSpecialty(spec.slug, locale),
     // Canonical first page only. ?page= / ?perPage= / ?q= are applied by
     // <SpecialtyDoctorListClient> after mount — reading them here would force
     // this route to render per request and it would never be cached.
@@ -140,17 +158,17 @@ export default async function SpecialtyPage({ params }: Props) {
   const display = await resolveDisplayDistrict(geo, locale);
   const districtName = display?.name ?? null;
 
-  // Both headings name a district and the list under them re-ranks for the
-  // visitor after hydration, so the copy has to move with it — otherwise a
-  // Dhaka visitor reads a Khulna heading over a grid of Dhaka doctors. The
-  // server still renders the canonical name into the tags, so the <h1> in the
-  // cached HTML is complete for crawlers and for first paint.
-  const titleTpl = locale === "bn"
-    ? `{d} সেরা ${spec.name} ডাক্তার`
-    : `Best ${spec.name} Doctors in {d}`;
-  const titleFallback = locale === "bn"
-    ? `আপনার সবচেয়ে কাছের সেরা ${spec.name} ডাক্তার`
-    : `Best ${spec.name} Doctors Near You`;
+  // The <h1> is district-FREE, matching the title. See the long note in
+  // generateMetadata: /districts/<district>/<specialty> is now the page that
+  // answers "specialty in <district>", and if this heading also named a
+  // district the two would fight over the same query.
+  //
+  // The <h2> over the list still follows the visitor, because the list itself
+  // re-ranks after hydration and a heading that disagreed with the cards below
+  // it would simply be wrong. That one is not a ranking target.
+  const pageTitle = locale === "bn"
+    ? `${withSpecialistSuffix(spec.name)} ডাক্তারদের তালিকা`
+    : `${spec.name} Specialist Doctors`;
 
   const listTpl = locale === "bn"
     ? `{d} ${spec.name} ডাক্তারদের তালিকা`
@@ -176,13 +194,9 @@ export default async function SpecialtyPage({ params }: Props) {
               { name: spec.name },
             ]}
           />
-          <DistrictText
-            as="h1"
-            className="mb-3.5 font-heading text-[clamp(28px,4.5vw,40px)] font-bold text-ink"
-            locale={locale}
-            template={titleTpl}
-            fallback={titleFallback}
-          />
+          <h1 className="mb-3.5 font-heading text-[clamp(28px,4.5vw,40px)] font-bold text-ink">
+            {pageTitle}
+          </h1>
           {spec.intro && (
             <p className="m-0 max-w-[760px] text-base leading-[1.8] text-ink-mute">{spec.intro}</p>
           )}
@@ -202,6 +216,29 @@ export default async function SpecialtyPage({ params }: Props) {
           settings={settings}
           initialDoctors={initialDoctorData.rows}
           initialTotal={initialDoctorData.total}
+        />
+      </div>
+
+      {/* Down to the district version of this specialty. This is the link that
+          makes the national page a hub rather than a competitor: it hands both
+          readers and Googlebot the page that actually answers "<specialty> in
+          <district>". Coverage-checked, so every chip has doctors behind it. */}
+      <div className="mx-auto max-w-site px-5">
+        <LinkCloud
+          // The template carries no suffix of its own; withSpecialistSuffix
+          // adds "বিশেষজ্ঞ" only to names that do not already contain it.
+          title={d.hub_specialty_districts_title_tpl.replace(
+            "{s}",
+            locale === "bn" ? withSpecialistSuffix(spec.name) : spec.name
+          )}
+          description={d.hub_specialty_districts_desc}
+          items={specialtyDistricts}
+          href={(x) => L(`/districts/${x.slug}/${spec.slug}`)}
+          locale={locale}
+          countSuffix={d.doctors_unit}
+          limit={64}
+          moreHref={L("/districts")}
+          moreLabel={d.view_all_districts}
         />
       </div>
 

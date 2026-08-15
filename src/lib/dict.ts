@@ -299,6 +299,8 @@ const bn = {
   hub_hospitals_desc: "হাসপাতাল অনুযায়ী ডাক্তার, বিভাগ ও যোগাযোগের তথ্য দেখুন।",
   hub_area_specialties_title_tpl: "{a} এলাকায় বিভাগ অনুযায়ী ডাক্তার",
   hub_area_specialties_desc: "এই এলাকায় যে বিশেষজ্ঞ বিভাগগুলোর ডাক্তার আছেন। সরাসরি আপনার প্রয়োজনের বিভাগে যান।",
+  hub_specialty_districts_title_tpl: "জেলা অনুযায়ী {s}",
+  hub_specialty_districts_desc: "যে জেলাগুলোতে এই বিভাগের ডাক্তার আছেন। আপনার জেলা বেছে নিলে শুধু সেখানকার তালিকা দেখবেন।",
   hub_specialty_areas_title_tpl: "এলাকা অনুযায়ী {s} ডাক্তার",
   hub_specialty_areas_desc: "যে এলাকাগুলোতে এই বিভাগের ডাক্তার আছেন। আপনার কাছের এলাকা বেছে নিন।",
   // Shown on a listing card whose entity has no doctors yet. The card used to
@@ -656,6 +658,8 @@ const en: typeof bn = {
   hub_hospitals_desc: "Browse by hospital to see its doctors, departments and contact details.",
   hub_area_specialties_title_tpl: "Doctors by Specialty in {a}",
   hub_area_specialties_desc: "The specialties that currently have doctors in this area. Go straight to the one you need.",
+  hub_specialty_districts_title_tpl: "{s} Specialists by District",
+  hub_specialty_districts_desc: "Districts that currently have doctors in this specialty. Pick yours to see only its list.",
   hub_specialty_areas_title_tpl: "{s} Doctors by Area",
   hub_specialty_areas_desc: "Areas that currently have doctors in this specialty. Pick the one nearest to you.",
   coming_soon: "Coming soon",

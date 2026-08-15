@@ -3,7 +3,7 @@ import { asc, desc, eq, sql } from "drizzle-orm";
 import { db, blogPosts, doctors as doctorsT, redirects } from "@/db";
 import { siteUrl } from "./seo-utils";
 import { localeHref } from "./i18n";
-import { getAllSpecialtySlugs, getAllActiveAreaSlugs } from "./data";
+import { getAllSpecialtySlugs, getAllActiveAreaSlugs, getDistrictSpecialtyPairs } from "./data";
 
 // Google accepts up to 50 000 URLs OR 50 MB per sub-sitemap — whichever hits
 // first. Each <url> block with the hreflang cluster is ~600 bytes; chunking
@@ -19,6 +19,7 @@ export type Section =
   | "doctors"
   | "specialties"
   | "districts"
+  | "district-specialty"
   | "areas"
   | "hospitals"
   | "blog"
@@ -28,19 +29,24 @@ export type Section =
 // CRAWL ORDER. Googlebot walks a sitemap index top-down and spends its budget
 // in the order it finds URLs, so this array IS the crawl priority:
 //
-//   core        entry points — tiny, must be seen first
-//   doctors     priority 1: the pages the whole site exists to rank
-//   hospitals   priority 2
-//   specialties then the hubs, then geo, then the long-tail combos
+//   core                entry points — tiny, must be seen first
+//   doctors             priority 1: the pages the whole site exists to rank
+//   districts           priority 2: "doctor in <district>" is the highest
+//                       volume query pattern the site targets
+//   district-specialty  priority 3: "<specialty> in <district>", the same
+//                       intent narrowed, and the biggest source of
+//                       high-intent URLs as coverage grows
+//   then hospitals, the specialty hubs, geo, and the thana-level long tail
 //
 // Changing this array changes what Google reaches first on a partial crawl.
 // ---------------------------------------------------------------------------
 const SECTION_ORDER: Section[] = [
   "core",
   "doctors",
+  "districts",
+  "district-specialty",
   "hospitals",
   "specialties",
-  "districts",
   "areas",
   "specialty-area",
   "blog",
@@ -51,10 +57,16 @@ const SECTION_ORDER: Section[] = [
 const BASE_PRIORITY: Record<Section, number> = {
   core: 0.8,
   doctors: 0.9,
-  hospitals: 0.8,
+  // District pages rank right behind doctor profiles: "doctor in <district>"
+  // is the query the site is built to win, and the district hub is the page
+  // that answers it. It used to sit at 0.6, below hospitals and specialties.
+  districts: 0.9,
+  "district-specialty": 0.8,
+  hospitals: 0.7,
   specialties: 0.7,
-  districts: 0.6,
   areas: 0.6,
+  // Thana-level combinations stay lowest of the landing pages: real long tail,
+  // far less searched than the district equivalent above.
   "specialty-area": 0.5,
   blog: 0.5,
 };
@@ -476,6 +488,25 @@ async function collectSection(section: Section): Promise<SitemapEntry[]> {
           "weekly",
           coveragePriority("districts", r.doctor_count),
         ),
+      );
+    }
+
+    if (section === "district-specialty") {
+      // /districts/<district>/<specialty>. The pairing reader already applies
+      // the coverage chain, so every URL here has doctors behind it. Specialty
+      // slugs are intersected with the cached specialty list for the same
+      // reason the sections below do it: a slug inserted outside a server
+      // action would otherwise be advertised before its page can resolve.
+      const [rows, resolvable] = await Promise.all([getDistrictSpecialtyPairs(), resolvableSlugs()]);
+      return rows.flatMap((r) =>
+        resolvable.specialties.has(r.specialty_slug)
+          ? entry(
+              `/districts/${r.district_slug}/${r.specialty_slug}`,
+              r.updated_at ?? now,
+              "weekly",
+              coveragePriority("district-specialty", r.doctor_count),
+            )
+          : [],
       );
     }
 

@@ -1,4 +1,5 @@
 import { num, type Locale } from "./i18n";
+import { withSpecialistSuffix } from "./bn";
 
 // ---------------------------------------------------------------------------
 // GENERATED FAQs.
@@ -229,6 +230,97 @@ function beforeVisitSeed(subject: MLPair): FaqSeed {
 }
 
 // ---------------------------------------------------------------------------
+// District × specialty — the highest-intent pages on the site.
+//
+// Generated only: there is no single entity id behind a pairing, so these carry
+// no admin override. That is deliberate rather than a limitation — nobody is
+// going to hand-write FAQs for hundreds of combinations, and every answer here
+// is built from the pairing's own numbers and places.
+// ---------------------------------------------------------------------------
+export function districtSpecialtyFaqSeeds(ctx: {
+  specialty: string;
+  district: string;
+  doctorCount: number;
+  areas: string[];
+  hospitals: string[];
+}): FaqSeed[] {
+  if (ctx.doctorCount <= 0) return [];
+
+  const { specialty, district } = ctx;
+  const c = n(ctx.doctorCount);
+  const seeds: FaqSeed[] = [
+    {
+      key: "how_many",
+      question: {
+        bn: `${district}য় কতজন ${withSpecialistSuffix(specialty)} আছেন?`,
+        en: `How many ${specialty} specialists are there in ${district}?`,
+      },
+      answer: {
+        bn: `এই মুহূর্তে ${district}য় ${c.bn} জন ${withSpecialistSuffix(specialty)}ের তথ্য এখানে আছে। প্রতিটি প্রোফাইলে ডিগ্রি, অভিজ্ঞতা, চেম্বারের ঠিকানা, বসার সময় ও ভিজিট ফি দেওয়া আছে।`,
+        en: `${c.en} ${specialty} specialists in ${district} are listed here at the moment. Each profile carries degrees, experience, chamber address, sitting hours and visit fee.`,
+      },
+    },
+  ];
+
+  if (ctx.areas.length > 0) {
+    seeds.push({
+      key: "areas",
+      question: {
+        bn: `${district}র কোন কোন এলাকায় ${specialty} ডাক্তার বসেন?`,
+        en: `Which areas of ${district} have ${specialty} doctors?`,
+      },
+      answer: {
+        bn: `${list(ctx.areas, "bn", 6)} সহ বিভিন্ন এলাকায় এই বিভাগের ডাক্তার বসেন। আপনার কাছের এলাকা বেছে নিলে শুধু সেখানকার তালিকা দেখতে পাবেন।`,
+        en: `${list(ctx.areas, "en", 6)}, among others. Pick the area nearest to you to narrow the list.`,
+      },
+    });
+  }
+
+  if (ctx.hospitals.length > 0) {
+    seeds.push({
+      key: "hospitals",
+      question: {
+        bn: `${district}র কোন হাসপাতালে ${withSpecialistSuffix(specialty)} পাওয়া যায়?`,
+        en: `Which hospitals in ${district} have ${specialty} specialists?`,
+      },
+      answer: {
+        bn: `${list(ctx.hospitals, "bn", 5)} সহ বিভিন্ন হাসপাতাল ও চেম্বারে এই বিভাগের ডাক্তার রোগী দেখেন। প্রতিটি প্রোফাইলে চেম্বারের নাম ও ঠিকানা দেওয়া আছে।`,
+        en: `${list(ctx.hospitals, "en", 5)}, among others. Each profile lists the chamber name and address.`,
+      },
+    });
+  }
+
+  seeds.push(
+    {
+      key: "fees",
+      question: {
+        bn: `${district}য় ${specialty} ডাক্তারের ভিজিট ফি কত?`,
+        en: `What do ${specialty} doctors in ${district} charge?`,
+      },
+      answer: {
+        bn: `ফি ডাক্তার ও চেম্বার অনুযায়ী আলাদা হয়। প্রতিটি প্রোফাইলে বর্তমান ভিজিট ফি লেখা থাকে, তাই যাওয়ার আগেই আপনি জানতে পারবেন কত লাগবে।`,
+        en: `Fees vary by doctor and chamber. Each profile shows the current visit fee, so you know the cost before you go.`,
+      },
+    },
+    {
+      key: "appointment",
+      question: {
+        bn: `${district}য় ${specialty} ডাক্তারের অ্যাপয়েন্টমেন্ট নেব কীভাবে?`,
+        en: `How do I book a ${specialty} appointment in ${district}?`,
+      },
+      answer: {
+        bn: `পছন্দের ডাক্তারের প্রোফাইলে গিয়ে "অ্যাপয়েন্টমেন্ট নিন" বাটনে চাপুন, চেম্বার ও সময় বেছে নিন, তারপর নাম ও মোবাইল নম্বর দিন। চেম্বারের নম্বরে সরাসরি কল করেও সময় নেওয়া যায়।`,
+        en: `Open the doctor's profile, tap "Book Appointment", choose the chamber and time, then enter your name and mobile number. Calling the chamber directly also works.`,
+      },
+    },
+    beforeVisitSeed({ bn: `${specialty} ডাক্তার`, en: `a ${specialty} doctor` }),
+    EMERGENCY_SEED,
+  );
+
+  return seeds;
+}
+
+// ---------------------------------------------------------------------------
 // Thana / upazila
 // ---------------------------------------------------------------------------
 export function areaFaqSeeds(ctx: {
@@ -319,11 +411,11 @@ export function specialtyFaqSeeds(ctx: {
     {
       key: "how_find",
       question: {
-        bn: `${name} বিশেষজ্ঞ ডাক্তার কীভাবে বেছে নেব?`,
+        bn: `${withSpecialistSuffix(name)} ডাক্তার কীভাবে বেছে নেব?`,
         en: `How do I choose a ${name} specialist?`,
       },
       answer: {
-        bn: `এখানে ${c.bn} জন ${name} বিশেষজ্ঞের তথ্য আছে। প্রতিটি প্রোফাইলে ডিগ্রি, অভিজ্ঞতা, চেম্বারের ঠিকানা, বসার সময় ও ভিজিট ফি দেওয়া আছে, তাই আপনার সুবিধামতো এলাকা ও সময় দেখে বেছে নিতে পারেন।`,
+        bn: `এখানে ${c.bn} জন ${withSpecialistSuffix(name)}ের তথ্য আছে। প্রতিটি প্রোফাইলে ডিগ্রি, অভিজ্ঞতা, চেম্বারের ঠিকানা, বসার সময় ও ভিজিট ফি দেওয়া আছে, তাই আপনার সুবিধামতো এলাকা ও সময় দেখে বেছে নিতে পারেন।`,
         en: `${c.en} ${name} specialists are listed here. Each profile carries degrees, experience, chamber address, sitting hours and visit fee, so you can choose by the area and time that suit you.`,
       },
     },
@@ -525,7 +617,7 @@ export function doctorFaqSeeds(ctx: {
         en: `What is ${name} a specialist in?`,
       },
       answer: {
-        bn: `${name} ${specialty} বিশেষজ্ঞ। ডিগ্রি ও অভিজ্ঞতার বিস্তারিত এই পেজের উপরের অংশে দেওয়া আছে।`,
+        bn: `${name} ${withSpecialistSuffix(specialty)}। ডিগ্রি ও অভিজ্ঞতার বিস্তারিত এই পেজের উপরের অংশে দেওয়া আছে।`,
         en: `${name} is a ${specialty} specialist. Degrees and experience are shown at the top of this page.`,
       },
     });

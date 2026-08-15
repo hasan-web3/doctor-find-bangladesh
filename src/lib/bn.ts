@@ -127,3 +127,17 @@ export function bnDateTime(dateStr: string | Date): string {
     return String(dateStr);
   }
 }
+
+/**
+ * "<specialty> বিশেষজ্ঞ", without saying it twice.
+ *
+ * Most specialty names are a bare subject ("কিডনি", "চর্ম ও যৌন") and read
+ * correctly with "বিশেষজ্ঞ" appended. A few already carry the word or a synonym
+ * in the name itself, and appending blindly produced headings like
+ * "খুলনার সেরা শিশু বিশেষজ্ঞ বিশেষজ্ঞ ডাক্তার".
+ *
+ * Affects only the Bangla copy; English names never carry "Specialist".
+ */
+export function withSpecialistSuffix(name: string): string {
+  return /বিশেষজ্ঞ|স্পেশালিষ্ট|স্পেশালিস্ট/.test(name) ? name : `${name} বিশেষজ্ঞ`;
+}

@@ -2682,6 +2682,82 @@ export const getDistrictHubLinks = unstable_cache(
   { tags: ["districts", "areas", "specialties", "hospitals", "doctors"] }
 );
 
+export type DistrictSpecialtyPair = {
+  district_slug: string;
+  specialty_slug: string;
+  doctor_count: number;
+  updated_at: string | null;
+};
+
+/**
+ * Every district × specialty pairing that actually has doctors.
+ *
+ * These are the highest-intent pages on the site: "খুলনায় হৃদরোগ বিশেষজ্ঞ" is
+ * how people search, far more than by thana. The thana equivalent
+ * (getSpecialtiesInArea, feeding /specialties/<spec>/<thana>) covers the long
+ * tail below this.
+ *
+ * Same coverage chain as everything else, so a pairing exists here if and only
+ * if its page has doctors to show, which is what keeps the sitemap, the
+ * `noindex` rule and the internal links agreeing with each other.
+ */
+export const getDistrictSpecialtyPairs = unstable_cache(
+  async (): Promise<DistrictSpecialtyPair[]> => {
+    const res = await db.execute<DistrictSpecialtyPair>(sql`
+      WITH ${DOCTOR_AREA_CTE}
+      SELECT dist.slug AS district_slug,
+             s.slug AS specialty_slug,
+             COUNT(DISTINCT d.id)::int AS doctor_count,
+             GREATEST(MAX(d.updated_at), MAX(dist.updated_at)) AS updated_at
+        FROM doctor_area da
+        JOIN doctors d ON d.id = da.doctor_id AND d.active
+        JOIN doctor_specialties ds ON ds.doctor_id = d.id
+        JOIN specialties s ON s.id = ds.specialty_id AND s.active
+        JOIN areas a ON a.id = da.area_id AND a.active
+        JOIN districts dist ON dist.id = a.district_id AND dist.active
+       GROUP BY dist.slug, s.slug, dist.sort, s.sort
+       ORDER BY doctor_count DESC, dist.sort, s.sort
+    `);
+    return res.rows;
+  },
+  ["district-specialty-pairs-v1"],
+  { tags: ["districts", "areas", "specialties", "doctors"] }
+);
+
+/**
+ * The districts where ONE specialty has doctors.
+ *
+ * Rendered on /specialties/<slug> as links down to
+ * /districts/<district>/<slug>. This is the reverse of the specialty cloud on
+ * the district page, so the two page types point at each other instead of the
+ * district version being reachable from one direction only.
+ */
+export const getDistrictsForSpecialty = unstable_cache(
+  async (specialtySlug: string, locale: Locale): Promise<HubLink[]> => {
+    const res = await db.execute<{ slug: string; name_ml: MLText; doctor_count: number }>(sql`
+      WITH ${DOCTOR_AREA_CTE}
+      SELECT dist.slug, dist.name AS name_ml, COUNT(DISTINCT d.id)::int AS doctor_count
+        FROM doctor_area da
+        JOIN doctors d ON d.id = da.doctor_id AND d.active
+        JOIN doctor_specialties ds ON ds.doctor_id = d.id
+        JOIN specialties s ON s.id = ds.specialty_id AND s.active
+        JOIN areas a ON a.id = da.area_id AND a.active
+        JOIN districts dist ON dist.id = a.district_id AND dist.active
+       WHERE s.slug = ${specialtySlug}
+       GROUP BY dist.slug, dist.name, dist.sort
+       ORDER BY doctor_count DESC, dist.sort
+    `);
+    return res.rows.map((r) => ({
+      slug: r.slug,
+      name: ml(r.name_ml, locale),
+      district_slug: r.slug,
+      doctor_count: r.doctor_count,
+    }));
+  },
+  ["districts-for-specialty-v1"],
+  { tags: ["districts", "areas", "specialties", "doctors"] }
+);
+
 /**
  * Every district that has doctors, as link chips, busiest first.
  *

@@ -269,7 +269,10 @@ export default async function DistrictDoctorsPage({ params }: Props) {
         title={fill(d.hub_specialties_title_tpl)}
         description={d.hub_specialties_desc}
         items={hub.specialties}
-        href={(s) => L(`/specialties/${s.slug}`)}
+        // Down to THIS district's version of the specialty, not the national
+        // hub. "খুলনায় হৃদরোগ বিশেষজ্ঞ" is what a reader on the Khulna page
+        // wants, and it is the page built to rank for that query.
+        href={(s) => L(`/districts/${slug}/${s.slug}`)}
         locale={locale}
         countSuffix={d.doctors_unit}
         limit={30}

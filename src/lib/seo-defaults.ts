@@ -1,5 +1,5 @@
 import "server-only";
-import { withPossessive } from "./bn";
+import { withPossessive, withSpecialistSuffix } from "./bn";
 
 // Generate boilerplate intro / meta-title / meta-description for taxonomy
 // entities (specialty, district, area, hospital) from just the bilingual
@@ -64,9 +64,15 @@ export function specialtyDefaults(name: ML): {
     bn: `${bn} সংক্রান্ত যেকোনো সমস্যায় অভিজ্ঞ ও যাচাইকৃত বিশেষজ্ঞ ডাক্তারদের তালিকা এখানে। প্রতিটি ডাক্তারের চেম্বারের ঠিকানা, সময়সূচি ও ভিজিট ফি দেখে সহজেই অ্যাপয়েন্টমেন্ট নিন ${BRAND_BN}-এর মাধ্যমে।`,
     en: `Find experienced, verified ${en} specialists. Review each doctor's chamber address, schedule and visit fee, then book an appointment or call directly with ${BRAND_EN}.`,
   };
+  // withSpecialistSuffix, not a bare `${bn} বিশেষজ্ঞ`: a few specialty names
+  // already carry the word ("শিশু বিশেষজ্ঞ", "হরমোনজনিত স্পেশালিষ্ট"), and
+  // appending blindly generated stored titles reading
+  // "শিশু বিশেষজ্ঞ বিশেষজ্ঞ ডাক্তারদের তালিকা". Rows created before this fix
+  // keep their stored text and need editing in the dashboard.
+  const bnSpecialist = withSpecialistSuffix(bn);
   const meta_title: ML = {
-    bn: `${bn} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${en} Specialist Doctors | ${BRAND_SHORT}`,
-    en: `${en} Specialist Doctors | ${bn} বিশেষজ্ঞ ডাক্তারদের তালিকা | ${BRAND_SHORT}`,
+    bn: `${bnSpecialist} ডাক্তারদের তালিকা | ${en} Specialist Doctors | ${BRAND_SHORT}`,
+    en: `${en} Specialist Doctors | ${bnSpecialist} ডাক্তারদের তালিকা | ${BRAND_SHORT}`,
   };
   const meta_description: ML = {
     bn: `${bn} সংক্রান্ত সমস্যায় অভিজ্ঞ Specialist Doctors খুঁজুন। Chamber Address, Schedule ও Visiting Fee জেনে সহজেই Doctor Appointment নিন ${BRAND_BN}-এর মাধ্যমে।`,
