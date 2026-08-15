@@ -49,6 +49,12 @@ const draftSchema = z.object({
   gender: z.enum(["male", "female", "other"], { errorMap: () => ({ message: "লিঙ্গ নির্বাচন করুন" }) }),
   experience_years: z.string().trim().default(""),
   patients_served: z.string().trim().default(""),
+  // Accepted as free text and capped, not pattern-matched. BMDC numbers are
+  // written several ways ("A-12345", "A 12345", "12345") and rejecting a real
+  // registration because of a hyphen would lose the very field we are asking
+  // for. The admin reads the number off the register anyway, so a typo costs
+  // nothing here and a false rejection costs the badge.
+  bmdc_no: z.string().trim().max(40).default(""),
   treated_conditions: z.string().trim().min(2, "যে সকল রোগের চিকিৎসা করা হয় তা লিখুন"),
   hospital: z.string().trim().min(2, "প্রধান হাসপাতালের নাম লিখুন"),
   specialty: z.string().trim().min(2, "বিশেষজ্ঞ বিভাগ লিখুন"),
@@ -202,6 +208,7 @@ export async function submitDoctorIntake(payload: unknown): Promise<IntakeResult
       gender: draft.gender,
       experience_years: experienceYears,
       patients_served: draft.patients_served,
+      bmdc_no: draft.bmdc_no,
       treated_conditions: draft.treated_conditions,
       hospital: draft.hospital,
       specialty: draft.specialty,

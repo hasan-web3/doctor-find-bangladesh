@@ -10,6 +10,7 @@ import { Pagination } from "@/components/admin/pagination";
 import { StatusBadge } from "@/components/admin/ui";
 import { NewFlag, useNewRows } from "@/components/admin/notifications";
 import { deleteDoctorSubmission, discardIntakeLink } from "@/actions/admin-doctor-intake";
+import { BMDC_VERIFY_URL } from "@/lib/bmdc";
 import { dateTime } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { DoctorSubmissionData } from "@/db/schema";
@@ -246,6 +247,16 @@ function DetailView({ row }: { row: FormRow }) {
         {/* ---- doctor ---- */}
         <Card title="ডাক্তারের তথ্য">
           <Cell label="ডিগ্রি ও পদবি" value={d.degrees} wide />
+          {/* Linked to the Council's register so the number is one click from
+              being checked. What the doctor typed is a claim; the BMDC badge
+              only goes on after the admin confirms it there and sets it in the
+              doctor form. Cell renders nothing when the value is blank, so
+              submissions without a number stay uncluttered. */}
+          <Cell
+            label="BMDC রেজিস্ট্রেশন নম্বর (যাচাই করুন)"
+            value={d.bmdc_no}
+            href={d.bmdc_no ? BMDC_VERIFY_URL : undefined}
+          />
           <Cell label="প্রধান হাসপাতাল" value={d.hospital} />
           <Cell label="বিশেষজ্ঞ বিভাগ" value={d.specialty} />
           <Cell label="লিঙ্গ" value={d.gender ? GENDER_LABELS[d.gender] ?? d.gender : ""} />

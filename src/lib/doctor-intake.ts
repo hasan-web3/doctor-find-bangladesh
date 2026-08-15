@@ -31,6 +31,15 @@ export type DoctorIntakeDraft = {
   /** Kept as a string so the input can be empty; coerced on the server. */
   experience_years: string;
   patients_served: string;
+  /**
+   * BMDC registration number, as the doctor writes it.
+   *
+   * A CLAIM, not a verification. Nothing the doctor types here can switch on
+   * the public BMDC badge by itself: the admin looks the number up on
+   * verify.bmdc.org.bd and sets the badge from the admin form. This field only
+   * saves them hunting for the number later. See src/lib/bmdc.ts.
+   */
+  bmdc_no: string;
   /** One condition per line. */
   treated_conditions: string;
   hospital: string;
@@ -55,6 +64,7 @@ export const EMPTY_INTAKE_DRAFT = (): DoctorIntakeDraft => ({
   gender: "",
   experience_years: "",
   patients_served: "",
+  bmdc_no: "",
   treated_conditions: "",
   hospital: "",
   specialty: "",

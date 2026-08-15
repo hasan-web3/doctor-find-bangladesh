@@ -410,6 +410,11 @@ export type DoctorSubmissionData = {
   gender?: string;
   experience_years?: number | null;
   patients_served?: string;
+  /**
+   * BMDC registration number as submitted. A claim the admin still has to check
+   * on verify.bmdc.org.bd before the badge goes on the profile.
+   */
+  bmdc_no?: string;
   /** One condition per line. */
   treated_conditions?: string;
   hospital?: string;

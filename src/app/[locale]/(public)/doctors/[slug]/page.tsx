@@ -201,6 +201,20 @@ export default async function DoctorDetailPage({ params }: Props) {
                   </span>
                 ) : null}
               </div>
+              {/* The registration number in plain, visible text.
+                  ldPhysician() emits it as a schema.org `identifier`, and
+                  Google's structured-data policy is that markup must describe
+                  content the reader can also see. While the number lived only
+                  inside the modal it was invisible until someone clicked, which
+                  made the markup unsupported. It is also the single most
+                  checkable fact on the page, so a crawler reading it as text is
+                  the point rather than a side effect. */}
+              {doc.bmdc_verified && doc.bmdc_no && (
+                <div className="mb-2 text-[13px] text-ink-mute">
+                  {d.bmdc_reg_no_public}:{" "}
+                  <span className="font-latin font-semibold text-ink">{doc.bmdc_no}</span>
+                </div>
+              )}
               {doc.specialties.length > 0 && (
                 <div className="mb-2 text-base font-semibold text-brand-600">
                   {doc.specialties.map((s, i) => (

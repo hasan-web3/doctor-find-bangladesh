@@ -81,14 +81,27 @@ export function BmdcBadge({
         <span aria-hidden className="text-[13px] leading-none opacity-70">ⓘ</span>
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={d.bmdc_modal_title}
-          onClick={() => setOpen(false)}
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-        >
+      {/* ALWAYS in the DOM, hidden with CSS rather than unmounted.
+          It used to be `{open && ...}`, which meant everything that justifies
+          the badge — the registration number, the validity, the four steps, the
+          link to the register — existed only after a human clicked. Googlebot
+          runs JavaScript but does not click, so on a YMYL medical page the one
+          thing we most want read was the one thing never rendered.
+          Hidden-but-present content is ordinary accordion/tab markup and is
+          indexed normally.
+
+          Both the `hidden` attribute and the `hidden` CLASS are set: the
+          attribute takes it out of the accessibility tree, and the class is
+          what actually wins the cascade, because Tailwind's `flex` would
+          otherwise override the user-agent rule for [hidden]. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={d.bmdc_modal_title}
+        hidden={!open}
+        onClick={() => setOpen(false)}
+        className={`fixed inset-0 z-[100] ${open ? "flex" : "hidden"} items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4`}
+      >
           <div
             onClick={(e) => e.stopPropagation()}
             className="max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-t-[22px] bg-white shadow-[0_20px_50px_rgba(0,0,0,.35)] sm:rounded-[22px]"
@@ -174,9 +187,8 @@ export function BmdcBadge({
 
               <p className="m-0 text-[12.5px] leading-relaxed text-ink-faint">{d.bmdc_disclaimer}</p>
             </div>
-          </div>
         </div>
-      )}
+      </div>
     </>
   );
 }

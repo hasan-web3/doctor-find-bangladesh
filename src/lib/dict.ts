@@ -116,6 +116,9 @@ const bn = {
   bmdc_modal_title: "BMDC ভেরিফিকেশন",
   bmdc_modal_intro: "এই ডাক্তারের রেজিস্ট্রেশন বাংলাদেশ মেডিকেল অ্যান্ড ডেন্টাল কাউন্সিলের নিজস্ব রেজিস্টারে মিলিয়ে দেখা হয়েছে।",
   bmdc_reg_no_label: "রেজিস্ট্রেশন নম্বর",
+  // The inline line under the doctor's name. Carries the "BMDC" prefix because,
+  // unlike inside the modal, nothing around it has established the context.
+  bmdc_reg_no_public: "BMDC রেজিস্ট্রেশন নম্বর",
   bmdc_reg_year_label: "রেজিস্ট্রেশনের বছর",
   bmdc_valid_till_label: "মেয়াদ",
   bmdc_how_title: "আমরা যেভাবে যাচাই করি",
@@ -484,6 +487,7 @@ const en: typeof bn = {
   bmdc_modal_title: "BMDC Verification",
   bmdc_modal_intro: "This doctor's registration was checked against the Bangladesh Medical & Dental Council's own register.",
   bmdc_reg_no_label: "Registration number",
+  bmdc_reg_no_public: "BMDC registration number",
   bmdc_reg_year_label: "Registered since",
   bmdc_valid_till_label: "Valid till",
   bmdc_how_title: "How we verify",

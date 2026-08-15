@@ -55,6 +55,7 @@ function Field({
   label,
   labelEn,
   required,
+  hideOptional,
   hint,
   error,
   wide,
@@ -64,6 +65,16 @@ function Field({
   label: string;
   labelEn: string;
   required?: boolean;
+  /**
+   * Still optional, just not announced as such.
+   *
+   * The "(ঐচ্ছিক / optional)" marker is honest about what the validator will
+   * accept, but on a field we are actively inviting people to fill in it reads
+   * as permission to skip. Used for the BMDC number, where a blank costs the
+   * doctor the trust badge and the hint already explains what filling it in
+   * buys them.
+   */
+  hideOptional?: boolean;
   hint?: string;
   error?: string;
   /** Spans both columns of the section grid, for textareas and long rows. */
@@ -76,7 +87,7 @@ function Field({
         <span className="text-[14.5px] font-bold text-ink">{label}</span>
         {required ? (
           <span className="text-[#DC2626]"> *</span>
-        ) : (
+        ) : hideOptional ? null : (
           <span className="ml-1 text-[12px] font-semibold text-ink-ghost">(ঐচ্ছিক / optional)</span>
         )}
         <span className="block font-latin text-[12px] text-ink-ghost">{labelEn}</span>
@@ -463,6 +474,25 @@ export function IntakeForm({
                   value={draft.degrees}
                   placeholder="MBBS (DMC), FCPS (Medicine), সহযোগী অধ্যাপক, খুলনা মেডিকেল কলেজ"
                   onChange={(e) => set("degrees", e.target.value)}
+                />
+              </Field>
+              {/* Sits with the credentials, right after degrees, because that
+                  is the frame it belongs in. Not marked optional: the hint
+                  explains what filling it in earns, and an "(optional)" tag
+                  beside that reads as an invitation to skip it. */}
+              <Field
+                id="f-bmdc_no"
+                label="BMDC রেজিস্ট্রেশন নম্বর"
+                labelEn="BMDC registration number"
+                hideOptional
+                hint="নম্বরটি দিলে আমরা BMDC এর রেজিস্টারে মিলিয়ে দেখে প্রোফাইলে “BMDC ভেরিফায়েড” ব্যাজ যুক্ত করি। রোগীরা এই ব্যাজ দেখে অনেক বেশি আস্থা পান।"
+                wide
+              >
+                <input
+                  className={inputBase + " font-latin"}
+                  value={draft.bmdc_no}
+                  placeholder="A-12345"
+                  onChange={(e) => set("bmdc_no", e.target.value)}
                 />
               </Field>
               <Field id="f-gender" label="লিঙ্গ" labelEn="Gender" required error={errors.gender}>
