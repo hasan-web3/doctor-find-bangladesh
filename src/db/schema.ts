@@ -193,6 +193,12 @@ export const doctors = pgTable(
     // https://verify.bmdc.org.bd. A stronger claim than `verified`, and
     // mutually exclusive with it — see the CHECK constraints below and
     // migrations/020_doctor_bmdc.sql.
+    //
+    // The three detail columns OUTLIVE the flag: switching `bmdcVerified` off
+    // leaves the number, year and validity in place so the badge can be turned
+    // back on later without re-keying them from the register. They are cleared
+    // only when the number itself is cleared. Nothing public reads them without
+    // also checking `bmdcVerified`, so a retained record stays private.
     bmdcVerified: boolean("bmdc_verified").notNull().default(false),
     bmdcNo: text("bmdc_no"),
     bmdcRegYear: integer("bmdc_reg_year"),

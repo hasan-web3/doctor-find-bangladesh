@@ -11,7 +11,7 @@ import {
   quickCreateSpecialty,
 } from "@/actions/admin-quick-create";
 import { Field, inputCls, Toggle, Toast, ImageUpload, MLInput } from "@/components/admin/ui";
-import { MonthField } from "@/components/admin/month-field";
+import { MonthField, monthToMmYyyy } from "@/components/admin/month-field";
 import { ScheduleDayPicker, scheduleToRangesByDay } from "@/components/admin/schedule-picker";
 import {
   SearchableSelect,
@@ -306,6 +306,36 @@ export function DoctorForm({
                     value={form.bmdc_valid_till}
                     onChange={(month) => set("bmdc_valid_till", month)}
                   />
+                </div>
+              )}
+
+              {/* Badge off, but a registration already on file.
+                  Switching the badge off no longer deletes the details, so this
+                  says so plainly — otherwise the fields simply vanish and the
+                  admin has no way to tell whether the data survived. Clearing is
+                  a separate, explicit action, because it is the only
+                  irreversible one in this box. */}
+              {!form.bmdc_verified && form.bmdc_no.trim() !== "" && (
+                <div className="mt-4 flex flex-col gap-2 rounded-xl border border-line bg-white p-4">
+                  <div className="text-[13px] font-bold text-ink">BMDC তথ্য সংরক্ষিত আছে</div>
+                  <div className="font-latin text-[13px] text-ink-mute">
+                    {form.bmdc_no}
+                    {form.bmdc_reg_year ? ` · ${form.bmdc_reg_year}` : ""}
+                    {form.bmdc_valid_till ? ` · ${monthToMmYyyy(form.bmdc_valid_till)}` : ""}
+                  </div>
+                  <p className="m-0 text-xs leading-relaxed text-ink-ghost">
+                    ব্যাজ বন্ধ থাকলে এই তথ্য সাইটে কোথাও দেখানো হয় না, তবে মুছেও যায় না। পরে আবার টগল চালু করলে
+                    এগুলোই ফিরে আসবে, নতুন করে খুঁজতে হবে না।
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((f) => ({ ...f, bmdc_no: "", bmdc_reg_year: null, bmdc_valid_till: "" }));
+                    }}
+                    className="self-start rounded-lg border border-[#DC2626] bg-white px-3 py-1.5 text-[12.5px] font-semibold text-[#DC2626]"
+                  >
+                    BMDC তথ্য মুছে ফেলুন
+                  </button>
                 </div>
               )}
             </div>
