@@ -1374,9 +1374,21 @@ async function searchDoctorsUncached(
       // Coordinate fallback chain, in the product's priority order:
       //   1. chamber's own lat/lng  (auto-extracted from the pasted Google Map)
       //   2. chamber's thana / upazila
-      //   3. doctor's profile-linked hospital
-      //   4. chamber's district
+      //   3. chamber's district
+      //   4. doctor's profile-linked hospital
       //   5/6. that hospital's own thana / district (last resort)
+      //
+      // Every chamber-derived step comes before every hospital-derived one.
+      // The hospital used to sit at step 3, above the chamber's own district,
+      // on the theory that an exact hospital point beats a coarse district
+      // centroid. It does not: precision about the WRONG place is worse than
+      // vagueness about the right one. A chamber the admin filed under Barguna
+      // with no thana coordinates was being located at the doctor's Khulna
+      // hospital, ~93 km away, so the doctor ranked as a Khulna doctor and the
+      // distance shown beside them was measured from a city they do not sit in.
+      // The chain now matches how the district is resolved just above, so a
+      // doctor's district and their distance can no longer point at two
+      // different places.
       //
       // Deliberately NOT a MIN() across every chamber + the hospital: that let
       // a doctor with a far-away chamber but a nearby linked hospital score as
@@ -1394,8 +1406,8 @@ async function searchDoctorsUncached(
         )))
         FROM (
           SELECT
-            COALESCE(fc.lat, fa.lat, dh.lat, fd.lat, dha.lat, dhd.lat) AS lat,
-            COALESCE(fc.lng, fa.lng, dh.lng, fd.lng, dha.lng, dhd.lng) AS lng
+            COALESCE(fc.lat, fa.lat, fd.lat, dh.lat, dha.lat, dhd.lat) AS lat,
+            COALESCE(fc.lng, fa.lng, fd.lng, dh.lng, dha.lng, dhd.lng) AS lng
           FROM doctors dd
           LEFT JOIN LATERAL (
             SELECT ch.lat, ch.lng, ch.area_id, ch.district_id
