@@ -42,12 +42,14 @@ const config: Config = {
         },
       },
       fontFamily: {
-        // Noto Sans Bengali is self-hosted via next/font (exposed as
-        // --font-noto-bengali). Kept first in every stack so Bangla digits
-        // ০–৯ render in Noto's clearer form; other glyphs fall through.
-        heading: ["var(--font-noto-bengali)", "var(--font-baloo)", "cursive"],
-        body: ["var(--font-noto-bengali)", "var(--font-hind)", "sans-serif"],
-        latin: ["var(--font-noto-bengali)", "var(--font-inter)", "sans-serif"],
+        // One downloaded family. var(--font-noto-bengali) expands to
+        // 'Noto Sans Bengali' (unicode-range U+0980-09FE, all Bangla) plus
+        // next/font's metric-matched local fallback, which has no
+        // unicode-range and therefore paints all Latin. Nothing placed after
+        // it is ever reached — see the long note in globals.css.
+        heading: ["var(--font-noto-bengali)", "system-ui", "sans-serif"],
+        body: ["var(--font-noto-bengali)", "system-ui", "sans-serif"],
+        latin: ["var(--font-noto-bengali)", "system-ui", "sans-serif"],
       },
       maxWidth: { site: "1400px" },
       typography: ({ theme }: { theme: (path: string) => string }) => ({
@@ -81,9 +83,9 @@ const config: Config = {
             "--tw-prose-invert-code": theme("colors.white"),
             "--tw-prose-invert-pre-code": theme("colors.slate[300]"),
             "--tw-prose-invert-pre-bg": "rgb(0 0 0 / 50%)",
-            "fontFamily": "var(--font-noto-bengali), var(--font-hind), sans-serif",
+            "fontFamily": "var(--font-noto-bengali), system-ui, sans-serif",
             "h2, h3, h4": {
-              fontFamily: "var(--font-noto-bengali), var(--font-baloo), cursive",
+              fontFamily: "var(--font-noto-bengali), system-ui, sans-serif",
             },
             "ul > li::marker": {
               //fontSize: "1.2em",

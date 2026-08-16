@@ -2,30 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Site-wide Bangla numeral override.
-   Noto Sans Bengali is self-hosted via next/font (see src/app/layout.tsx),
-   exposed as var(--font-noto-bengali). Placed first in every font stack, the
-   browser uses it for Bangla digits ০–৯ and falls through to Baloo / Hind for
-   everything else — surrounding Bangla text keeps its normal weight, only the
-   digits render in Noto's clearer form. Self-hosting removes the previous
-   render-blocking Google Fonts @import chain. */
+/* Site-wide font stack. One downloaded family: Noto Sans Bengali, self-hosted
+   via next/font (src/lib/fonts.ts) and exposed as var(--font-noto-bengali).
+
+   That variable expands to TWO faces, not one:
+
+       'Noto Sans Bengali', 'Noto Sans Bengali Fallback'
+
+   The first carries unicode-range U+0980-09FE, so it paints every Bangla
+   glyph — letters and the digits ০–৯ alike. The second is next/font's
+   metric-matched local fallback and carries NO unicode-range, so it paints
+   everything the first one declines: Latin letters, ASCII digits, punctuation.
+
+   That second face is why the stacks below stop here. Baloo Da 2, Hind
+   Siliguri and Inter used to sit after it, and were downloaded on every page —
+   but a face with no unicode-range consumes every remaining character, so the
+   three never painted a single glyph on either locale (verified in-browser
+   against / and /en). They were 167 KB of preloaded, unreachable font data.
+
+   Adding a webfont for Latin again means putting it BEFORE
+   var(--font-noto-bengali), not after, or it lands behind the fallback and
+   goes unused exactly like its predecessors did. */
 @layer base {
   body,
   input,
   textarea,
   select,
   button {
-    font-family: var(--font-noto-bengali), var(--font-hind), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), system-ui, sans-serif;
   }
   .font-heading,
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-noto-bengali), var(--font-baloo), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), system-ui, sans-serif;
   }
   .font-body {
-    font-family: var(--font-noto-bengali), var(--font-hind), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), system-ui, sans-serif;
   }
   .font-latin {
-    font-family: var(--font-noto-bengali), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-noto-bengali), system-ui, sans-serif;
   }
 }
 
@@ -165,7 +179,10 @@ body {
   padding: 0.12em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
-  font-family: var(--font-inter), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Monospace only. This used to lead with var(--font-inter), whose no-range
+     fallback face beat every real monospace family behind it — so inline code
+     in blog posts rendered proportional, not fixed-width. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .prose-bn pre {
   background: theme('colors.ink.DEFAULT');
