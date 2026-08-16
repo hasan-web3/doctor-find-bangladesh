@@ -100,11 +100,17 @@ export function BmdcBadge({
         aria-label={d.bmdc_modal_title}
         hidden={!open}
         onClick={() => setOpen(false)}
-        className={`fixed inset-0 z-[100] ${open ? "flex" : "hidden"} items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4`}
+        className={`fixed inset-0 z-[100] ${open ? "flex" : "hidden"} items-center justify-center bg-black/60 p-4 backdrop-blur-sm`}
       >
+          {/* Centred with a margin on every screen size, phones included. It
+              used to dock to the bottom edge on mobile (`items-end` + `p-0` +
+              square bottom corners), which read as a sheet glued to the frame
+              rather than a dialog. `p-4` on the overlay is what holds the gap:
+              the panel is `w-full`, so the padding is the only thing between it
+              and the screen edge. */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-t-[22px] bg-white shadow-[0_20px_50px_rgba(0,0,0,.35)] sm:rounded-[22px]"
+            className="max-h-[85vh] w-full max-w-[560px] overflow-y-auto rounded-[22px] bg-white shadow-[0_20px_50px_rgba(0,0,0,.35)]"
           >
             <div className="flex items-start justify-between gap-3 border-b border-line px-6 py-5">
               <div>
