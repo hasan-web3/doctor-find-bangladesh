@@ -1,4 +1,30 @@
-import { icons, type LucideProps } from "lucide-react";
+import { ICON_MAP } from "./icon-map";
+import { LucideLazy } from "./lucide-lazy";
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+// This file used to open with `import { icons } from "lucide-react"` and look
+// the name up at runtime: `icons[name]`. A runtime lookup keeps every property
+// of that object reachable, so webpack could not tree-shake it and all 1544
+// lucide icons — 419 KB raw — landed in the bundle of every public page that
+// renders an icon. It was the single largest thing on the homepage, bigger than
+// React itself.
+//
+// Resolution order below, cheapest first:
+//   1. ICON_MAP     — 208 statically imported icons (the curated admin picker
+//                     list plus every value present in the live DB). Tree-shaken
+//                     to exactly these, rendered synchronously, server or client.
+//   2. PATHS        — the legacy hand-drawn set. DB rows still hold lowercase
+//                     names like "heart" / "droplet" / "run" from before the
+//                     picker existed, and these cost zero JS.
+//   3. LucideLazy   — anything else, fetched as its own chunk on demand.
+//
+// To regenerate ICON_MAP after editing admin/medical-icons.ts:
+//   node -e "const fs=require('fs'),l=require('./node_modules/lucide-react/dist/cjs/lucide-react.js'),
+//   s=fs.readFileSync('src/components/admin/medical-icons.ts','utf8'),
+//   n=[...new Set([...s.matchAll(/name:\s*\"([^\"]+)\"/g)].map(m=>m[1]))].filter(x=>x in l.icons).sort();
+//   fs.writeFileSync('src/components/icon-map.ts','import type { LucideIcon } from \"lucide-react\";\n\nimport {\n'+n.map(x=>'  '+x+',').join('\n')+'\n} from \"lucide-react\";\n\nexport const ICON_MAP: Record<string, LucideIcon> = {\n'+n.map(x=>'  '+x+',').join('\n')+'\n};\n')"
 
 // Legacy hard-coded icons for backward compatibility
 const PATHS: Record<string, string[]> = {
@@ -34,14 +60,23 @@ const PATHS: Record<string, string[]> = {
 export const ICON_KEYS = Object.keys(PATHS);
 
 export function Icon({ name, size = 26, className }: { name: string; size?: number; className?: string }) {
-  // Check if the icon exists in the full lucide-react map first
-  const LucideIcon = icons[name as keyof typeof icons];
+  const LucideIcon = ICON_MAP[name];
   if (LucideIcon) {
     return <LucideIcon size={size} className={className} strokeWidth={1.7} />;
   }
 
-  // Fallback to legacy hard-coded icons
-  const paths = PATHS[name] || PATHS.cross;
+  // Legacy hand-drawn set: lowercase names written before the picker existed.
+  const legacy = PATHS[name];
+  if (!legacy) {
+    // Neither curated nor legacy. A PascalCase name is an icon lucide has but
+    // the curated list does not, so it is worth fetching; anything else is a
+    // stale or mistyped value and falls through to the generic mark.
+    if (/^[A-Z]/.test(name)) {
+      return <LucideLazy name={name} size={size} className={className} strokeWidth={1.7} />;
+    }
+  }
+
+  const paths = legacy || PATHS.cross;
   return (
     <svg
       width={size}
