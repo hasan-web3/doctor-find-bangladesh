@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { useAutoAnimate } from "@formkit/auto-animate/react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { SearchableSelect, type Option } from "@/components/admin/searchable-select";
 import { localeHref, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/dict";
@@ -26,7 +25,6 @@ function useDebounce(value: string, delay: number): string {
   return debouncedValue;
 }
 
-type ThanaOpt = { slug: string; name: string; name_en?: string | null; district_slug: string | null };
 type DistrictOpt = { slug: string; name: string; name_en?: string | null };
 type Suggestion = {
   name: string;
@@ -46,40 +44,26 @@ function initials(name: string) {
     .toUpperCase();
 }
 
+// The hero search filters by DISTRICT only. The thana / town dropdown that used
+// to sit beside it is gone, and with it the thana list, the busiest-thana
+// preselect map and their queries — the district is the unit visitors search in,
+// and the doctor listing still accepts `?area=` for the pages that offer it.
 export function SearchBar({
   districts,
-  thanas,
   locale,
   d,
   preselectDistrictSlug = null,
-  preselectThanaSlug = null,
-  busiestThanaByDistrict,
 }: {
   districts: DistrictOpt[];
-  thanas: ThanaOpt[];
   locale: Locale;
-  d: Pick<Dict, "search_placeholder" | "select_area" | "search"> & {
+  d: Pick<Dict, "search_placeholder" | "search"> & {
     select_district?: string;
   };
   preselectDistrictSlug?: string | null;
-  preselectThanaSlug?: string | null;
-  /**
-   * Busiest thana per district slug. Visitor-independent (it is a doctor count,
-   * not a location), so it ships inside the cached HTML.
-   *
-   * Needed because IP geo now answers at district level only: it can no longer
-   * hand us a thana, and without this the town dropdown would sit empty for
-   * every visitor we located by IP. Picking by doctor count rather than by
-   * distance is deliberate and unchanged — the nearest town to an IP centroid
-   * is regularly one with no chambers, so preselecting it makes the visitor's
-   * first search return nothing.
-   */
-  busiestThanaByDistrict?: Record<string, string>;
 }) {
   const router = useRouter();
   const { location } = useLocation();
   const [q, setQ] = useState("");
-  const [parent] = useAutoAnimate();
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   // --- Live Search Suggestions State ---
@@ -94,16 +78,11 @@ export function SearchBar({
   const districtIdToSlug = useMemo(() => new Map(districts.map((x, i) => [i + 1, x.slug])), [districts]);
   const [districtId, setDistrictId] = useState<number | null>(preselectDistrictSlug ? slugToDistrictId.get(preselectDistrictSlug) ?? null : null);
   const districtSlug = districtId ? districtIdToSlug.get(districtId) ?? null : null;
-  const thanasForDistrict = useMemo(() => (districtSlug ? thanas.filter((t) => t.district_slug === districtSlug) : []), [thanas, districtSlug]);
-  const thanaOptions: Option[] = useMemo(() => thanasForDistrict.map((t, i) => ({ id: i + 1, label: t.name, label_en: t.name_en ?? null })), [thanasForDistrict]);
-  const slugToThanaId = useMemo(() => new Map(thanasForDistrict.map((t, i) => [t.slug, i + 1])), [thanasForDistrict]);
-  const thanaIdToSlug = useMemo(() => new Map(thanasForDistrict.map((t, i) => [i + 1, t.slug])), [thanasForDistrict]);
-  const [thanaId, setThanaId] = useState<number | null>(preselectThanaSlug && preselectDistrictSlug ? slugToThanaId.get(preselectThanaSlug) ?? null : null);
 
-  // `useState` reads its initial value once, so the two dropdowns would keep
+  // `useState` reads its initial value once, so the dropdown would keep
   // whatever the IP guess produced on first mount even after the visitor
-  // answers the district prompt — the server re-renders with new preselect
-  // props but this component ignores them. Re-apply whenever the incoming
+  // answers the district prompt — the server re-renders with a new preselect
+  // prop but this component ignores it. Re-apply whenever the incoming
   // preselect actually changes, which only happens on a real location change.
   //
   // Tracked by value rather than with a plain effect so a visitor's own
@@ -114,27 +93,15 @@ export function SearchBar({
   // supplies the real one after hydration. Falling back to the prop keeps the
   // dropdown sensibly filled for a first-time visitor and for crawlers.
   const effectiveDistrictSlug = location.districtSlug ?? preselectDistrictSlug;
-  // `location.areaSlug` is only ever set when the visitor named the town
-  // themselves, so it still wins. Everything else falls back to the district's
-  // busiest town, then to the server's preselect.
-  const effectiveThanaSlug = location.districtSlug
-    ? location.areaSlug ?? busiestThanaByDistrict?.[location.districtSlug] ?? null
-    : preselectThanaSlug;
 
-  const appliedPreselect = useRef(`${preselectDistrictSlug ?? ""}|${preselectThanaSlug ?? ""}`);
+  const appliedPreselect = useRef(preselectDistrictSlug ?? "");
   useEffect(() => {
-    const key = `${effectiveDistrictSlug ?? ""}|${effectiveThanaSlug ?? ""}`;
+    const key = effectiveDistrictSlug ?? "";
     if (appliedPreselect.current === key) return;
     appliedPreselect.current = key;
 
     setDistrictId(effectiveDistrictSlug ? slugToDistrictId.get(effectiveDistrictSlug) ?? null : null);
-    // Derived from the incoming values, not from `thanasForDistrict`, which is
-    // still keyed to the previous district during this pass.
-    const idx = effectiveDistrictSlug && effectiveThanaSlug
-      ? thanas.filter((t) => t.district_slug === effectiveDistrictSlug).findIndex((t) => t.slug === effectiveThanaSlug)
-      : -1;
-    setThanaId(idx >= 0 ? idx + 1 : null);
-  }, [effectiveDistrictSlug, effectiveThanaSlug, slugToDistrictId, thanas]);
+  }, [effectiveDistrictSlug, slugToDistrictId]);
 
   // --- Fetch suggestions when debounced query changes ---
   useEffect(() => {
@@ -200,8 +167,6 @@ export function SearchBar({
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (districtSlug) params.set("district", districtSlug);
-    const thanaSlug = thanaId ? thanaIdToSlug.get(thanaId) : null;
-    if (thanaSlug) params.set("area", thanaSlug);
     router.push(`${localeHref(locale, "/doctors")}${params.size ? `?${params}` : ""}`);
   };
 
@@ -224,30 +189,18 @@ export function SearchBar({
 
         <div className="h-px bg-line order-2 min-[900px]:hidden" />
 
-        {/* cascade: district → thana */}
-        <div ref={parent} className="flex flex-col gap-2 px-1 sm:flex-row sm:gap-2 sm:px-2 min-[900px]:min-w-[220px] order-1 min-[900px]:order-none">
+        {/* district filter */}
+        <div className="flex flex-col gap-2 px-1 sm:flex-row sm:gap-2 sm:px-2 min-[900px]:min-w-[220px] order-1 min-[900px]:order-none">
           <div className="min-w-[180px] flex-1">
             <SearchableSelect
               options={districtOptions}
               value={districtId}
-              onChange={(id) => { setDistrictId(id); setThanaId(null); }}
+              onChange={setDistrictId}
               placeholder={d.select_district ?? (locale === "bn" ? "জেলা নির্বাচন করুন" : "Select district")}
               emptyLabel={locale === "bn" ? "কোনো জেলা নেই" : "No districts"}
               clearable
             />
           </div>
-          {districtSlug && (
-            <div className="min-w-[180px] flex-1 animate-fadein">
-              <SearchableSelect
-                options={thanaOptions}
-                value={thanaId}
-                onChange={setThanaId}
-                placeholder={d.select_area}
-                emptyLabel={locale === "bn" ? "কোনো শহর / গ্রাম নেই" : "No towns / villages"}
-                clearable
-              />
-            </div>
-          )}
         </div>
 
         <button

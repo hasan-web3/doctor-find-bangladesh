@@ -99,6 +99,12 @@ export function DoctorListClient({
         const values = params.getAll(k);
         if (values.length) qs.set(k, values.join(","));
       }
+      // Always explicit. The URL only carries `perPage` once the visitor picks a
+      // size from the selector, and without this the API fell back to its own
+      // default (12) while the pager kept counting pages at `defaultPerPage` —
+      // so the first filtered page rendered fewer cards than the pagination
+      // promised. Same value the pager uses, URL-driven or default.
+      qs.set("perPage", String(perPage));
       if (location.districtSlug) qs.set("preferDistrict", location.districtSlug);
       if (location.lat !== null) qs.set("preferLat", String(location.lat));
       if (location.lng !== null) qs.set("preferLng", String(location.lng));

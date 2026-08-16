@@ -1839,22 +1839,29 @@ export async function getFaqsWithDefaults(
   seeds: FaqSeed[],
   locale: Locale
 ): Promise<ResolvedFaq[]> {
-  // Off switches first: no point resolving anything the page will not render.
+  // Both reads at once. They are independent — the denylist decides whether to
+  // render anything, the rows decide what — and awaiting them in sequence cost
+  // every FAQ-bearing page an extra round trip for no gain.
+  //
+  // The old shape returned early on a disabled block so it never fetched rows.
+  // That saving is not real: getAllFaqRows() is a single cached read of the
+  // whole (small) table shared by every scope on the page, so on a disabled
+  // block we now discard a value some other caller was going to fetch anyway.
+  //
+  // The catch stays on its own promise rather than around the pair: the
+  // `district` enum value and the `auto_key` column each arrive in a migration,
+  // and if this code is live before one is applied the FAQ block must degrade to
+  // generated defaults, not take the page down — and not swallow an unrelated
+  // failure from the denylist read while it is at it.
+  const [disabled, rows] = await Promise.all([
+    getDisabledFaqKeys(),
+    getFaqRows(scope, refId).catch(() => [] as Awaited<ReturnType<typeof getFaqRows>>),
+  ]);
+
   // Scope-wide beats per-entity, and either one silences the block completely,
   // generated and hand-written alike.
-  const disabled = await getDisabledFaqKeys();
   if (disabled.has(`${scope}:${FAQ_SCOPE_ALL}`)) return [];
   if (refId !== null && disabled.has(`${scope}:${refId}`)) return [];
-
-  let rows: Awaited<ReturnType<typeof getFaqRows>>;
-  try {
-    rows = await getFaqRows(scope, refId);
-  } catch {
-    // The `district` enum value and the `auto_key` column each arrive in a
-    // migration. If this code is live before one of them is applied, degrade to
-    // the generated defaults instead of taking the page down with it.
-    rows = [];
-  }
 
   const overrides = new Map<string, (typeof rows)[number]>();
   const manual: typeof rows = [];

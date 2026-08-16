@@ -32,7 +32,7 @@ const AreaMap = dynamic(() =>
 import {
   getSpecialties, getAreasLight, getHospitalOptions,
   getHeroSlides, getFaqsWithDefaults, getTestimonials, getBlogPosts, getHomepageDoctors,
-  getDistrictsForSearch, getThanasForSearch, getBusiestAreaByDistrict, resolveDisplayDistrict,
+  getDistrictsForSearch, resolveDisplayDistrict,
   getNearbyAreas, type Specialty,
 } from "@/lib/data";
 import { getSettings } from "@/lib/settings";
@@ -94,7 +94,7 @@ export default async function HomePage({ params }: Props) {
 
   const [
     settings, specialties, areas, slides, faqs, testimonials, hospitals, blogResult,
-    geo, mapsConfig, searchDistricts, searchThanas, busiestAreas,
+    geo, mapsConfig, searchDistricts,
   ] = await Promise.all([
     getSettings(), getSpecialties(locale), getAreasLight(locale), getHeroSlides(locale),
     // Empty seed list: the homepage has no entity to generate from, so its
@@ -102,7 +102,7 @@ export default async function HomePage({ params }: Props) {
     // scope-level off switch applies here too.
     getFaqsWithDefaults("home", null, [], locale), getTestimonials(locale), getHospitalOptions(locale),
     getBlogPosts(locale, { perPage: 3 }), STATIC_GEO, getEnabledConfig("google_maps"),
-    getDistrictsForSearch(), getThanasForSearch(), getBusiestAreaByDistrict(),
+    getDistrictsForSearch(),
   ]);
 
   const blog = blogResult.rows;
@@ -113,7 +113,12 @@ export default async function HomePage({ params }: Props) {
   // 3. Normal public doctors in the user's specific area / district
   // 4. Distant featured doctors (>100km away)
   // This perfectly handles the local-first hierarchy.
-  const doctorsForHomepage = await getHomepageDoctors(geo, locale, 12);
+  //
+  // 20 = 5 full rows on the 4-column desktop grid (and 10 on the 2-column
+  // tablet grid), so the section never ends on a half-filled row. The rail's
+  // client-side refetch reads this same count off `initialDoctors.length`, so
+  // the district-switched list is exactly as long as the server-rendered one.
+  const doctorsForHomepage = await getHomepageDoctors(geo, locale, 20);
 
   // Dynamic titles and subtitles.
   // If we have a detected district, we use that (e.g. "খুলনার" / "Khulna's").
@@ -185,36 +190,18 @@ export default async function HomePage({ params }: Props) {
   // this preselect is the same for every visitor and the HTML stays cacheable.
   // The visitor's own district is applied after hydration by LocationProvider.
   //
-  // The town is chosen by doctor count, not by distance. The nearest town to
-  // an IP centroid is regularly one with no chambers at all, and preselecting
-  // it means the visitor's first search returns nothing — the worst possible
-  // first impression on a directory. The busiest town in their district is a
-  // far better default, and they can still change it.
-  //
-  // An explicit thana pick (`db_area`) is the one thing that outranks this:
-  // the visitor named that town themselves, so we do not second-guess it.
   // Keyed to the DISPLAY district, not the visitor's raw one. If we are
   // showing Khulna doctors under Khulna headings, the filter must say Khulna
   // too — preselecting the empty district the visitor picked would make the
   // very first search return nothing.
+  //
+  // District is the ONLY hero filter now. The thana / town dropdown beside it
+  // is gone, so the busiest-thana lookup that fed its preselect
+  // (getBusiestAreaByDistrict) and the full thana list (getThanasForSearch) are
+  // no longer queried here — two fewer reads on every homepage render. Both
+  // still serve the /doctors and /districts/[slug]/doctors filters, which do
+  // offer a thana dropdown.
   const preselectDistrictSlug = displayDistrict?.slug ?? geo.districtSlug;
-  const preselectThanaSlug =
-    geo.source === "cookie"
-      ? geo.areaSlug
-      : busiestAreas.find(
-          (b) => b.district_slug === preselectDistrictSlug && b.doctor_count > 0
-        )?.slug ?? geo.areaSlug;
-
-  // The same "busiest town" rule, for every district rather than just the one
-  // this document names. IP geo answers at district level only, so once
-  // <LocationProvider> resolves a different district on the client the search
-  // bar needs a town for it too — and asking the server for one would mean a
-  // per-visitor render, which is exactly what ISR forbids. It is a doctor
-  // count, identical for every visitor, so it ships in the cached HTML.
-  const busiestThanaByDistrict: Record<string, string> = {};
-  for (const b of busiestAreas) {
-    if (b.doctor_count > 0 && b.district_slug) busiestThanaByDistrict[b.district_slug] = b.slug;
-  }
 
   const STEPS = [
     { no: num(1, locale), title: d.step1_title, text: d.step1_text, icon: "search" },
@@ -287,12 +274,9 @@ export default async function HomePage({ params }: Props) {
           <div className="relative z-20 min-[900px]:col-start-1 min-[900px]:row-start-2">
             <SearchBar
               districts={searchDistricts.map((x) => ({ slug: x.slug, name: locale === "bn" ? x.name_bn : (x.name_en || x.name_bn), name_en: x.name_en }))}
-              thanas={searchThanas.map((t) => ({ slug: t.slug, name: locale === "bn" ? t.name_bn : (t.name_en || t.name_bn), name_en: t.name_en, district_slug: t.district_slug }))}
               locale={locale}
               d={d}
               preselectDistrictSlug={preselectDistrictSlug}
-              preselectThanaSlug={preselectThanaSlug}
-              busiestThanaByDistrict={busiestThanaByDistrict}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 min-[900px]:col-start-1 min-[900px]:row-start-3 min-[900px]:mt-[18px]">

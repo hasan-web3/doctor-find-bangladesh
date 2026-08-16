@@ -119,36 +119,40 @@ export default async function DoctorDetailPage({ params }: Props) {
     .filter((s) => s.url);
 
 
-  // Generated from this doctor's own chambers, schedule and fee, then overlaid
-  // with any admin edits. Deliberately the shortest generated set on the site:
-  // the profile already shows this information in structured form, so these
-  // only answer the questions people actually type into search.
-  const docFaqs = await getFaqsWithDefaults(
-    "doctor",
-    doc.id,
-    doctorFaqSeeds({
-      name: doc.name,
-      specialty: doc.specialties[0]?.name || "",
-      district: doc.district || "",
-      chamberNames: doc.chambers.map((c) => c.name),
-      hasSchedule: doc.chambers.some((c) => c.schedule.length > 0),
-      fee: doc.chambers[0]?.fee ?? null,
-    }),
-    locale
-  );
+  // Both of these need `doc` and nothing else, so they belong in ONE wave.
+  // They used to be two sequential awaits, which made the profile page — the
+  // heaviest route in the table — pay three round trips to the database where
+  // two do: one for the doctor, one for everything that hangs off the doctor.
+  //
+  //  - FAQs: generated from this doctor's own chambers, schedule and fee, then
+  //    overlaid with any admin edits. Deliberately the shortest generated set on
+  //    the site; the profile already shows this in structured form, so these
+  //    only answer the questions people actually type into search.
+  //  - Suggested: geo-preferred (featured-first within the visitor's area),
+  //    excluding this doctor.
+  const [docFaqs, suggestedResult] = await Promise.all([
+    getFaqsWithDefaults(
+      "doctor",
+      doc.id,
+      doctorFaqSeeds({
+        name: doc.name,
+        specialty: doc.specialties[0]?.name || "",
+        district: doc.district || "",
+        chamberNames: doc.chambers.map((c) => c.name),
+        hasSchedule: doc.chambers.some((c) => c.schedule.length > 0),
+        fee: doc.chambers[0]?.fee ?? null,
+      }),
+      locale
+    ),
+    geoSearchPrefs(geo, locale).then((prefs) =>
+      searchDoctors({ ...prefs, perPage: 12, excludeId: doc.id }, locale)
+    ),
+  ]);
+  const suggested = suggestedResult.rows;
+
   const primaryChamber = doc.chambers[0];
   const fee = primaryChamber?.fee;
   const helplineDisplay = locale === "bn" ? settings.helpline_bn : settings.helpline;
-
-  // Suggested doctors: geo-preferred (featured-first within visitor's area), excluding this one.
-  const suggested = (await searchDoctors(
-    {
-      ...(await geoSearchPrefs(geo, locale)),
-      perPage: 12,
-      excludeId: doc.id,
-    },
-    locale
-  )).rows;
 
   return (
     <div className="bg-page">
@@ -233,8 +237,7 @@ export default async function DoctorDetailPage({ params }: Props) {
                 </div>
               )}
               {doc.hospital && (
-                <div className="mb-2 flex items-center gap-2 text-sm">
-                  <span aria-hidden className="text-[15px]">🏥</span>
+                <div className="mb-2 flex items-center text-sm">
                   <Link href={L(`/hospitals/${doc.hospital.slug}`)} className="font-semibold text-brand-700 hover:underline">
                     {doc.hospital.name}
                   </Link>

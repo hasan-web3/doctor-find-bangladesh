@@ -113,7 +113,10 @@ export default async function SpecialtyPage({ params }: Props) {
     notFound();
   }
 
-  const [settings, allSpecialties, specialtyAreas, specialtyDistricts, initialDoctorData] = await Promise.all([
+  // `display` joined this wave from further down the function. It resolves off
+  // `geo`, which the wave above already produced, so awaiting it after the FAQs
+  // bought nothing and cost the page a fourth round trip.
+  const [settings, allSpecialties, specialtyAreas, specialtyDistricts, initialDoctorData, display] = await Promise.all([
     getSettings(),
     getSpecialties(locale),
     // The thanas where this specialty actually has doctors, linked as
@@ -138,6 +141,7 @@ export default async function SpecialtyPage({ params }: Props) {
       perPage: 12,
       ...(await geoSearchPrefs(geo, locale)),
     }, locale),
+    resolveDisplayDistrict(geo, locale),
   ]);
 
   // Generated from this specialty's own coverage, then overlaid with any admin
@@ -155,7 +159,6 @@ export default async function SpecialtyPage({ params }: Props) {
 
   const suggestedSpecialties = allSpecialties.filter((s) => s.id !== spec.id);
 
-  const display = await resolveDisplayDistrict(geo, locale);
   const districtName = display?.name ?? null;
 
   // The <h1> is district-FREE, matching the title. See the long note in

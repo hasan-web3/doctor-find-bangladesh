@@ -110,9 +110,8 @@ export function DoctorCard({
 
         <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
           {doctor.hospital && (
-            <div className="flex items-center gap-1.5 text-[13.5px] font-semibold text-brand-700">
-              <span aria-hidden className="text-[13px]">🏥</span>
-              <span className="line-clamp-1">{doctor.hospital}</span>
+            <div className="line-clamp-1 text-[13.5px] font-semibold text-brand-700">
+              {doctor.hospital}
             </div>
           )}
           {(doctor.chamber || place) && (

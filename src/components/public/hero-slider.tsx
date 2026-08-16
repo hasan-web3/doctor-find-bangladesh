@@ -71,6 +71,22 @@ export function HeroSlider({ slides, verifiedLabel }: { slides: Slide[]; verifie
                       // every slide makes the browser preload every image and
                       // starves the real LCP.
                       priority={i === 0}
+                      // `priority` alone is NOT enough here. In this version of
+                      // next/image it emits the <link rel="preload" as="image">
+                      // and nothing more — it does not derive fetchPriority,
+                      // which is a separate pass-through prop. Verified against
+                      // the live HTML: the preload was there, the <img> carried
+                      // no fetchpriority at all, and Lighthouse flagged "LCP
+                      // request discovery" on exactly this element.
+                      //
+                      // Without it a preloaded image sits at the browser's
+                      // default image priority (Low until layout proves it is in
+                      // the viewport), so it queues behind the CSS and JS that
+                      // the same connection is already carrying. This IS the LCP
+                      // element on mobile — measured at 220,500 px², far larger
+                      // than anything else on the first screen — so it should be
+                      // fetched ahead of them, not after.
+                      fetchPriority={i === 0 ? "high" : undefined}
                       loading={i === 0 ? undefined : "lazy"}
                       sizes="(max-width: 900px) 90vw, 420px"
                       className="object-cover"

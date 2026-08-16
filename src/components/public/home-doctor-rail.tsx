@@ -76,7 +76,7 @@ export function HomeDoctorRail({
       setLoading(true);
       const qs = new URLSearchParams({
         locale,
-        perPage: String(initialDoctors.length || 12),
+        perPage: String(initialDoctors.length || 20),
         preferDistrict: districtSlug,
       });
       if (location.lat !== null) qs.set("preferLat", String(location.lat));

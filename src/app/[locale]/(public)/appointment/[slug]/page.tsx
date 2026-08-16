@@ -111,8 +111,7 @@ export default async function AppointmentPage({ params }: Props) {
               </div>
             )}
             {doc.hospital && (
-              <div className="mb-2 flex items-center gap-2 text-sm">
-                <span aria-hidden className="text-[15px]">🏥</span>
+              <div className="mb-2 flex items-center text-sm">
                 <Link href={L(`/hospitals/${doc.hospital.slug}`)} className="font-semibold text-brand-700 hover:underline">
                   {doc.hospital.name}
                 </Link>

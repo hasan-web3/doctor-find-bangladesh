@@ -116,22 +116,40 @@ export default async function HospitalPage({ params }: Props) {
       : Promise.resolve([] as { slug: string; name: { bn?: string; en?: string } }[]),
   ]);
 
-  // Generated from this hospital's own address, departments and doctor list,
-  // then overlaid with any admin edits. This is the one generator with no
-  // doctor-count gate, matching the sitemap: a hospital page carries useful
-  // content of its own even before a doctor is listed there.
-  const faqs = await getFaqsWithDefaults(
-    "hospital",
-    h.id,
-    hospitalFaqSeeds({
-      name: h.name,
-      area: h.area,
-      district: h.district,
-      doctorCount: initialDoctorData.total,
-      departments: h.departments,
-    }),
-    locale
-  );
+  // Both of these read from the wave above and from nothing else, so they run
+  // together rather than one after the other.
+  //
+  //  - FAQs: generated from this hospital's own address, departments and doctor
+  //    list, then overlaid with any admin edits. The one generator with no
+  //    doctor-count gate, matching the sitemap: a hospital page carries useful
+  //    content of its own even before a doctor is listed there.
+  //  - specialtyLinks: every specialty of the doctors on page one, for the
+  //    client-side department filter.
+  const doctorIds = initialDoctorData.rows.map((d) => d.id);
+  const [faqs, specialtyLinks] = await Promise.all([
+    getFaqsWithDefaults(
+      "hospital",
+      h.id,
+      hospitalFaqSeeds({
+        name: h.name,
+        area: h.area,
+        district: h.district,
+        doctorCount: initialDoctorData.total,
+        departments: h.departments,
+      }),
+      locale
+    ),
+    doctorIds.length > 0
+      ? db
+          .select({
+            doctorId: doctorSpecialties.doctorId,
+            specialtyName: specialtiesT.name,
+          })
+          .from(doctorSpecialties)
+          .innerJoin(specialtiesT, eq(specialtiesT.id, doctorSpecialties.specialtyId))
+          .where(inArray(doctorSpecialties.doctorId, doctorIds))
+      : Promise.resolve([] as { doctorId: number; specialtyName: { bn?: string; en?: string } }[]),
+  ]);
 
   const departmentDetails = h.departments
     .map((deptName) => {
@@ -148,17 +166,9 @@ export default async function HospitalPage({ params }: Props) {
     })
     .filter((d): d is { name: string; nameAlt: string | undefined; slug: string } => d !== null);
 
-  // Enrich doctors with all their specialties for the client-side filter
-  const doctorIds = initialDoctorData.rows.map((d) => d.id);
-  const specialtyLinks = doctorIds.length > 0 ? await db
-    .select({
-      doctorId: doctorSpecialties.doctorId,
-      specialtyName: specialtiesT.name,
-    })
-    .from(doctorSpecialties)
-    .innerJoin(specialtiesT, eq(specialtiesT.id, doctorSpecialties.specialtyId))
-    .where(inArray(doctorSpecialties.doctorId, doctorIds)) : [];
-
+  // specialtyLinks (doctor -> all their specialties, for the client-side
+  // filter) was fetched here, one await after the FAQs. Both only needed the
+  // wave above, so they now run together — see the Promise.all before this.
   const specialtyMap = new Map<number, string[]>();
   for (const link of specialtyLinks) {
     const names = specialtyMap.get(link.doctorId) || [];

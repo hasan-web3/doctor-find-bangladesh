@@ -74,7 +74,10 @@ export default async function DoctorsPage({ params }: Props) {
   const locale: Locale = raw;
   const d = getDict(locale);
 
-  const sanitizedPerPage = 12;
+  // Page size for the canonical first page AND the default <DoctorListClient>
+  // sends to /api/doctors. One of the per-page selector's own options (12 / 24 /
+  // 48 / 96), so the selector opens showing the size actually in effect.
+  const sanitizedPerPage = 24;
 
   // No `getAreas` here: the thana filter is fed by getThanasForSearch() below.
   // This page used to also fetch the full 619-row area list and never read it.
