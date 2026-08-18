@@ -186,7 +186,9 @@ export async function savePriorityPromotion(input: z.infer<typeof promoSchema>) 
   await audit("priority_promotion.save", "promotions", p.id ?? null, {
     doctor_id: p.doctorId, plan: p.plan, amount: p.amount,
   });
-  revalidatePublic(["doctors", "districts"]);
+  // Curated ORDER only. No URL is created, removed or renamed here, so the
+  // sitemap keeps serving from cache and rolls over on its own 24 h window.
+  revalidatePublic(["doctors", "districts"], { sitemap: false });
   return { ok: true, message: "পেমেন্ট সংরক্ষণ হয়েছে।" };
 }
 
@@ -254,7 +256,9 @@ export async function saveDistrictPriority(input: z.infer<typeof saveSchema>) {
   await audit("district_priority.save", "districts", districtId, {
     count: clean.length,
   });
-  revalidatePublic(["doctors", "districts"]);
+  // Curated ORDER only. No URL is created, removed or renamed here, so the
+  // sitemap keeps serving from cache and rolls over on its own 24 h window.
+  revalidatePublic(["doctors", "districts"], { sitemap: false });
   return { ok: true, message: "ক্রম সংরক্ষণ হয়েছে।" };
 }
 
@@ -278,6 +282,8 @@ export async function toggleDistrictPriority(input: z.infer<typeof toggleSchema>
   `);
 
   await audit("district_priority.toggle", "districts", districtId, { enabled });
-  revalidatePublic(["doctors", "districts"]);
+  // Curated ORDER only. No URL is created, removed or renamed here, so the
+  // sitemap keeps serving from cache and rolls over on its own 24 h window.
+  revalidatePublic(["doctors", "districts"], { sitemap: false });
   return { ok: true, message: enabled ? "এই জেলার ক্রম চালু হয়েছে।" : "এই জেলার ক্রম বন্ধ হয়েছে।" };
 }

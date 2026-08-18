@@ -1,5 +1,6 @@
 import "server-only";
 import { getDistrictsForGeo, resolveDisplayDistrict } from "./data";
+import { roundCoord } from "./location";
 import type { GeoResult } from "./geo";
 import type { Locale } from "./i18n";
 
@@ -47,8 +48,13 @@ function num(value: string | null): number | null {
  */
 async function geoFromParams(sp: URLSearchParams): Promise<GeoResult | null> {
   const slug = sp.get("preferDistrict");
-  const lat = num(sp.get("preferLat"));
-  const lng = num(sp.get("preferLng"));
+  // Rounded server-side as well as client-side. The client rounds so the URL
+  // (and therefore the CDN cache key) collapses across visitors; this rounds
+  // again so a hand-written request, an older cached bundle or a third-party
+  // caller cannot reintroduce full-precision coordinates into the Data Cache
+  // key that searchDoctors() builds from these fields.
+  const lat = roundCoord(num(sp.get("preferLat")));
+  const lng = roundCoord(num(sp.get("preferLng")));
   if (!slug && lat === null && lng === null) return null;
 
   // An unknown slug is dropped rather than trusted: this value reaches SQL

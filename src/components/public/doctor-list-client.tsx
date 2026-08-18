@@ -8,6 +8,7 @@ import { Shimmer } from "@/components/shimmer";
 import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { useLocation } from "@/components/public/location-provider";
 import { useShownDistrict } from "@/components/public/shown-district-context";
+import { coordParam, roundCoord } from "@/lib/location";
 import type { DoctorCardData } from "@/lib/data";
 import type { Dict } from "@/lib/dict";
 import type { Locale } from "@/lib/i18n";
@@ -72,7 +73,11 @@ export function DoctorListClient({
   // so the effect does not re-run on every render just because URLSearchParams
   // is a fresh object each time.
   const queryKey = FILTER_KEYS.map((k) => `${k}=${params.getAll(k).join("|")}`).join("&");
-  const geoKey = ready ? `${location.districtSlug ?? ""}:${location.lat ?? ""}:${location.lng ?? ""}` : "";
+  // Rounded to the same precision the request below sends, so sub-kilometre
+  // drift in an IP guess is not treated as a location change. See roundCoord.
+  const geoLat = roundCoord(location.lat);
+  const geoLng = roundCoord(location.lng);
+  const geoKey = ready ? `${location.districtSlug ?? ""}:${geoLat ?? ""}:${geoLng ?? ""}` : "";
 
   const page = Math.max(1, Number(params.get("page")) || 1);
   const perPage = Math.max(1, Number(params.get("perPage")) || defaultPerPage);
@@ -106,8 +111,12 @@ export function DoctorListClient({
       // promised. Same value the pager uses, URL-driven or default.
       qs.set("perPage", String(perPage));
       if (location.districtSlug) qs.set("preferDistrict", location.districtSlug);
-      if (location.lat !== null) qs.set("preferLat", String(location.lat));
-      if (location.lng !== null) qs.set("preferLng", String(location.lng));
+      // Rounded: these two values are part of the CDN cache key for
+      // /api/doctors and of the Data Cache key inside searchDoctors().
+      const latParam = coordParam(location.lat);
+      const lngParam = coordParam(location.lng);
+      if (latParam !== null) qs.set("preferLat", latParam);
+      if (lngParam !== null) qs.set("preferLng", lngParam);
       // Last, so it wins over anything the URL happened to carry.
       if (lockedDistrictSlug) {
         qs.set("district", lockedDistrictSlug);

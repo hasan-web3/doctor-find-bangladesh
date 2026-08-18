@@ -7,6 +7,7 @@ import { Reveal } from "@/components/reveal";
 import { Shimmer } from "@/components/shimmer";
 import { useLocation } from "@/components/public/location-provider";
 import { useShownDistrict } from "@/components/public/shown-district-context";
+import { coordParam } from "@/lib/location";
 import { withPossessive } from "@/lib/bn";
 import { localeHref, type Locale } from "@/lib/i18n";
 import type { DoctorCardData } from "@/lib/data";
@@ -79,8 +80,12 @@ export function HomeDoctorRail({
         perPage: String(initialDoctors.length || 20),
         preferDistrict: districtSlug,
       });
-      if (location.lat !== null) qs.set("preferLat", String(location.lat));
-      if (location.lng !== null) qs.set("preferLng", String(location.lng));
+      // Rounded: these two values are part of the CDN cache key for
+      // /api/doctors and of the Data Cache key inside searchDoctors().
+      const latParam = coordParam(location.lat);
+      const lngParam = coordParam(location.lng);
+      if (latParam !== null) qs.set("preferLat", latParam);
+      if (lngParam !== null) qs.set("preferLng", lngParam);
 
       try {
         const res = await fetch(`/api/doctors?${qs.toString()}`, { signal: controller.signal });

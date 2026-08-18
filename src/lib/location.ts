@@ -60,6 +60,40 @@ export const EMPTY_LOCATION: ClientLocation = {
   source: "none",
 };
 
+// ---------------------------------------------------------------------------
+// Coordinate precision
+// ---------------------------------------------------------------------------
+// Every ranking query the browser fires carries the visitor's coordinates as
+// query-string values, and those values become BOTH the CDN cache key for the
+// response AND part of the `unstable_cache` key inside searchDoctors(). At full
+// precision that is a fresh cache entry per visitor, so the s-maxage on those
+// routes never got a hit and the Data Cache filled with single-use rows.
+//
+// Two decimals is ~1.1 km. Coordinates are only ever used to ORDER results and
+// to sort them into a 100 km band (see searchDoctorsUncached in src/lib/data.ts)
+// — never to filter — so a kilometre of slack cannot change which doctors a
+// visitor sees, only the order of two chambers that are already within walking
+// distance of each other.
+//
+// Applied on BOTH sides on purpose: the client rounds so the URL (and therefore
+// the CDN key) collapses, the server rounds again so a hand-written request or
+// an older cached bundle cannot reintroduce the cardinality in the Data Cache.
+export const COORD_DECIMALS = 2;
+
+export function roundCoord(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const factor = 10 ** COORD_DECIMALS;
+  return Math.round(value * factor) / factor;
+}
+
+// Same rounding, as the string that goes into a query parameter. `String(22.8)`
+// would emit "22.8" while the server's rounded 22.80 stringifies the same way,
+// so both halves agree without either needing toFixed's trailing zeros.
+export function coordParam(value: number | null | undefined): string | null {
+  const rounded = roundCoord(value);
+  return rounded === null ? null : String(rounded);
+}
+
 // Haversine distance in km — good enough for "which district is closest".
 // Lives here rather than in the server-only geo.ts because the browser now
 // does this ranking itself (the server no longer knows where the visitor is).

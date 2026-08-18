@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { db } from "@/db";
+import { getDoctorFormPickers } from "@/lib/admin-pickers";
 import { DoctorForm } from "../doctor-form";
 import { EMPTY_SOCIAL_LINKS } from "@/lib/utils";
 
@@ -8,26 +7,9 @@ export const dynamic = "force-dynamic";
 const emptyML = { bn: "", en: "" };
 
 export default async function NewDoctorPage() {
-  const [spRes, arRes, hoRes, diRes] = await Promise.all([
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM specialties WHERE active ORDER BY sort`
-    ),
-    db.execute<{
-      id: number; name_bn: string; name_en: string | null;
-      district_id: number | null; district_bn: string | null; district_en: string | null;
-    }>(sql`
-      SELECT a.id, a.name->>'bn' AS name_bn, a.name->>'en' AS name_en,
-        a.district_id, d.name->>'bn' AS district_bn, d.name->>'en' AS district_en
-      FROM areas a LEFT JOIN districts d ON d.id = a.district_id
-      WHERE a.active ORDER BY a.sort
-    `),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM hospitals WHERE active ORDER BY sort`
-    ),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM districts WHERE active ORDER BY sort`
-    ),
-  ]);
+  // Nothing on this page depends on the request, so with the pickers cached a
+  // blank doctor form now renders without touching the database at all.
+  const pickers = await getDoctorFormPickers();
 
   return (
     <div>
@@ -56,10 +38,10 @@ export default async function NewDoctorPage() {
             schedule: [],
           }],
         }}
-        specialties={spRes.rows}
-        areas={arRes.rows}
-        hospitals={hoRes.rows}
-        districts={diRes.rows}
+        specialties={pickers.specialties}
+        areas={pickers.areas}
+        hospitals={pickers.hospitals}
+        districts={pickers.districts}
       />
     </div>
   );

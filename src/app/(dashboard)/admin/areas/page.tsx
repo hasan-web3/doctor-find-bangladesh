@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
 import { getUnreadEntityIds, newFirstOrder } from "@/lib/notify";
+import { getDistrictOptions } from "@/lib/admin-pickers";
 import { AreasManager, type AreaRow } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,9 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
   // effectively invisible without knowing its name.
   const newFirst = newFirstOrder("a.id", await getUnreadEntityIds("areas"));
 
-  const [areasRes, totalRes, districtsRes] = await Promise.all([
+  // The district dropdown is tag-cached (src/lib/admin-pickers.ts); only the
+  // page's own two queries run per load.
+  const [areasRes, totalRes, districts] = await Promise.all([
     db.execute<AreaRow>(sql`
       SELECT a.id, a.slug, a.name, a.district_id,
         d.name->>'bn' AS district_bn,
@@ -35,9 +38,7 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM areas a LEFT JOIN districts d ON d.id=a.district_id WHERE ${searchCond}`),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(sql`
-      SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM districts WHERE active ORDER BY sort, id
-    `),
+    getDistrictOptions(),
   ]);
 
   const totalCount = totalRes.rows[0]?.c ?? 0;
@@ -48,7 +49,7 @@ export default async function AdminAreasPage({ searchParams }: { searchParams: P
       <h1 className="mb-5 mt-0 font-heading text-2xl font-bold text-ink">থানা / উপজেলা</h1>
       <AreasManager
         rows={areasRes.rows}
-        districts={districtsRes.rows}
+        districts={districts}
         totalPages={totalPages}
         page={page}
         perPage={perPage}

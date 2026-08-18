@@ -71,13 +71,63 @@ const TAG_PATHS: Record<string, string[]> = {
 // they are rare, deliberate admin actions rather than routine content edits.
 const LAYOUT_WIDE_TAGS = new Set(["settings", "integrations", "seo"]);
 
+// Tags whose data can actually appear in the sitemap.
+//
+// The sitemap is built entirely from ENTITIES (their slug, and their updated_at
+// as <lastmod>) plus the redirect table — see src/lib/sitemap-core.ts. Nothing
+// in it reads a slide, a FAQ, a testimonial, a review, the site settings, an
+// integration or a per-URL SEO override, so a mutation carrying only those tags
+// cannot change a single <loc> or <lastmod>.
+//
+// It used to be rebuilt for all of them anyway: revalidatePublic() called
+// revalidateSitemaps() unconditionally, so reordering one FAQ threw away the
+// index AND every shard, and the next crawl re-ran the section queries (8 000
+// URLs per shard, four hreflang alternates each) to produce a byte-identical
+// file. That is the single most expensive purge in the app and most callers
+// never needed it.
+//
+// `sitemap` itself is in this set on purpose: the admin's manual "refresh
+// sitemap" button (regenerateSitemap in src/actions/admin-system.ts) passes
+// exactly that tag and nothing else, and it must keep working.
+const SITEMAP_TAGS = new Set([
+  "sitemap",
+  "doctors",
+  "hospitals",
+  "blog",
+  "specialties",
+  "districts",
+  "areas",
+  "redirects",
+  "static-pages",
+]);
+
+// Shared shape for every purge helper below.
+export type PurgeOptions = {
+  /**
+   * Force the sitemap purge ON or OFF.
+   *
+   * Omit it and the tags decide (see SITEMAP_TAGS), which is right for almost
+   * every caller. Pass `false` when the mutation demonstrably cannot move a
+   * URL or a lastmod — approving a review, editing a doctor without renaming
+   * them — so the shards keep serving from cache until their own 24 h window
+   * (`revalidate = 86400` in src/app/sitemap/[shard]/route.ts) rolls them over.
+   * The cost of being wrong is a lastmod up to a day stale, which is well
+   * inside what crawlers expect.
+   */
+  sitemap?: boolean;
+};
+
 // Purge the sitemap index AND every shard. The shards are one dynamic route
 // (/sitemap/[shard]), so a single "page"-scoped call covers all of them.
 //
-// This has to run on EVERY content mutation, not just doctor edits: one new
-// doctor can create URLs in five different sections at once (their profile,
-// their hospital, their specialty hub, their thana, their district), so
-// revalidating a hand-picked subset of shards would leave the rest stale.
+// It is all-or-nothing on purpose: one new doctor can create URLs in five
+// different sections at once (their profile, their hospital, their specialty
+// hub, their thana, their district), so revalidating a hand-picked subset of
+// shards would leave the rest stale.
+//
+// Because it is all-or-nothing it is also the most expensive purge in the app,
+// which is why revalidatePublic() no longer calls it unconditionally — see
+// SITEMAP_TAGS and PurgeOptions above for when it does.
 export function revalidateSitemaps() {
   revalidatePath("/sitemap.xml");
   revalidatePath("/sitemap/[shard]", "page");
@@ -104,11 +154,16 @@ export function revalidateIntegrationStatus() {
   revalidateTag("integrations");
 }
 
-export function revalidatePublic(tags: string[] = []) {
+export function revalidatePublic(tags: string[] = [], opts: PurgeOptions = {}) {
   for (const tag of tags) revalidateTag(tag);
   if (tags.includes("redirects")) revalidatePath("/api/redirects");
-  revalidateTag("sitemap");
-  revalidateSitemaps();
+
+  // Explicit wins; otherwise the tags decide. See SITEMAP_TAGS.
+  const touchesSitemap = opts.sitemap ?? tags.some((t) => SITEMAP_TAGS.has(t));
+  if (touchesSitemap) {
+    revalidateTag("sitemap");
+    revalidateSitemaps();
+  }
 
   // A tag that reaches the layout invalidates everything; nothing else does.
   if (tags.some((t) => LAYOUT_WIDE_TAGS.has(t))) {
@@ -139,20 +194,18 @@ function slugSet(slug?: string | null, oldSlug?: string | null): string[] {
   return [...out];
 }
 
-export function revalidateDoctor(opts: {
+export type DoctorPurge = {
   slug?: string | null;
   oldSlug?: string | null;
   specialtySlug?: string | null;
   areaSlug?: string | null;
   districtSlug?: string | null;
   hospitalSlug?: string | null;
-} = {}) {
-  // Only the "doctors" tag. Adding "specialties"/"areas" here is what made a
-  // single doctor edit purge the entire site: both are read by the shared
-  // layout, so revalidating them invalidates every cached page. The hubs those
-  // tags used to refresh are covered by TAG_PATHS["doctors"] instead.
-  revalidatePublic(["doctors"]);
+};
 
+// The PER-DOCTOR half: the exact detail URLs this one doctor owns, plus the
+// landing pages they appear on. Cheap, and different for every doctor.
+function revalidateDoctorPaths(opts: DoctorPurge) {
   for (const s of slugSet(opts.slug, opts.oldSlug)) {
     revalidateBoth([`/doctors/${s}`, `/appointment/${s}`]);
   }
@@ -167,42 +220,88 @@ export function revalidateDoctor(opts: {
     revalidateBoth([`/specialties/${opts.specialtySlug}/${opts.areaSlug}`]);
   }
   if (opts.hospitalSlug) revalidateBoth([`/hospitals/${opts.hospitalSlug}`]);
-
-  // Sitemaps are already purged wholesale by revalidatePublic() above — a
-  // doctor change can ripple into any section, so no per-shard list here.
 }
 
-export function revalidateHospital(opts: { slug?: string | null; oldSlug?: string | null } = {}) {
+// The SHARED half: the "doctors" tag and the hub pages every doctor has in
+// common, plus (conditionally) the sitemap. Identical no matter which doctor
+// moved, so a bulk operation must run it exactly ONCE — see revalidateDoctors.
+//
+// Only the "doctors" tag. Adding "specialties"/"areas" here is what made a
+// single doctor edit purge the entire site: both are read by the shared
+// layout, so revalidating them invalidates every cached page. The hubs those
+// tags used to refresh are covered by TAG_PATHS["doctors"] instead.
+function revalidateDoctorShared(opts: PurgeOptions) {
+  revalidatePublic(["doctors"], opts);
+}
+
+/**
+ * One doctor changed.
+ *
+ * Pass `sitemap: false` for an edit that cannot move a URL — no rename, no
+ * activate/deactivate, not a create or a delete. The doctor's own <lastmod>
+ * then refreshes on the shard's normal 24 h window instead of rebuilding every
+ * shard on the site for a changed phone number.
+ */
+export function revalidateDoctor(opts: DoctorPurge & PurgeOptions = {}) {
+  revalidateDoctorShared(opts);
+  revalidateDoctorPaths(opts);
+}
+
+/**
+ * Many doctors changed in one admin action (bulk delete, bulk toggle).
+ *
+ * The point of this over a `for` loop around revalidateDoctor(): the shared
+ * half runs once instead of N times. Deleting 50 doctors used to fire 50
+ * `revalidateTag("doctors")` calls, 50 full sitemap purges and 600 hub
+ * revalidatePath() calls to accomplish what one of each does.
+ */
+export function revalidateDoctors(entries: DoctorPurge[], opts: PurgeOptions = {}) {
+  if (entries.length === 0) return;
+  revalidateDoctorShared(opts);
+  for (const entry of entries) revalidateDoctorPaths(entry);
+}
+
+export function revalidateHospital(
+  opts: { slug?: string | null; oldSlug?: string | null } & PurgeOptions = {}
+) {
   // "hospitals" and "doctors" are both safe: neither is read by the shared
   // layout, so neither cascades site-wide.
-  revalidatePublic(["hospitals", "doctors"]);
+  revalidatePublic(["hospitals", "doctors"], opts);
   for (const s of slugSet(opts.slug, opts.oldSlug)) revalidateBoth([`/hospitals/${s}`]);
 }
 
-export function revalidateBlogPost(opts: { slug?: string | null; oldSlug?: string | null } = {}) {
-  revalidatePublic(["blog"]);
+export function revalidateBlogPost(
+  opts: { slug?: string | null; oldSlug?: string | null } & PurgeOptions = {}
+) {
+  revalidatePublic(["blog"], opts);
   for (const s of slugSet(opts.slug, opts.oldSlug)) revalidateBoth([`/blog/${s}`]);
 }
 
-export function revalidateSpecialty(opts: { slug?: string | null; oldSlug?: string | null } = {}) {
-  revalidatePublic(["specialties", "doctors"]);
+export function revalidateSpecialty(
+  opts: { slug?: string | null; oldSlug?: string | null } & PurgeOptions = {}
+) {
+  revalidatePublic(["specialties", "doctors"], opts);
   for (const s of slugSet(opts.slug, opts.oldSlug)) revalidateBoth([`/specialties/${s}`]);
 }
 
-export function revalidateArea(opts: {
-  slug?: string | null;
-  oldSlug?: string | null;
-  districtSlug?: string | null;
-} = {}) {
-  revalidatePublic(["areas", "districts", "doctors"]);
+export function revalidateArea(
+  opts: {
+    slug?: string | null;
+    oldSlug?: string | null;
+    districtSlug?: string | null;
+  } & PurgeOptions = {}
+) {
+  revalidatePublic(["areas", "districts", "doctors"], opts);
   if (!opts.districtSlug) return;
   for (const s of slugSet(opts.slug, opts.oldSlug)) {
     revalidateBoth([`/area/doctors/${opts.districtSlug}/${s}`]);
   }
 }
 
-export function revalidateDistrict(opts: { slug?: string | null; oldSlug?: string | null } = {}) {
-  revalidatePublic(["districts", "areas", "doctors"]);
+export function revalidateDistrict(
+  opts: { slug?: string | null; oldSlug?: string | null } & PurgeOptions = {}
+) {
+  revalidatePublic(["districts", "areas", "doctors"], opts);
   for (const s of slugSet(opts.slug, opts.oldSlug)) {
     revalidateBoth([`/districts/${s}/doctors`]);
   }

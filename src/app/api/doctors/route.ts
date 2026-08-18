@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchDoctors, getDistrictsForGeo, type DoctorSearchParams } from "@/lib/data";
+import { roundCoord } from "@/lib/location";
 import { isLocale, type Locale } from "@/lib/i18n";
 
 // Filtered / paginated doctor search for <DoctorListClient> on /doctors.
@@ -69,8 +70,11 @@ export async function GET(req: Request) {
       // mirrors what the page component used to do server-side.
       preferAreaId: null,
       preferDistrictId: !sp.get("area") && !sort ? preferDistrictId : null,
-      preferLat: !sort && lat ? Number(lat) : null,
-      preferLng: !sort && lng ? Number(lng) : null,
+      // Rounded — see roundCoord in src/lib/location.ts. These two fields end
+      // up inside the `unstable_cache` key that searchDoctors() builds, so full
+      // precision here means one single-use Data Cache entry per visitor.
+      preferLat: !sort && lat ? roundCoord(Number(lat)) : null,
+      preferLng: !sort && lng ? roundCoord(Number(lng)) : null,
       // Unconditional: an explicit filter narrows *which* doctors are listed,
       // it does not mean the admin's curated order stops applying.
       priorityDistrictId: pinnedDistrictId ?? preferDistrictId,

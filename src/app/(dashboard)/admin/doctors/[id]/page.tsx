@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { toML, EMPTY_SOCIAL_LINKS, type SocialLinksDraft } from "@/lib/utils";
+import { getDoctorFormPickers } from "@/lib/admin-pickers";
 import { DoctorForm, type DoctorInitial } from "../doctor-form";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,9 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
   const doc = docRows[0];
   if (!doc) notFound();
 
-  const [specialtyIdsRes, chambersRes, specialtiesRes, areasRes, hospitalsRes, districtsRes] = await Promise.all([
+  // Only the two doctor-specific queries hit the database per load; the four
+  // lookup lists are tag-cached (src/lib/admin-pickers.ts).
+  const [specialtyIdsRes, chambersRes, pickers] = await Promise.all([
     db.execute<{ specialty_id: number }>(
       sql`SELECT specialty_id FROM doctor_specialties WHERE doctor_id=${doctorId} ORDER BY is_primary DESC`
     ),
@@ -65,24 +68,7 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       FROM chambers c LEFT JOIN areas a ON a.id = c.area_id
       WHERE c.doctor_id=${doctorId} ORDER BY c.sort
     `),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM specialties WHERE active ORDER BY sort`
-    ),
-    db.execute<{
-      id: number; name_bn: string; name_en: string | null;
-      district_id: number | null; district_bn: string | null; district_en: string | null;
-    }>(sql`
-      SELECT a.id, a.name->>'bn' AS name_bn, a.name->>'en' AS name_en,
-        a.district_id, d.name->>'bn' AS district_bn, d.name->>'en' AS district_en
-      FROM areas a LEFT JOIN districts d ON d.id = a.district_id
-      WHERE a.active ORDER BY a.sort
-    `),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM hospitals WHERE active ORDER BY sort`
-    ),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM districts WHERE active ORDER BY sort`
-    ),
+    getDoctorFormPickers(),
   ]);
   const specialtyIds = specialtyIdsRes.rows;
   const chambers = chambersRes.rows;
@@ -141,10 +127,10 @@ export default async function EditDoctorPage({ params }: { params: Promise<{ id:
       <h1 className="mb-5 mt-0 font-heading text-2xl font-bold text-ink">ডাক্তার এডিট: {initial.name.bn}</h1>
       <DoctorForm
         initial={initial}
-        specialties={specialtiesRes.rows}
-        areas={areasRes.rows}
-        hospitals={hospitalsRes.rows}
-        districts={districtsRes.rows}
+        specialties={pickers.specialties}
+        areas={pickers.areas}
+        hospitals={pickers.hospitals}
+        districts={pickers.districts}
       />
     </div>
   );

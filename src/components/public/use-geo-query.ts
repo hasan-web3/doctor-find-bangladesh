@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useLocation } from "@/components/public/location-provider";
+import { coordParam, roundCoord } from "@/lib/location";
 
 // The one place a list component turns "where is this visitor" into a refetch.
 //
@@ -33,8 +34,13 @@ export function useGeoQuery(): GeoQuery {
   const { location, ready } = useLocation();
 
   const districtSlug = location.districtSlug;
-  const lat = location.lat;
-  const lng = location.lng;
+  // Rounded here rather than at each call site, so the dependency `key` and the
+  // outgoing query string are computed from the SAME value. See roundCoord in
+  // src/lib/location.ts for why the precision is dropped at all; the side
+  // benefit is that sub-kilometre drift in an IP guess no longer counts as a
+  // location change, so the effect below stops refetching over noise.
+  const lat = roundCoord(location.lat);
+  const lng = roundCoord(location.lng);
 
   const key = ready ? `${districtSlug ?? ""}:${lat ?? ""}:${lng ?? ""}` : "";
   const hasLocation = useMemo(() => key.replace(/:/g, "") !== "", [key]);
@@ -42,8 +48,10 @@ export function useGeoQuery(): GeoQuery {
   const apply = useCallback(
     (qs: URLSearchParams) => {
       if (districtSlug) qs.set("preferDistrict", districtSlug);
-      if (lat !== null) qs.set("preferLat", String(lat));
-      if (lng !== null) qs.set("preferLng", String(lng));
+      const latParam = coordParam(lat);
+      const lngParam = coordParam(lng);
+      if (latParam !== null) qs.set("preferLat", latParam);
+      if (lngParam !== null) qs.set("preferLng", lngParam);
     },
     [districtSlug, lat, lng]
   );

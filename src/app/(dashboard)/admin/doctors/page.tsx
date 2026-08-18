@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { searchClause } from "@/lib/admin-search";
+import { getDoctorFormPickers } from "@/lib/admin-pickers";
 import { DoctorsList } from "./list-client";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,10 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
   if (sp.filter === "inactive") conds.push(sql`NOT d.active`);
   const where = sql.join(conds, sql` AND `);
 
-  const [rowsRes, totalRes, spRes, arRes, hoRes, diRes] = await Promise.all([
+  // The four lookup lists come from the tag-cached readers in
+  // src/lib/admin-pickers.ts; only the two queries that depend on this page's
+  // search / pagination actually touch the database on every load.
+  const [rowsRes, totalRes, pickers] = await Promise.all([
     db.execute<{
       id: number; slug: string; name_bn: string; verified: boolean; active: boolean;
       bmdc_verified: boolean; bmdc_valid_till: string | null;
@@ -54,24 +58,7 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
       ORDER BY d.updated_at DESC LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `),
     db.execute<{ c: number }>(sql`SELECT COUNT(*)::int AS c FROM doctors d WHERE ${where}`),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM specialties WHERE active ORDER BY sort`
-    ),
-    db.execute<{
-      id: number; name_bn: string; name_en: string | null;
-      district_id: number | null; district_bn: string | null; district_en: string | null;
-    }>(sql`
-      SELECT a.id, a.name->>'bn' AS name_bn, a.name->>'en' AS name_en,
-        a.district_id, d.name->>'bn' AS district_bn, d.name->>'en' AS district_en
-      FROM areas a LEFT JOIN districts d ON d.id = a.district_id
-      WHERE a.active ORDER BY a.sort
-    `),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM hospitals WHERE active ORDER BY sort`
-    ),
-    db.execute<{ id: number; name_bn: string; name_en: string | null }>(
-      sql`SELECT id, name->>'bn' AS name_bn, name->>'en' AS name_en FROM districts WHERE active ORDER BY sort`
-    ),
+    getDoctorFormPickers(),
   ]);
   const rows = rowsRes.rows;
   const totalRow = totalRes.rows[0];
@@ -85,10 +72,10 @@ export default async function AdminDoctorsPage({ searchParams }: { searchParams:
       perPage={perPage}
       q={q}
       filter={sp.filter}
-      specialties={spRes.rows}
-      areas={arRes.rows}
-      hospitals={hoRes.rows}
-      districts={diRes.rows}
+      specialties={pickers.specialties}
+      areas={pickers.areas}
+      hospitals={pickers.hospitals}
+      districts={pickers.districts}
     />
   );
 }

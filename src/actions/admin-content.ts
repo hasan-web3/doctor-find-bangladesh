@@ -843,7 +843,9 @@ export async function saveReview(payload: {
     });
   }
   await audit("save", "reviews", payload.id);
-  revalidatePublic(["reviews", "doctors"]);
+  // A review changes what a doctor card SAYS, never which URLs exist or when
+  // they last changed, so the sitemap shards stay served from cache.
+  revalidatePublic(["reviews", "doctors"], { sitemap: false });
   return { ok: true, message: "রিভিউ সংরক্ষণ হয়েছে" };
 }
 
@@ -851,7 +853,9 @@ export async function toggleReview(id: number, published: boolean): Promise<Acti
   await requireSession();
   await db.update(reviews).set({ published }).where(eq(reviews.id, id));
   await audit("update", "reviews", id, { published });
-  revalidatePublic(["reviews", "doctors"]);
+  // A review changes what a doctor card SAYS, never which URLs exist or when
+  // they last changed, so the sitemap shards stay served from cache.
+  revalidatePublic(["reviews", "doctors"], { sitemap: false });
   return { ok: true, message: published ? "রিভিউ প্রকাশ হয়েছে" : "রিভিউ আনপাবলিশ হয়েছে" };
 }
 
@@ -859,6 +863,8 @@ export async function deleteReview(id: number): Promise<ActionResult> {
   await requireSession();
   await db.delete(reviews).where(eq(reviews.id, id));
   await audit("delete", "reviews", id);
-  revalidatePublic(["reviews", "doctors"]);
+  // A review changes what a doctor card SAYS, never which URLs exist or when
+  // they last changed, so the sitemap shards stay served from cache.
+  revalidatePublic(["reviews", "doctors"], { sitemap: false });
   return { ok: true, message: "রিভিউ মুছে ফেলা হয়েছে" };
 }
