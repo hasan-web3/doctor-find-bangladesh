@@ -258,7 +258,7 @@ const bn = {
   blog_sub: "সুস্থ থাকার সহজ পরামর্শ ও বিশেষজ্ঞদের লেখা পড়ুন।",
   all: "সব",
   no_articles: "আর্টিকেল শীঘ্রই প্রকাশিত হবে।",
-  article_disclaimer: "মনে রাখবেন, এই লেখা শুধু সাধারণ তথ্যের জন্য। গুরুতর সমস্যায় অবশ্যই ডাক্তারের পরামর্শ নিন।",
+  article_disclaimer: "এই লেখাটি শুধুমাত্র সাধারণ স্বাস্থ্য সচেতনতার জন্য। এটি কোনো চিকিৎসা পরামর্শ, রোগ নির্ণয় বা চিকিৎসার বিকল্প নয়। উপসর্গ দেখা দিলে অবশ্যই রেজিস্টার্ড চিকিৎসকের পরামর্শ নিন। জরুরি অবস্থায় দেরি না করে ৯৯৯ নম্বরে কল করুন অথবা নিকটস্থ হাসপাতালে যান।",
   article_cta: "আপনার জন্য একজন ভালো ডাক্তার খুঁজছেন?",
   find_doctor: "ডাক্তার খুঁজুন",
 
@@ -621,7 +621,7 @@ const en: typeof bn = {
   blog_sub: "Read simple advice and expert articles on staying healthy.",
   all: "All",
   no_articles: "Articles coming soon.",
-  article_disclaimer: "Remember, this article is for general information only. Always consult a doctor for serious conditions.",
+  article_disclaimer: "This article is for general health awareness only. It is not medical advice, a diagnosis, or a substitute for treatment. If symptoms appear, please consult a registered physician. In an emergency, call 999 or go to the nearest hospital without delay.",
   article_cta: "Looking for a good doctor?",
   find_doctor: "Find Doctors",
 
