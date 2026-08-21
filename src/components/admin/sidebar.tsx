@@ -18,6 +18,7 @@ const NAV: { label: string; href: string; icon: string }[] = [
   { label: "অ্যাপয়েন্টমেন্ট", href: "/admin/appointments", icon: "calendar" },
   { label: "লিড / যোগাযোগ", href: "/admin/leads", icon: "phone" },
   { label: "ব্লগ", href: "/admin/blog", icon: "book" },
+  { label: "স্বাস্থ্য টুলস", href: "/admin/tools", icon: "activity" },
   { label: "রিভিউ", href: "/admin/reviews", icon: "heart" },
   { label: "স্লাইডার ও ব্যানার", href: "/admin/slides", icon: "eye" },
   { label: "FAQ", href: "/admin/faqs", icon: "search" },

@@ -9,7 +9,8 @@ import { useUrlSearchParams } from "@/components/public/use-page-params";
 import { useLocation } from "@/components/public/location-provider";
 import { useShownDistrict } from "@/components/public/shown-district-context";
 import { coordParam, roundCoord } from "@/lib/location";
-import type { DoctorCardData } from "@/lib/data";
+import { withPossessive } from "@/lib/bn";
+import type { DoctorCardData, GeoFallback } from "@/lib/data";
 import type { Dict } from "@/lib/dict";
 import type { Locale } from "@/lib/i18n";
 
@@ -41,6 +42,7 @@ export function DoctorListClient({
   helplineBn,
   defaultPerPage = 12,
   lockedDistrictSlug = null,
+  nearbyFallback = true,
 }: {
   initialDoctors: DoctorCardData[];
   initialTotal: number;
@@ -59,6 +61,13 @@ export function DoctorListClient({
    * still rank the results within it.
    */
   lockedDistrictSlug?: string | null;
+  /**
+   * When a district or thana filter matches nobody, show the nearest doctors
+   * plus a notice instead of an empty grid. On by default: an empty result from
+   * a place filter is almost always "that district is empty", not "your search
+   * was wrong", and a blank page reads like a broken site.
+   */
+  nearbyFallback?: boolean;
 }) {
   const params = useUrlSearchParams();
   const { location, ready } = useLocation();
@@ -67,6 +76,9 @@ export function DoctorListClient({
   const [rows, setRows] = useState<DoctorCardData[]>(initialDoctors);
   const [total, setTotal] = useState(initialTotal);
   const [loading, setLoading] = useState(false);
+  // Set by the API when the place filter matched nobody and it widened to the
+  // nearest doctors instead. Drives the notice above the grid.
+  const [fallback, setFallback] = useState<GeoFallback | null>(null);
   const skipFirst = useRef(true);
 
   // Everything that should trigger a requery, flattened to a comparable string
@@ -89,8 +101,14 @@ export function DoctorListClient({
       // ...unless the URL or the location already differ from the canonical
       // render, which is the deep-link case (/doctors?page=3) and the
       // returning-visitor case (district cookie present).
+      //
+      // An empty server render is the third case, and it has to fetch even when
+      // nothing else differs: that is exactly a district hub whose own district
+      // has no doctors, and the widened result only exists on the API side.
+      // Without this the page would sit on the empty list forever whenever the
+      // visitor's location resolves to nothing (geoKey blank, so no later run).
       const pristine = FILTER_KEYS.every((k) => params.getAll(k).length === 0);
-      if (pristine && !geoKey.replace(/:/g, "")) return;
+      if (pristine && !geoKey.replace(/:/g, "") && initialTotal > 0) return;
     }
 
     let cancelled = false;
@@ -122,14 +140,23 @@ export function DoctorListClient({
         qs.set("district", lockedDistrictSlug);
         qs.set("priorityDistrict", lockedDistrictSlug);
       }
+      // A district with no doctors shows the nearest ones instead of an empty
+      // page. Only the place filter is relaxed — see searchDoctorsNearby — so a
+      // name that matches nobody still returns the honest empty state.
+      if (nearbyFallback) qs.set("nearby", "1");
 
       try {
         const res = await fetch(`/api/doctors?${qs.toString()}`, { signal: controller.signal });
         if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as { rows: DoctorCardData[]; total: number };
+        const data = (await res.json()) as {
+          rows: DoctorCardData[];
+          total: number;
+          fallback?: GeoFallback | null;
+        };
         if (!cancelled) {
           setRows(data.rows);
           setTotal(data.total);
+          setFallback(data.fallback ?? null);
           // Tell the heading which district these cards are in. Nulls when the
           // result set is empty, so the heading falls back to the canonical
           // name rather than captioning nothing.
@@ -157,12 +184,39 @@ export function DoctorListClient({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, geoKey, locale, setShownDistrict, lockedDistrictSlug]);
+  }, [queryKey, geoKey, locale, setShownDistrict, lockedDistrictSlug, nearbyFallback]);
 
   const totalPages = Math.ceil(total / perPage);
 
+  // "বরগুনা জেলায় এখনো কোনো ডাক্তার যুক্ত হয়নি। কাছাকাছি খুলনার ডাক্তার দেখানো হচ্ছে।"
+  // Bangla needs the place word after the name and the possessive on the
+  // district we substituted in; English needs neither, so both come from the
+  // dictionary rather than being spliced in here.
+  const fallbackMessage = (() => {
+    if (!fallback) return null;
+    const placeWord = fallback.kind === "area" ? d.nearby_fallback_area : d.nearby_fallback_district;
+    const asked = placeWord ? `${fallback.requestedName} ${placeWord}` : fallback.requestedName;
+    if (!fallback.shownName) {
+      return d.nearby_fallback_generic_tpl.replace("{a}", asked);
+    }
+    const shown = locale === "bn" ? withPossessive(fallback.shownName) : fallback.shownName;
+    return d.nearby_fallback_tpl.replace("{a}", asked).replace("{b}", shown);
+  })();
+
   return (
     <>
+      {/* Explains the grid directly underneath it, so it sits inline rather
+          than in the corner toast the site-wide IP substitution uses. */}
+      {!loading && fallbackMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-5 rounded-xl border border-line border-l-4 border-l-warm bg-white px-4 py-3 text-[13.5px] leading-relaxed text-ink"
+        >
+          {fallbackMessage}
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 min-[1100px]:grid-cols-3 min-[1400px]:grid-cols-4">
           {Array.from({ length: Math.min(perPage, 8) }).map((_, i) => (

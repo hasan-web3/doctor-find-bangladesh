@@ -92,7 +92,11 @@ export default async function DistrictDoctorsPage({ params }: Props) {
   const d = getDict(locale);
   const L = (path: string) => localeHref(locale, path);
 
-  const sanitizedPerPage = 12;
+  // Page size for the canonical first page AND the default <DoctorListClient>
+  // sends to /api/doctors. Matches /doctors, so a district listing paginates
+  // exactly like the national one. One of the per-page selector's own options
+  // (12 / 24 / 48 / 96), so the selector opens showing the size in effect.
+  const sanitizedPerPage = 24;
 
   // No `getAreas` here: the thana filter is fed by getThanasForSearch() below.
   // This page used to also fetch the full 619-row area list and never read it.
@@ -247,8 +251,8 @@ export default async function DistrictDoctorsPage({ params }: Props) {
           CRAWLABLE INTERNAL LINKS.
 
           The filter sidebar above is client-side state and renders no anchors,
-          so before these blocks existed this page linked nowhere except the 12
-          doctor cards. These three clouds hand Googlebot (and a reader who
+          so before these blocks existed this page linked nowhere except the
+          doctor cards on the first page. These three clouds hand Googlebot (and a reader who
           wants to narrow down by hand) a real path into the thana pages, the
           specialty hubs and the hospital pages of this district — and the thana
           pages in turn link on to the specialty × thana combination pages.

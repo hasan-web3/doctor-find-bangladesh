@@ -23,6 +23,7 @@ import {
 import { testSmtp, sendMail, emailLayout, activeProvider } from "@/lib/mailer";
 import { testResend } from "@/lib/resend";
 import { uploadImage, destroyImage, keyFromPublicUrl } from "@/lib/storage";
+import { TOOLS } from "@/lib/tools/registry";
 import type { ActionResult } from "./admin-doctors";
 
 // Settings keys whose value is an image asset; if the incoming value is a
@@ -209,6 +210,47 @@ export async function saveSettings(entries: Record<string, unknown>): Promise<Ac
   await audit("update", "site_settings", null, { keys: Object.keys(patched) });
   revalidatePublic(["settings"]);
   return { ok: true, message: "সেটিংস সংরক্ষণ হয়েছে" };
+}
+
+// ---------------- health tools ----------------
+
+/**
+ * Turn the /tools calculators on and off.
+ *
+ * A separate action rather than a `tools_enabled` key passed through
+ * saveSettings(), for one reason that matters: this is the only settings change
+ * that adds or removes public URLs, so it is the only one that has to rebuild
+ * the sitemap. saveSettings() deliberately does not — `settings` is not in
+ * SITEMAP_TAGS (see lib/revalidate.ts), because rebuilding every shard for a
+ * changed helpline number would be the most expensive purge in the app for no
+ * benefit. Here it is required, so it is requested explicitly.
+ *
+ * Unknown keys are dropped rather than stored. The map is keyed by the registry
+ * `key`, so accepting arbitrary keys would let a removed or renamed tool leave
+ * a permanent orphan row in site_settings that nothing ever reads again.
+ */
+export async function saveToolToggles(toggles: Record<string, boolean>): Promise<ActionResult> {
+  await requireSession();
+
+  const clean: Record<string, boolean> = {};
+  for (const tool of TOOLS) {
+    const v = toggles[tool.key];
+    if (typeof v === "boolean") clean[tool.key] = v;
+  }
+
+  await db
+    .insert(siteSettings)
+    .values({ key: "tools_enabled", value: clean as never })
+    .onConflictDoUpdate({
+      target: siteSettings.key,
+      set: { value: clean as never, updatedAt: new Date() },
+    });
+
+  await audit("update", "site_settings", null, { keys: ["tools_enabled"] });
+  // `settings` is layout-wide, which is correct here: the navbar and the mobile
+  // tab bar both change, and those render into every cached page.
+  revalidatePublic(["settings"], { sitemap: true });
+  return { ok: true, message: "\u099f\u09c1\u09b2 \u09b8\u09c7\u099f\u09bf\u0982\u09b8 \u09b8\u0982\u09b0\u0995\u09cd\u09b7\u09a3 \u09b9\u09df\u09c7\u099b\u09c7" };
 }
 
 // ---------------- integrations ----------------

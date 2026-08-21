@@ -16,6 +16,7 @@ import { ldFaq } from "@/lib/seo-utils";
 import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 import { withPossessive as bnPossessive, withSpecialistSuffix } from "@/lib/bn";
+import { RelatedTools } from "@/components/public/tools/related-tools";
 import { SpecialtyDoctorListClient } from "@/components/public/specialty-doctor-list-client";
 import { ShownDistrictProvider } from "@/components/public/shown-district-context";
 import { DistrictText } from "@/components/public/district-text";
@@ -264,6 +265,22 @@ export default async function SpecialtyPage({ params }: Props) {
           moreHref={L("/areas")}
           moreLabel={d.view_all_areas}
         />
+      </div>
+
+      {/* The other half of the tools cross-link.
+          ------------------------------------------------------------------
+          Someone on the endocrinology hub is a query away from "what is my
+          BMI", and someone who just calculated a high BMI is a query away from
+          "endocrinologist near me". They are the same visitor at two points in
+          one journey, and the tool pages already link this way — this closes
+          the loop from the directory side.
+
+          Renders nothing when no tool matches this specialty, which is the
+          common case: a strip of loosely-related links on every hub would be
+          link spam rather than internal linking. Costs one cached settings
+          read and no database work. */}
+      <div className="mx-auto max-w-site px-5 py-6">
+        <RelatedTools locale={locale} specialtySlugs={[spec.slug]} limit={3} />
       </div>
 
       {suggestedSpecialties.length > 0 && (

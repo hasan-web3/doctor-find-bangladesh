@@ -1180,6 +1180,116 @@ export async function searchDoctors(
   return searchDoctorsCached(JSON.stringify(p, Object.keys(p).sort()), locale);
 }
 
+// What the geographic widening below actually did. Null on every normal search,
+// so a caller that ignores it behaves exactly as it did before.
+export type GeoFallback = {
+  /** Which filter had to be dropped — the thana wins when both are set. */
+  kind: "district" | "area";
+  /** The place the visitor asked for, in their language. */
+  requestedName: string;
+  requestedSlug: string;
+  /** District the substituted results are actually in. Null if unresolvable. */
+  shownName: string | null;
+  shownSlug: string | null;
+};
+
+const firstSlug = (v?: string | string[]): string | null =>
+  Array.isArray(v) ? v[0] ?? null : v ?? null;
+
+/**
+ * searchDoctors, but a place filter that matches nobody widens outwards instead
+ * of returning an empty list.
+ *
+ * Selecting বরগুনা in the hero search used to land on "কোনো ডাক্তার পাওয়া যায়নি"
+ * and a blank page, which reads like the site is broken rather than like that
+ * one district being empty. The doctors exist, they are just 60 km away.
+ *
+ * Widening is ONE extra query, not a ring-by-ring walk outwards. Dropping the
+ * place filter and ranking by distance from the requested district's own
+ * coordinates already produces exactly that expanding ring — searchDoctors
+ * orders by chamber distance ASC — so the nearest district that actually has a
+ * matching doctor comes out on top by construction, and the search never "runs
+ * out" of rings to try. The district we ended up in is read back off the first
+ * row, the same way resolveDisplayDistrict names the visitor's display district.
+ *
+ * What it deliberately does NOT do:
+ *   - widen when the place filter was not the problem. Every other filter (q,
+ *     specialty, gender, fee, hospital) is carried into the widened query
+ *     untouched, so a search for a name that exists nowhere still returns the
+ *     honest empty state instead of a page of unrelated doctors.
+ *   - widen a page that had results. The check is on `total`, not `rows`, so
+ *     an over-paginated URL does not trigger a substitution.
+ */
+export async function searchDoctorsNearby(
+  p: DoctorSearchParams,
+  locale: Locale
+): Promise<{ rows: DoctorCardData[]; total: number; fallback: GeoFallback | null }> {
+  const exact = await searchDoctors(p, locale);
+  if (exact.total > 0) return { ...exact, fallback: null };
+
+  const areaSlug = firstSlug(p.area);
+  const districtSlug = firstSlug(p.district);
+  if (!areaSlug && !districtSlug) return { ...exact, fallback: null };
+
+  // Origin for the distance ranking. The thana is the more precise of the two,
+  // so it wins when the visitor narrowed that far. Both readers COALESCE the
+  // place's own coords with its district's, so a rural upazila still resolves.
+  let origin: { name: string; slug: string; lat: number | null; lng: number | null } | null = null;
+  let kind: GeoFallback["kind"] = "district";
+
+  if (areaSlug) {
+    const areas = await getAreasForGeo();
+    const hit = areas.find((a) => a.slug === areaSlug);
+    if (hit) {
+      kind = "area";
+      origin = { name: ml(hit.name, locale), slug: hit.slug, lat: hit.lat, lng: hit.lng };
+    }
+  }
+  if (!origin && districtSlug) {
+    const districts = await getDistrictsForGeo();
+    const hit = districts.find((x) => x.slug === districtSlug);
+    if (hit) {
+      kind = "district";
+      origin = { name: ml(hit.name, locale), slug: hit.slug, lat: hit.lat, lng: hit.lng };
+    }
+  }
+  // An unknown slug is a bad URL, not an empty district — leave it empty.
+  if (!origin) return { ...exact, fallback: null };
+
+  const widened = await searchDoctors(
+    {
+      ...p,
+      district: undefined,
+      area: undefined,
+      // Rank from where the visitor asked about, not from where they are. The
+      // curated order of the requested district cannot apply to results that
+      // are no longer in it, so the pins come off and distance decides.
+      preferLat: origin.lat,
+      preferLng: origin.lng,
+      preferAreaId: null,
+      preferDistrictId: null,
+      priorityDistrictId: null,
+    },
+    locale
+  );
+
+  // Nothing anywhere in the country matches the rest of the filters either, so
+  // the place filter was never the reason. Return the honest empty result.
+  if (widened.total === 0) return { ...exact, fallback: null };
+
+  return {
+    rows: widened.rows,
+    total: widened.total,
+    fallback: {
+      kind,
+      requestedName: origin.name,
+      requestedSlug: origin.slug,
+      shownName: widened.rows[0]?.district ?? null,
+      shownSlug: widened.rows[0]?.district_slug ?? null,
+    },
+  };
+}
+
 async function searchDoctorsUncached(
   p: DoctorSearchParams,
   locale: Locale

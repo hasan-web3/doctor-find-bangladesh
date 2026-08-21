@@ -18,12 +18,22 @@ export function Navbar({
   brandName,
   logoDesktopUrl,
   logoMobileUrl,
+  tools,
   showLangSwitcher = true,
 }: {
   locale: Locale;
   d: Pick<Dict,
     "nav_home" | "nav_doctors" | "nav_specialties" | "nav_hospitals" | "nav_districts" | "nav_areas" |
-    "nav_blog" | "nav_contact" | "book_appointment" | "call_for_help" | "doctor_add_profile" | "menu" | "close">;
+    "nav_tools" | "nav_contact" | "book_appointment" | "call_for_help" | "doctor_add_profile" | "menu" | "close">;
+  /**
+   * The health calculators, already localized and filtered to the ones the
+   * admin has switched on. Drives the desktop dropdown under "Tools".
+   *
+   * Passed in rather than read here because this is a client component and the
+   * enabled set lives in site settings — the layout resolves it once on the
+   * server and hands down the finished list.
+   */
+  tools: { slug: string; label: string }[];
   helplineDisplay: string;
   helpline: string;
   brandName: string;
@@ -54,14 +64,30 @@ export function Navbar({
     }
   }, [pathname]);
 
-  const NAV = [
+  // The blog is no longer a primary nav entry; it lives in the footer's quick
+  // links now. A directory's primary nav should carry what people came to find
+  // (doctors, specialties, places) plus the tools that bring them back, and the
+  // blog was taking a slot from something that converts.
+  //
+  // `children` is the desktop-only dropdown. It is a SHORTCUT, never the only
+  // path: the parent is a real link to /tools, which lists every tool with a
+  // search box, so nothing becomes unreachable if the dropdown never opens.
+  const NAV: { label: string; href: string; children?: { label: string; href: string }[] }[] = [
     { label: d.nav_home, href: "/" },
     { label: d.nav_doctors, href: "/doctors" },
     { label: d.nav_specialties, href: "/specialties" },
     { label: d.nav_hospitals, href: "/hospitals" },
     { label: d.nav_districts, href: "/districts" },
     { label: d.nav_areas, href: "/areas" },
-    { label: d.nav_blog, href: "/blog" },
+    ...(tools.length > 0
+      ? [
+          {
+            label: d.nav_tools,
+            href: "/tools",
+            children: tools.map((t) => ({ label: t.label, href: `/tools/${t.slug}` })),
+          },
+        ]
+      : []),
     { label: d.nav_contact, href: "/contact" },
   ];
 
@@ -129,19 +155,73 @@ export function Navbar({
           </Link>
           <div className="flex-1" />
           <nav className="hidden items-center gap-1 min-[1060px]:flex">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={L(item.href)}
-                prefetch
-                className={cn(
-                  "rounded-lg px-[11px] py-2 text-[14.5px] transition-colors hover:bg-brand-50 hover:text-brand-700",
-                  isActive(item.href) ? "font-bold text-brand-700" : "font-medium text-ink-soft"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV.map((item) =>
+              item.children && item.children.length > 0 ? (
+                // Disclosure driven purely by CSS (`group-hover` plus
+                // `group-focus-within`) rather than React state: no state means
+                // no extra hydration and no flash on first paint, and
+                // focus-within is what keeps it reachable by keyboard — tabbing
+                // to the parent link reveals the panel and the items follow in
+                // natural tab order.
+                <div key={item.href} className="group relative">
+                  <Link
+                    href={L(item.href)}
+                    prefetch
+                    className={cn(
+                      "flex items-center gap-1 rounded-lg px-[11px] py-2 text-[14.5px] transition-colors hover:bg-brand-50 hover:text-brand-700 group-focus-within:bg-brand-50",
+                      isActive(item.href) ? "font-bold text-brand-700" : "font-medium text-ink-soft"
+                    )}
+                  >
+                    {item.label}
+                    <span
+                      aria-hidden
+                      className="text-[9px] leading-none transition-transform duration-200 group-hover:rotate-180 group-focus-within:rotate-180"
+                    >
+                      &#9660;
+                    </span>
+                  </Link>
+                  {/* The pt-2 is a hover bridge between trigger and panel.
+                      Without it the pointer crosses a dead gap on the way down
+                      and the menu closes underneath it. */}
+                  <div className="invisible absolute left-0 top-full z-50 pt-2 opacity-0 transition-opacity duration-150 group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                    <div className="min-w-[248px] rounded-xl border border-line bg-white p-1.5 shadow-pop">
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.href}
+                          href={L(child.href)}
+                          prefetch={false}
+                          className={cn(
+                            "block rounded-lg px-3 py-2.5 text-[14px] transition-colors hover:bg-brand-50 hover:text-brand-700",
+                            cleanPath === child.href ? "font-bold text-brand-700" : "font-medium text-ink-soft"
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                      <Link
+                        href={L(item.href)}
+                        prefetch={false}
+                        className="mt-1 block border-t border-line px-3 pb-1 pt-2.5 text-[13px] font-bold text-brand-600 transition-colors hover:text-brand-700"
+                      >
+                        {item.label} &rarr;
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={L(item.href)}
+                  prefetch
+                  className={cn(
+                    "rounded-lg px-[11px] py-2 text-[14.5px] transition-colors hover:bg-brand-50 hover:text-brand-700",
+                    isActive(item.href) ? "font-bold text-brand-700" : "font-medium text-ink-soft"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            )}
           </nav>
           {showLangSwitcher && <LangSwitcher locale={locale} />}
           <Link
@@ -191,6 +271,10 @@ export function Navbar({
             ✕
           </button>
         </div>
+        {/* Flat list on purpose: no nested submenu on narrow screens. A drawer
+            that expands in place makes the visitor manage two levels of
+            navigation with one thumb, when tapping "Tools" already lands them
+            on a page that lists every tool with a search box. */}
         <div className="flex flex-col gap-0.5">
           {NAV.map((item) => (
             <Link

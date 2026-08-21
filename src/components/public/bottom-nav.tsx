@@ -14,20 +14,31 @@ import { cn } from "@/lib/utils";
 export function BottomNav({
   locale,
   d,
+  hasTools = true,
 }: {
   locale: Locale;
-  d: Pick<Dict, "nav_home" | "nav_doctors" | "nav_hospitals" | "nav_areas" | "nav_blog">;
+  d: Pick<Dict, "nav_home" | "nav_doctors" | "nav_hospitals" | "nav_areas" | "nav_tools">;
+  /** False when every tool is switched off, so the tab falls back to areas. */
+  hasTools?: boolean;
 }) {
   const pathname = usePathname();
   const [, cleanPath] = splitLocalePath(pathname);
   const L = (path: string) => localeHref(locale, path);
 
+  // The fifth tab is Tools, not the blog. On a phone this bar is the whole
+  // navigation for most visitors, and a calculator is something they come back
+  // to; a blog post is something they read once. The blog is still one tap away
+  // through the drawer and the footer.
+  //
+  // `activity` is a legacy hand-drawn icon (see PATHS in components/icons.tsx),
+  // so it costs zero JavaScript — worth caring about in a bar that renders on
+  // every mobile page view.
   const TABS: { label: string; href: string; icon: string }[] = [
     { label: d.nav_home, href: "/", icon: "home" },
     { label: d.nav_doctors, href: "/doctors", icon: "user" },
     { label: d.nav_hospitals, href: "/hospitals", icon: "building" },
     { label: d.nav_areas, href: "/areas", icon: "pin" },
-    { label: d.nav_blog, href: "/blog", icon: "book" },
+    ...(hasTools ? [{ label: d.nav_tools, href: "/tools", icon: "activity" }] : []),
   ];
 
   const isActive = (href: string) =>

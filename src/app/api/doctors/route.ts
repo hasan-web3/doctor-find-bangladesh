@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchDoctors, getDistrictsForGeo, type DoctorSearchParams } from "@/lib/data";
+import { searchDoctors, searchDoctorsNearby, getDistrictsForGeo, type DoctorSearchParams } from "@/lib/data";
 import { roundCoord } from "@/lib/location";
 import { isLocale, type Locale } from "@/lib/i18n";
 
@@ -80,7 +80,13 @@ export async function GET(req: Request) {
       priorityDistrictId: pinnedDistrictId ?? preferDistrictId,
     };
 
-    const results = await searchDoctors(params, locale);
+    // Opt-in, via `?nearby=1`. A district filter that matches nobody widens to
+    // the nearest doctors instead of returning an empty list — see
+    // searchDoctorsNearby. Off by default so any other consumer of this
+    // endpoint keeps getting the literal answer to the query it sent.
+    const results = sp.get("nearby") === "1"
+      ? await searchDoctorsNearby(params, locale)
+      : await searchDoctors(params, locale);
 
     return NextResponse.json(results, {
       headers: {

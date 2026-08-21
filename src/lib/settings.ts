@@ -58,6 +58,13 @@ export type SiteSettings = {
   // R2 object key behind seo_default_og_image, so replacing the card deletes
   // the old object instead of leaving it in the bucket.
   seo_default_og_image_key: string;
+  // Public on/off switches for the /tools calculators, keyed by the tool `key`
+  // in src/lib/tools/registry.ts. Absent keys mean "no opinion recorded", and
+  // the registry's own `defaultEnabled` decides — see isToolOn() there. That is
+  // why the default is an empty object and not a fully populated map: a tool
+  // shipped after the admin last saved must not need a dashboard visit to go
+  // live, and a tool removed from the registry must not linger here.
+  tools_enabled: Record<string, boolean>;
   plans: Plan[];
   stats: StatItem[];
 };
@@ -99,6 +106,7 @@ const DEFAULTS: SiteSettings = {
   },
   seo_default_og_image: "",
   seo_default_og_image_key: "",
+  tools_enabled: {},
   plans: [],
   stats: [],
 };

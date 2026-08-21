@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/public/breadcrumbs";
-import { searchDistricts, resolveDisplayDistrict } from "@/lib/data";
+import { searchDistricts } from "@/lib/data";
 import { buildMetadata } from "@/lib/seo";
 import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { DistrictListClient } from "@/components/public/district-list-client";
 import { STATIC_GEO } from "@/lib/geo";
-import { withPossessive as bnPossessive } from "@/lib/bn";
 
 // ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
 export const revalidate = 86400;
@@ -47,13 +46,12 @@ export default async function DistrictsPage({ params }: Props) {
     preferDistrictId: geo.districtId,
   }, locale);
 
-  const geoDistrictName = (await resolveDisplayDistrict(geo, locale))?.name ?? null;
-  
-  const districtSub = geoDistrictName
-    ? (locale === "bn"
-        ? `${bnPossessive(geoDistrictName)} প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছাকাছি বিশেষজ্ঞ খুঁজুন।`
-        : `List of verified doctors and chambers in each area of ${geoDistrictName}. Find specialists near you.`)
-    : (d.sec_district_sub || "Find doctors by district");
+  // Deliberately names no district. This page IS the district picker, so
+  // captioning it with one district was answering the question the visitor
+  // came here to ask — and the line it produced ("বরগুনার প্রতিটি এলাকার...")
+  // described areas of one district while the grid below lists every district
+  // in the country. The national wording is the only one that fits.
+  const districtSub = d.sec_district_sub;
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">

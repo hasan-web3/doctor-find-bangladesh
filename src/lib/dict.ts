@@ -10,6 +10,10 @@ const bn = {
   nav_districts: "জেলা",
   nav_areas: "শহর / গ্রাম",
   nav_blog: "ব্লগ",
+  // The tools hub. Lives in the primary nav where the blog used to; the blog
+  // moved to the footer, which is where a directory's secondary reading
+  // material belongs.
+  nav_tools: "টুলস",
   nav_contact: "যোগাযোগ",
   nav_about: "আমাদের সম্পর্কে",
   book_appointment: "অ্যাপয়েন্টমেন্ট নিন",
@@ -52,7 +56,10 @@ const bn = {
   sec_specialties_title: "রোগ অনুযায়ী সঠিক বিশেষজ্ঞ বেছে নিন",
   sec_area_eyebrow: "এলাকা অনুযায়ী",
   sec_area_title: "আপনার এলাকার কাছের ডাক্তার খুঁজুন",
-  sec_area_sub: "খুলনার প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তথ্য এক জায়গায়।",
+  // /areas lists thanas from every district, so this line must not name one.
+  // It used to read "খুলনার প্রতিটি এলাকার..." while the cards underneath came
+  // from whichever districts actually have doctors.
+  sec_area_sub: "প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছের এলাকা বেছে নিন।",
   sec_district_title: "জেলা অনুযায়ী ডাক্তার খুঁজুন",
   sec_district_sub: "প্রতিটি জেলার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছের জেলা বেছে নিন।",
   khulna_bd: "খুলনা, বাংলাদেশ",
@@ -167,6 +174,15 @@ const bn = {
   sort_experience: "অভিজ্ঞতা অনুযায়ী",
   no_doctors_found: "কোনো ডাক্তার পাওয়া যায়নি",
   no_doctors_found_sub: "ফিল্টার পরিবর্তন করে আবার চেষ্টা করুন অথবা হেল্পলাইনে কল করুন:",
+  // Shown above the list when the place the visitor filtered by has no doctors
+  // and the nearest ones are being shown instead. {a} already carries its own
+  // "জেলায়" / "এলাকায়" from the caller, so one template covers both; {b} is the
+  // district the results are actually in, in possessive form.
+  nearby_fallback_tpl: "{a} এখনো কোনো ডাক্তার যুক্ত হয়নি। কাছাকাছি {b} ডাক্তার দেখানো হচ্ছে।",
+  // Same, for the rare case where the results carry no district name.
+  nearby_fallback_generic_tpl: "{a} এখনো কোনো ডাক্তার যুক্ত হয়নি। কাছাকাছি এলাকার ডাক্তার দেখানো হচ্ছে।",
+  nearby_fallback_district: "জেলায়",
+  nearby_fallback_area: "এলাকায়",
 
   // doctor detail
   breadcrumb_home: "হোম",
@@ -395,6 +411,7 @@ const en: typeof bn = {
   nav_districts: "District",
   nav_areas: "Town / Village",
   nav_blog: "Blog",
+  nav_tools: "Tools",
   nav_contact: "Contact",
   nav_about: "About Us",
   book_appointment: "Book Appointment",
@@ -428,7 +445,7 @@ const en: typeof bn = {
   sec_specialties_title: "Choose the right specialist for your condition",
   sec_area_eyebrow: "By Area",
   sec_area_title: "Find doctors near your area",
-  sec_area_sub: "Verified doctors and chamber details for every area of Khulna, in one place.",
+  sec_area_sub: "Verified doctors and chambers for every area. Pick the one nearest to you.",
   sec_district_title: "Find Doctors by District",
   sec_district_sub: "Find verified doctors and chambers for every district. Pick the one nearest to you.",
   khulna_bd: "Khulna, Bangladesh",
@@ -535,6 +552,12 @@ const en: typeof bn = {
   sort_experience: "By experience",
   no_doctors_found: "No doctors found",
   no_doctors_found_sub: "Try changing the filters, or call our helpline:",
+  nearby_fallback_tpl: "No doctors in {a} yet. Showing the nearest ones, in {b}.",
+  nearby_fallback_generic_tpl: "No doctors in {a} yet. Showing the nearest ones from nearby areas.",
+  // English needs no place-word after the name, so both are empty and the
+  // sentence reads "No doctors in Barguna yet."
+  nearby_fallback_district: "",
+  nearby_fallback_area: "",
 
   breadcrumb_home: "Home",
   breadcrumb_doctors: "Doctors",

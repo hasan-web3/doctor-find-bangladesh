@@ -4,6 +4,8 @@ import { db, blogPosts, doctors as doctorsT, redirects } from "@/db";
 import { siteUrl } from "./seo-utils";
 import { localeHref } from "./i18n";
 import { getAllSpecialtySlugs, getAllActiveAreaSlugs, getDistrictSpecialtyPairs } from "./data";
+import { getSettings } from "./settings";
+import { TOOLS_LAST_REVIEWED, enabledTools } from "./tools/registry";
 
 // Google accepts up to 50 000 URLs OR 50 MB per sub-sitemap — whichever hits
 // first. Each <url> block with the hreflang cluster is ~600 bytes; chunking
@@ -23,6 +25,7 @@ export type Section =
   | "areas"
   | "hospitals"
   | "blog"
+  | "tools"
   | "specialty-area";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +50,12 @@ const SECTION_ORDER: Section[] = [
   "district-specialty",
   "hospitals",
   "specialties",
+  // The calculator hub and its tool pages. A handful of URLs, so their position
+  // costs nothing either way — but they are placed above the geo long tail
+  // because they are the newest section on the site and the one with no inbound
+  // links yet, so discovery is the only thing standing between them and being
+  // indexed at all.
+  "tools",
   "areas",
   "specialty-area",
   "blog",
@@ -64,6 +73,9 @@ const BASE_PRIORITY: Record<Section, number> = {
   "district-specialty": 0.8,
   hospitals: 0.7,
   specialties: 0.7,
+  // Level with the specialty hubs: these are destination pages in their own
+  // right that answer a query ("bmi calculator") rather than supporting pages.
+  tools: 0.7,
   areas: 0.6,
   // Thana-level combinations stay lowest of the landing pages: real long tail,
   // far less searched than the district equivalent above.
@@ -423,6 +435,11 @@ async function collectSection(section: Section): Promise<SitemapEntry[]> {
       ...entry("/districts", now, "weekly", 0.8),
       ...entry("/hospitals", now, "weekly", 0.7),
       ...entry("/blog", now, "weekly", 0.7),
+      // /tools is deliberately NOT listed here. It lives in the "tools" section
+      // below together with the individual calculators, so that switching every
+      // tool off in the dashboard removes the hub and its children from the
+      // sitemap in one move — which matches the page itself, which 404s when
+      // nothing is enabled.
       // /for-doctors is gone (308 -> /contact in next.config.ts), so it must
       // not be advertised: a sitemap entry that redirects lands in GSC's
       // "Page with redirect" bucket and burns crawl budget. /contact absorbed
@@ -538,6 +555,29 @@ async function collectSection(section: Section): Promise<SitemapEntry[]> {
             )
           : [],
       );
+    }
+
+    // -----------------------------------------------------------------------
+    // TOOLS. The only section built entirely from code plus one settings read:
+    // there is no table behind it, because a calculator has no rows.
+    //
+    // <lastmod> is TOOLS_LAST_REVIEWED, not `now`. Using `now` here would push
+    // a fresh timestamp on every rebuild and invite a re-crawl of pages whose
+    // content had not changed since the last one; the review date moves only
+    // when a formula, a band or a guidance paragraph actually does. That is
+    // also the date the pages themselves declare as `lastReviewed`, so the
+    // sitemap and the on-page markup tell the same story.
+    // -----------------------------------------------------------------------
+    if (section === "tools") {
+      const settings = await getSettings();
+      const tools = enabledTools(settings.tools_enabled);
+      if (tools.length === 0) return [];
+      return [
+        ...entry("/tools", TOOLS_LAST_REVIEWED, "monthly", 0.8),
+        ...tools.flatMap((t) =>
+          entry(`/tools/${t.slug}`, TOOLS_LAST_REVIEWED, "monthly", BASE_PRIORITY.tools),
+        ),
+      ];
     }
 
     if (section === "blog") {

@@ -325,6 +325,86 @@ export function ldMedicalClinic(h: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// HEALTH TOOLS (/tools)
+// ---------------------------------------------------------------------------
+// Two nodes per tool page, because they answer two different questions.
+//
+//   MedicalWebPage  — "what is this page about, and can it be trusted?"
+//                     This is the YMYL type. `lastReviewed` and `citation` are
+//                     the properties Google's own quality guidance for health
+//                     content asks for, and they are the reason the standard
+//                     each calculator implements is recorded in the registry
+//                     rather than left in a comment.
+//
+//   WebApplication  — "what does this page DO?"
+//                     A calculator is a tool, not an article. Declaring it as
+//                     a free browser application with a HealthApplication
+//                     category is what makes it eligible to be understood as
+//                     one rather than as a thin content page.
+//
+// Neither is marked up with anything the visitor cannot also see on the page:
+// the description, the standard and the disclaimer are all rendered. Marking up
+// invisible content is a structured-data spam violation, and on a health site
+// it is also just dishonest.
+// ---------------------------------------------------------------------------
+
+export function ldMedicalWebPage(input: {
+  name: string;
+  description: string;
+  url: string;
+  locale: Locale;
+  /** The subject, e.g. "Body Mass Index". Rendered on the page as the H1 topic. */
+  about: string;
+  /** Plain-language name of the standard the maths comes from. */
+  citation: string;
+  identity: BrandIdentity;
+  /** ISO date the content was last checked against its source. */
+  lastReviewed?: string;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "MedicalWebPage",
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": input.url },
+    inLanguage: input.locale,
+    about: { "@type": "MedicalEntity", name: input.about },
+    citation: input.citation,
+    ...(input.lastReviewed ? { lastReviewed: input.lastReviewed } : {}),
+    // `audience` distinguishes a page written for the public from one written
+    // for clinicians. Getting this wrong is how health pages end up being
+    // assessed against the wrong bar entirely.
+    audience: { "@type": "Audience", audienceType: "Patient" },
+    isAccessibleForFree: true,
+    publisher: { "@id": ORG_ID() },
+  };
+}
+
+export function ldHealthTool(input: {
+  name: string;
+  description: string;
+  url: string;
+  identity: BrandIdentity;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    applicationCategory: "HealthApplication",
+    // No install, no account, no payment — say all three, because "free" on a
+    // health tool is a question visitors and crawlers both actually have.
+    operatingSystem: "Any",
+    browserRequirements: "Requires JavaScript",
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "BDT" },
+    provider: { "@id": ORG_ID() },
+  };
+}
+
 export function ldFaq(faqs: { question: string; answer: string }[]): JsonLd {
   return {
     "@context": "https://schema.org",

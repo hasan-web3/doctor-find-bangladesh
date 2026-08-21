@@ -45,9 +45,13 @@ export async function Footer({ locale }: { locale: Locale }) {
       ? `${withPossessive(districtName)} বিশ্বস্ত ডাক্তার ডিরেক্টরি। এলাকা ও বিশেষজ্ঞ বিভাগ অনুযায়ী যাচাইকৃত ডাক্তার খুঁজুন ও সহজে অ্যাপয়েন্টমেন্ট নিন।`
       : `${districtName}'s trusted doctor directory. Find verified doctors by area and specialty and easily book appointments.`;
 
+  // The blog lives here now rather than in the top navbar, and the tools hub
+  // is listed alongside it so the section stays reachable from every page even
+  // for a visitor who never opens the navbar dropdown.
   const QUICK_LINKS = [
     { label: d.nav_about, href: "/about" },
     { label: d.nav_contact, href: "/contact" },
+    { label: d.nav_tools, href: "/tools" },
     { label: d.nav_blog, href: "/blog" },
     { label: d.terms, href: "/terms" },
     { label: d.privacy, href: "/privacy" },

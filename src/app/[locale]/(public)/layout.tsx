@@ -15,6 +15,8 @@ import { getDict } from "@/lib/dict";
 import { t, isLocale, type Locale } from "@/lib/i18n";
 import { BookingProvider } from "@/components/public/booking-context";
 import { LocaleScrollRestore } from "@/components/public/locale-scroll-restore";
+import { enabledTools } from "@/lib/tools/registry";
+import { pick as pickTool } from "@/lib/tools/copy";
 
 // This layout is fully static/ISR: every value below comes from an
 // `unstable_cache`d reader and is identical for every visitor, so the rendered
@@ -69,6 +71,18 @@ export default async function PublicLayout({
     lng: x.lng,
   }));
 
+  // The tools dropdown. Resolved from the registry plus the admin's on/off map,
+  // which already arrived with `settings` above — no extra query, no extra
+  // cache tag, and nothing visitor-specific, so the layout stays fully static.
+  //
+  // It reads the `settings` tag, which is layout-wide by design (see
+  // LAYOUT_WIDE_TAGS in lib/revalidate.ts): switching a tool on or off changes
+  // the navbar on every page, so purging every page is the correct response.
+  const navTools = enabledTools(settings.tools_enabled).map((t) => ({
+    slug: t.slug,
+    label: pickTool(t.name, locale),
+  }));
+
   return (
     <LocationProvider districts={providerDistricts} locale={locale}>
       <BookingProvider>
@@ -99,6 +113,7 @@ export default async function PublicLayout({
           <Navbar
             locale={locale}
             d={d}
+            tools={navTools}
             helplineDisplay={locale === "bn" ? settings.helpline_bn : settings.helpline}
             helpline={settings.helpline}
             brandName={brand}
@@ -116,7 +131,7 @@ export default async function PublicLayout({
           {/* Spacer so the last inch of every page stays visible above the
               fixed bottom tab bar on mobile; noop on desktop. */}
           <div className="h-16 min-[1060px]:hidden" aria-hidden />
-          <BottomNav locale={locale} d={d} />
+          <BottomNav locale={locale} d={d} hasTools={navTools.length > 0} />
           <RecaptchaGuard siteKey={recaptchaSiteKey} />
         </div>
       </BookingProvider>

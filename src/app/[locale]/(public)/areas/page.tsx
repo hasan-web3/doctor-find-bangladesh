@@ -7,7 +7,6 @@ import { getDict } from "@/lib/dict";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { AreaListClient } from "@/components/public/area-list-client";
 import { STATIC_GEO } from "@/lib/geo";
-import { withPossessive as bnPossessive } from "@/lib/bn";
 
 // ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
 export const revalidate = 86400;
@@ -27,10 +26,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     locale,
     path: "/areas",
     title: locale === "bn" ? "এলাকা অনুযায়ী ডাক্তার" : "Doctors by Area",
+    // National, like the page itself. It used to say "of Khulna" while the
+    // listing covers thanas from every district.
     description:
       locale === "bn"
-        ? "খুলনার প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছের এলাকা বেছে নিন।"
-        : "Verified doctors and chambers for every area of Khulna. Pick the area nearest to you.",
+        ? "প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছের এলাকা বেছে নিন।"
+        : "Verified doctors and chambers for every area. Pick the area nearest to you.",
   });
 }
 
@@ -55,13 +56,12 @@ export default async function AreasPage({ params }: Props) {
     preferDistrictId: display?.id ?? geo.districtId,
   }, locale);
 
-  const geoDistrictName = display?.name ?? null;
-  
-  const areaSub = geoDistrictName
-    ? (locale === "bn"
-        ? `${bnPossessive(geoDistrictName)} প্রতিটি এলাকার যাচাইকৃত ডাক্তার ও চেম্বারের তালিকা। আপনার কাছাকাছি বিশেষজ্ঞ খুঁজুন।`
-        : `List of verified doctors and chambers in each area of ${geoDistrictName}. Find specialists near you.`)
-    : d.sec_area_sub;
+  // Names no district, for the same reason /districts does not: this grid holds
+  // thanas from every district that has doctors, so a single district name in
+  // the caption contradicted the cards under it — the line said বরগুনা while
+  // every visible card said খুলনা. `display` still ranks the grid; it just no
+  // longer claims to describe it.
+  const areaSub = d.sec_area_sub;
 
   return (
     <div className="mx-auto max-w-site px-5 pb-[60px] pt-[26px]">

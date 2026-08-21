@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { Navbar } from "@/components/public/navbar";
+import { enabledTools } from "@/lib/tools/registry";
 import { getSettings } from "@/lib/settings";
 import { getRecaptchaSiteKey } from "@/lib/recaptcha";
 import { getDict } from "@/lib/dict";
@@ -100,10 +101,17 @@ export default async function DoctorIntakePage({ params }: { params: Promise<{ t
   // saw on the website, with working links back to it. Bangla only, and the
   // language switcher is hidden: this page has no /en twin to switch to.
   const dict = getDict("bn");
+  // Same tools dropdown the public header carries, so the two mastheads do not
+  // quietly diverge. Bangla labels: this page has no English twin.
+  const navTools = enabledTools(settings.tools_enabled).map((tool) => ({
+    slug: tool.slug,
+    label: tool.name.bn || tool.name.en,
+  }));
   const header = (
     <Navbar
       locale="bn"
       d={dict}
+      tools={navTools}
       helplineDisplay={helpline}
       helpline={helplineDial}
       brandName={t(settings.brand_name, "bn")}
