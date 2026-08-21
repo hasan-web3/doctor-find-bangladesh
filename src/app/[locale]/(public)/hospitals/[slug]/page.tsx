@@ -22,6 +22,9 @@ import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, num, t, type Locale } from "@/lib/i18n";
 
 // ISR: detail; purged by path on edit. 24h is the no-change ceiling.
+// Deliberately still 24h. Listing pages are NOT purged when a doctor changes
+// (see the KNOWN GAP note in src/lib/revalidate.ts) so this timer is the only
+// thing that surfaces a new doctor here. Do not raise it until that is fixed.
 export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the

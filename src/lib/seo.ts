@@ -7,6 +7,19 @@ import { getSettings } from "./settings";
 import { t, localeHref, ogLocale, type Locale, type MLText } from "./i18n";
 import { siteUrl, brandIdentity } from "./seo-utils";
 
+// Cache-buster for the GENERATED share card (/api/og).
+//
+// That route is served `immutable` for a year, because its output is a pure
+// function of the query string — the page title is in the URL, so a renamed
+// doctor or a re-titled page already produces a new image URL on its own.
+//
+// The card's own DESIGN is the one input the URL does not carry. Bump this
+// number whenever src/app/api/og/route.tsx changes visually (layout, colours,
+// logo, the CTA pill) and every share URL on the site becomes a new cache key,
+// so crawlers and CDNs fetch the redrawn card instead of serving the old one.
+// Leave it alone for ordinary content edits — they need no bump.
+const OG_CARD_VERSION = "1";
+
 const getOverrides = unstable_cache(
   async () => {
     try {
@@ -91,7 +104,7 @@ export async function buildMetadata(input: MetaInput): Promise<Metadata> {
   // is to represent the domain itself, which is exactly the home page — the
   // same reasoning brandOgImage() below applies for the intake form.
   const generatedOg = siteUrl(
-    `/api/og?title=${encodeURIComponent(input.ogTitle || rawTitle)}&subtitle=${encodeURIComponent(input.ogSubtitle || "")}&locale=${locale}`
+    `/api/og?title=${encodeURIComponent(input.ogTitle || rawTitle)}&subtitle=${encodeURIComponent(input.ogSubtitle || "")}&locale=${locale}&v=${OG_CARD_VERSION}`
   );
   const brandCard = input.path === "/" ? settings.seo_default_og_image?.trim() : "";
   const ogImage = ov?.og_image_url?.trim() || input.ogImage || brandCard || generatedOg;
@@ -200,7 +213,7 @@ export async function brandOgImage(): Promise<string> {
   if (declared) return declared;
 
   const title = t(settings.seo_default_title, "bn");
-  return siteUrl(`/api/og?title=${encodeURIComponent(title)}&subtitle=&locale=bn`);
+  return siteUrl(`/api/og?title=${encodeURIComponent(title)}&subtitle=&locale=bn&v=${OG_CARD_VERSION}`);
 }
 
 // When a slug changes, keep the old URL alive with a permanent redirect.

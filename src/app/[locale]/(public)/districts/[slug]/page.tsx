@@ -1,7 +1,9 @@
 import { permanentRedirect } from "next/navigation";
 import { localeHref, isLocale } from "@/lib/i18n";
 
-// ISR: redirect stub.
+// ISR: redirect stub. Nothing here goes stale on a content edit, but raising
+// this above 86400 has no effect anyway — the shared layout clamps every public
+// route. See the note in ../../doctors/[slug]/page.tsx.
 export const revalidate = 86400;
 
 // Empty list = prebuild nothing, but mark the route statically generatable so

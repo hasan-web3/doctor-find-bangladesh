@@ -12,6 +12,9 @@ import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, type Locale } from "@/lib/i18n";
 
 // ISR: hub; on-demand revalidated on mutation. 24h is the no-change ceiling.
+// Deliberately still 24h. Listing pages are NOT purged when a doctor changes
+// (see the KNOWN GAP note in src/lib/revalidate.ts) so this timer is the only
+// thing that surfaces a new doctor here. Do not raise it until that is fixed.
 export const revalidate = 86400;
 
 // Empty list = prebuild nothing, but mark the route statically generatable so

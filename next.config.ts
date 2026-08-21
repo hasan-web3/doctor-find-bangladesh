@@ -119,6 +119,24 @@ const nextConfig: NextConfig = {
     // Modern formats — Next serves AVIF when the browser accepts it, WebP otherwise.
     // Cuts LCP image bytes ~30–50% vs the JPEG/PNG originals.
     formats: ["image/avif", "image/webp"],
+    // Stop generating variants WIDER than anything we ever store.
+    //
+    // Every distinct width Next is asked for is a separate, separately-metered
+    // image transformation, and the srcset it builds from this list is what
+    // decides which widths get asked for. A 3x-DPR phone — very common on this
+    // site's traffic — happily reaches for the 2048 and 3840 entries in the
+    // default list.
+    //
+    // But nothing on this site can benefit from them: every image is uploaded
+    // through src/lib/image-compress.ts, which downscales to fit 1920x1920
+    // BEFORE the bytes ever reach R2. So a 2048 or 3840 request can only
+    // upscale a 1920px source. It costs a transformation, costs bandwidth, and
+    // returns a blurrier picture than the 1920 variant it was interpolated
+    // from. Capping the list here is a strict improvement, not a trade.
+    //
+    // If the upload cap in image-compress.ts is ever raised, raise this to
+    // match — the two numbers belong together.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     // Cache the optimized variant for a year — the URLs are content-hashed by
     // Next, so a re-uploaded R2 object under the same key still busts via query.
     minimumCacheTTL: 60 * 60 * 24 * 365,

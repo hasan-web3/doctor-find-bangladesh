@@ -5,6 +5,30 @@ import { join } from "node:path";
 // Dynamic OG image with full Bangla glyph support (bundled Hind Siliguri TTFs).
 export const runtime = "nodejs";
 
+// ---------------------------------------------------------------------------
+// Why this route is aggressively cached
+// ---------------------------------------------------------------------------
+// This is the single most CPU-expensive handler in the app: every hit loads two
+// TTFs, runs Satori to lay the card out, then rasterises and encodes a
+// 1200x630 PNG. In Node runtime that is ~300-600 ms of pure Active CPU.
+//
+// It used to carry no cache directive at all, which for a route handler reading
+// searchParams means "fully dynamic": nothing in front of it cached, so every
+// crawler fetch, every Facebook/WhatsApp/Twitter unfurl and every repeat share
+// of the same link re-rendered a byte-identical image. Cloudflare could not
+// absorb it either — the path has no file extension AND no Cache-Control, so it
+// fails both of its default cacheability tests.
+//
+// The response is a pure function of the query string (no DB, no cookies, no
+// headers), so it is safe to treat as immutable. There is nothing to purge:
+// the title is IN the URL, so renaming a doctor or editing a page title
+// produces a different URL and therefore a different image automatically.
+//
+// The one thing the URL does NOT encode is the card's own DESIGN. That is what
+// OG_CARD_VERSION in src/lib/seo.ts is for — bump it whenever the layout,
+// colours or logo below change, and every share URL becomes a new cache key.
+const OG_CACHE_CONTROL = "public, max-age=31536000, s-maxage=31536000, immutable";
+
 let fontsPromise: Promise<{ regular: Buffer; bold: Buffer }> | null = null;
 function loadFonts() {
   if (!fontsPromise) {
@@ -108,6 +132,7 @@ export async function GET(req: Request) {
         { name: "HindSiliguri", data: regular, weight: 400 },
         { name: "HindSiliguri", data: bold, weight: 600 },
       ],
+      headers: { "Cache-Control": OG_CACHE_CONTROL },
     }
   );
 }

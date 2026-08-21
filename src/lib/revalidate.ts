@@ -144,6 +144,19 @@ export function revalidateRedirects() {
   revalidatePath("/api/redirects");
 }
 
+// /favicon.ico proxies the admin-uploaded icon out of R2 through our own
+// origin. That route is ISR-cached with a ONE DAY ceiling (see the note there),
+// which is only correct because this runs the moment the icon can actually
+// change — i.e. on any settings save. Without it an admin would upload a new
+// favicon and watch the old one persist for up to a day.
+//
+// A path purge, not just a tag: the `settings` tag clears the inner
+// unstable_cache read, but the cached HTTP RESPONSE in front of it is keyed by
+// path. Same distinction as revalidateRedirects() above.
+export function revalidateFavicon() {
+  revalidatePath("/favicon.ico");
+}
+
 // A connection test writes only `status` / `status_message` / `last_tested_at`,
 // and those are read exclusively by /admin/integrations. Routing it through
 // revalidatePublic() would hit the layout-wide "integrations" tag and throw away
@@ -157,6 +170,9 @@ export function revalidateIntegrationStatus() {
 export function revalidatePublic(tags: string[] = [], opts: PurgeOptions = {}) {
   for (const tag of tags) revalidateTag(tag);
   if (tags.includes("redirects")) revalidatePath("/api/redirects");
+  // The favicon lives behind its own cached route, so the layout-wide purge
+  // below does not reach it — route handlers are not part of a layout tree.
+  if (tags.includes("settings")) revalidateFavicon();
 
   // Explicit wins; otherwise the tags decide. See SITEMAP_TAGS.
   const touchesSitemap = opts.sitemap ?? tags.some((t) => SITEMAP_TAGS.has(t));
@@ -205,6 +221,32 @@ export type DoctorPurge = {
 
 // The PER-DOCTOR half: the exact detail URLs this one doctor owns, plus the
 // landing pages they appear on. Cheap, and different for every doctor.
+//
+// ---------------------------------------------------------------------------
+// KNOWN GAP — read this before lengthening any listing page's `revalidate`
+// ---------------------------------------------------------------------------
+// Every field below except `slug`/`oldSlug` is optional, and the doctor
+// mutations in src/actions/admin-doctors.ts do not currently pass them: both
+// saveDoctor() and deleteDoctor() call revalidateDoctor({ slug, oldSlug,
+// sitemap }) and nothing more. So in practice a doctor edit purges
+// /doctors/<slug> and /appointment/<slug>, and the LISTING pages that show
+// that doctor are not purged at all:
+//
+//   /specialties/<spec>            /specialties/<spec>/<area>
+//   /districts/<dist>/doctors      /districts/<dist>/<spec>
+//   /area/doctors/<dist>/<area>    /hospitals/<hosp>
+//
+// Those pages are kept honest by their own 24 h ISR window instead. That is
+// why they were deliberately LEFT at `revalidate = 86400` when the detail
+// routes moved to 7 days: for them the timer is not redundant, it is the only
+// mechanism that makes a newly added doctor appear on their district's or
+// specialty's landing page. Raise those numbers and a new doctor can stay
+// invisible on their own area page for a week.
+//
+// The proper fix is to resolve the doctor's specialty / district / area /
+// hospital slugs at the mutation site and pass them here, at which point the
+// purge becomes complete and those windows can be lengthened too. Until then,
+// leave them alone.
 function revalidateDoctorPaths(opts: DoctorPurge) {
   for (const s of slugSet(opts.slug, opts.oldSlug)) {
     revalidateBoth([`/doctors/${s}`, `/appointment/${s}`]);

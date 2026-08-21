@@ -32,6 +32,21 @@ import { isLocale, localeHref, num, date as fmtDate, type Locale } from "@/lib/i
 // in both locales, including the old slug on a rename). 24h is the no-change
 // ceiling, and detail pages are the bulk of the route table — this is where a
 // longer window saves the most background renders as the directory grows.
+//
+// DO NOT raise this past 86400 on its own — it cannot work, and it will look
+// like it did. A route's effective revalidate is clamped to the SHORTEST
+// revalidate of any cache entry it reads, and the shared public layout reads
+// three 86400 entries (getSpecialties + getNearbyAreas via the footer,
+// getDistrictsForGeo via the district picker). Setting 604800 here builds
+// cleanly, passes typecheck, and still emits 86400 into
+// .next/prerender-manifest.json.
+//
+// Lifting the clamp would mean raising those three readers too, and that is
+// where it stops being free: all three carry doctor_count and all three
+// deliberately exclude the "doctors" tag, because a layout-reachable "doctors"
+// tag would make one doctor edit invalidate every page on the site. Their 86400
+// window is therefore the ONLY thing that refreshes those counts. See the long
+// note on getSpecialties in src/lib/data.ts before touching any of this.
 export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the

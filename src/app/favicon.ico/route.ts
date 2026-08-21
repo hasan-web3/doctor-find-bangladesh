@@ -22,10 +22,29 @@ import { siteUrl } from "@/lib/seo-utils";
 // see src/app/sitemap.xml/route.ts. Note middleware never touches this path:
 // its matcher excludes favicon.ico outright, so no locale rewrite interferes.
 
-// Long enough that repeat hits are cheap, short enough that an admin who
-// swaps the logo sees it the same session. Google caches favicons for weeks
-// regardless, so there is nothing to gain from a longer window here.
-export const revalidate = 300;
+// ---------------------------------------------------------------------------
+// Freshness is EVENT-driven, not timer-driven
+// ---------------------------------------------------------------------------
+// This used to be `revalidate = 300` plus a hand-written `s-maxage=300`. Two
+// problems with that pair:
+//
+//   1. A manual Cache-Control opts a route OUT of the ISR cache entirely (the
+//      same trap documented at length in src/app/sitemap/[shard]/route.ts), so
+//      the route was permanently dynamic. Every 5 minutes, for a file that
+//      changes maybe once a year, this woke a function that read site settings
+//      from the DB and re-downloaded the image from R2 — and /favicon.ico is
+//      requested by Googlebot and by every browser tab on the site.
+//   2. Five minutes was never the right number anyway. The admin does not want
+//      the icon polled; they want it to change the moment they upload a new one.
+//
+// So: no manual header (Next now emits its own purgeable ISR headers), and the
+// purge is wired to the event that can actually change the answer —
+// revalidateFavicon() in src/lib/revalidate.ts fires on every settings save.
+// The number below is only a safety ceiling for the case where that purge never
+// runs at all, e.g. this entry was first built while the DB or R2 was briefly
+// unreachable and cached the fallback. One day bounds that; in normal operation
+// the timer never decides anything.
+export const revalidate = 86400;
 
 // Every failure path lands on the file-based icon that ships with the app, so
 // /favicon.ico is never a dead end for a crawler.
@@ -50,12 +69,17 @@ export async function GET() {
     const [, mime, isB64, payload] = dataUrl;
     const body = isB64 ? Buffer.from(payload, "base64") : Buffer.from(decodeURIComponent(payload), "utf8");
     return new NextResponse(new Uint8Array(body), {
-      headers: { "Content-Type": mime || "image/png", "Cache-Control": "public, max-age=0, s-maxage=300" },
+      headers: { "Content-Type": mime || "image/png" },
     });
   }
 
   try {
-    const upstream = await fetch(src, { cache: "no-store" });
+    // Deliberately NOT `cache: "no-store"`. A no-store fetch forces the whole
+    // route handler to be dynamic, which would silently undo the ISR caching
+    // declared above and put us straight back to re-downloading this image on
+    // every request. Tagging it "settings" instead means the admin's own save
+    // is what invalidates it — the same event that purges the route itself.
+    const upstream = await fetch(src, { next: { revalidate, tags: ["settings"] } });
     if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
     const body = await upstream.arrayBuffer();
     return new NextResponse(body, {
@@ -63,7 +87,6 @@ export async function GET() {
         // Pass the real type through. Google and browsers both trust
         // Content-Type over the .ico extension, so a PNG served here is fine.
         "Content-Type": upstream.headers.get("content-type") || "image/png",
-        "Cache-Control": "public, max-age=0, s-maxage=300",
       },
     });
   } catch {

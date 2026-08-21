@@ -13,6 +13,8 @@ import { getDict } from "@/lib/dict";
 import { isLocale, localeHref, date as fmtDate, type Locale } from "@/lib/i18n";
 
 // ISR: detail; purged by path on edit. 24h is the no-change ceiling.
+// Raising this alone does nothing — the shared layout clamps every public route
+// to 86400. See the note in ../../doctors/[slug]/page.tsx.
 export const revalidate = 86400;
 
 // Enumerated so these pages are PRERENDERED at build and then served from the
