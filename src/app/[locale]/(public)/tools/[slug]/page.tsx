@@ -91,6 +91,19 @@ export default async function ToolPage({ params }: Props) {
   const source = pick(tool.source, locale);
   const url = siteUrl(localeHref(locale, `/tools/${tool.slug}`));
 
+  // Brand logo for the share card, routed through Next's image optimizer.
+  //
+  // That indirection is required, not cosmetic: the logo lives in an R2 bucket
+  // that sends no Access-Control-Allow-Origin header, and drawing a
+  // cross-origin image onto a canvas taints it so that every later toBlob()
+  // throws. /_next/image re-serves the same file from our own origin, and
+  // same-origin images never taint. If nothing is uploaded the card falls back
+  // to the brand name in text.
+  const rawLogo = settings.logo_desktop_url || settings.logo_mobile_url || "";
+  const cardLogoUrl = rawLogo
+    ? `/_next/image?url=${encodeURIComponent(rawLogo)}&w=384&q=90`
+    : "";
+
   // Related specialists. The registry lists candidate slugs; only the ones that
   // exist in the live specialty table AND actually have a doctor behind them
   // survive, in the registry's own order of relevance. That is what stops a
@@ -165,7 +178,12 @@ export default async function ToolPage({ params }: Props) {
       {/* the calculator */}
       <section className="mb-8">
         <h2 className="sr-only">{c.tool_result_title}</h2>
-        <ToolRunner toolKey={tool.key} locale={locale} />
+        <ToolRunner
+          toolKey={tool.key}
+          locale={locale}
+          brandName={identity.name}
+          logoUrl={cardLogoUrl}
+        />
       </section>
 
       {/* provenance — the citation the MedicalWebPage markup points at, shown
@@ -213,9 +231,9 @@ export default async function ToolPage({ params }: Props) {
         <Link
           href={localeHref(locale, "/tools")}
           prefetch={false}
-          className="inline-flex items-center gap-1.5 text-[14px] font-bold text-brand-600 transition-colors hover:text-brand-700"
+          className="inline-flex items-center text-[14px] font-bold text-brand-600 transition-colors hover:text-brand-700"
         >
-          ← {c.tool_all_tools}
+          {c.tool_all_tools}
         </Link>
       </div>
     </div>

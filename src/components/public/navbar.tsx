@@ -198,13 +198,10 @@ export function Navbar({
                           {child.label}
                         </Link>
                       ))}
-                      <Link
-                        href={L(item.href)}
-                        prefetch={false}
-                        className="mt-1 block border-t border-line px-3 pb-1 pt-2.5 text-[13px] font-bold text-brand-600 transition-colors hover:text-brand-700"
-                      >
-                        {item.label} &rarr;
-                      </Link>
+                      {/* No "see all" row at the bottom of the panel: the
+                          parent item is itself a link to the hub, so clicking
+                          "Tools" already goes there. A second link to the same
+                          URL inside the panel it opened was just a duplicate. */}
                     </div>
                   </div>
                 </div>

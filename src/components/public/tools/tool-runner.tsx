@@ -20,6 +20,24 @@
 import dynamic from "next/dynamic";
 import type { Locale } from "@/lib/i18n";
 
+/**
+ * Every calculator takes the same props, whether or not it uses all of them.
+ *
+ * That uniformity is load-bearing here, not tidiness: REGISTRY below is indexed
+ * by a union of keys, so TypeScript resolves `Widget` to a union of component
+ * types and the props object has to satisfy all of them at once. One widget
+ * with a narrower signature would break the lookup for every widget.
+ *
+ * `brandName` and `logoUrl` are used by the share card, which stamps the site's
+ * identity into the image so a result forwarded into a group chat still says
+ * where it came from.
+ *
+ * `logoUrl` MUST be same-origin (the page routes it through /_next/image).
+ * A cross-origin image would taint the canvas and break the PNG export
+ * outright — see loadImage() in lib/tools/share-card.ts.
+ */
+export type ToolWidgetProps = { locale: Locale; brandName: string; logoUrl: string };
+
 function Skeleton() {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
@@ -41,8 +59,18 @@ export function isRunnable(key: string): key is RunnableToolKey {
   return key in REGISTRY;
 }
 
-export function ToolRunner({ toolKey, locale }: { toolKey: string; locale: Locale }) {
+export function ToolRunner({
+  toolKey,
+  locale,
+  brandName,
+  logoUrl,
+}: {
+  toolKey: string;
+  locale: Locale;
+  brandName: string;
+  logoUrl: string;
+}) {
   if (!isRunnable(toolKey)) return null;
   const Widget = REGISTRY[toolKey];
-  return <Widget locale={locale} />;
+  return <Widget locale={locale} brandName={brandName} logoUrl={logoUrl} />;
 }

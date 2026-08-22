@@ -10,8 +10,17 @@ import {
   calcDueDate,
 } from "@/lib/tools/calc";
 import { getToolCopy, pick } from "@/lib/tools/copy";
-import { date as fmtDate, num, type Locale } from "@/lib/i18n";
+import { date as fmtDate, num } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import {
+  CARD_W,
+  drawDueDateCard,
+  dueDateCardHeight,
+  type CheckupRow,
+  type DueDateCardData,
+} from "./due-date-card";
+import { ShareCardButton } from "./share-card-button";
+import type { ToolWidgetProps } from "./tool-runner";
 import {
   CalcLayout,
   CountUp,
@@ -42,7 +51,13 @@ function todayInput(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function DueDateTool({ locale }: { locale: Locale }) {
+/** `2027-01-08` — ASCII only, so the saved file name survives every OS. */
+function isoDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+export function DueDateTool({ locale, brandName, logoUrl }: ToolWidgetProps) {
   const c = getToolCopy(locale);
   const [lmp, setLmp] = useState("");
   const [cycle, setCycle] = useState(String(DEFAULT_CYCLE));
@@ -129,6 +144,53 @@ export function DueDateTool({ locale }: { locale: Locale }) {
   const shift = (Number.isFinite(cycleNum) ? cycleNum : DEFAULT_CYCLE) - DEFAULT_CYCLE;
   const origin = lmpDate ? addDays(lmpDate, shift) : null;
   const nextIndex = ANC_CONTACTS.findIndex((a) => a.week > r.weeks);
+  const nextContact = nextIndex >= 0 ? ANC_CONTACTS[nextIndex] : null;
+
+  // Everything the picture needs, already formatted and localized here so the
+  // drawing routine stays language-agnostic.
+  const weeksValue =
+    r.days > 0
+      ? `${num(String(r.weeks), locale)} ${c.dd_weeks} ${num(String(r.days), locale)} ${c.dd_days}`
+      : `${num(String(r.weeks), locale)} ${c.dd_weeks}`;
+
+  // The full timeline goes onto the card, in the same three states the page
+  // shows: green for visits already passed, orange for the one coming next,
+  // grey for the rest. Someone saving this to their phone wants every date, not
+  // just the next one.
+  const cardCheckups: CheckupRow[] = origin
+    ? ANC_CONTACTS.map((a, i) => ({
+        label: pick(a.label, locale),
+        week: `${num(String(a.week), locale)} ${c.dd_weeks}`,
+        date: fmtDate(addDays(origin, a.week * 7), locale),
+        state: r.weeks >= a.week ? "done" : i === nextIndex ? "next" : "upcoming",
+      }))
+    : [];
+
+  const cardData: DueDateCardData = {
+    brand: brandName,
+    logoUrl,
+    title: c.dd_edd_label,
+    edd: fmtDate(r.edd, locale),
+    progressLabel: c.dd_progress_label,
+    progressPct: Math.round(r.progress * 100),
+    stats: [
+      { label: c.dd_current_label, value: weeksValue },
+      {
+        label: c.dd_remaining,
+        value: `${num(String(Math.max(0, r.daysRemaining)), locale)} ${c.dd_remaining_days}`,
+      },
+      { label: c.dd_trimester_label, value: trimesterLabel },
+      { label: c.dd_conception_label, value: fmtDate(r.conception, locale) },
+    ],
+    scheduleTitle: c.dd_anc_title,
+    checkups: cardCheckups,
+    nextBadge: c.dd_anc_next,
+    disclaimer: c.dd_card_disclaimer,
+    // Read at draw time rather than at render time: the host is only knowable
+    // in the browser, and reading it during render would differ between the
+    // server pass and hydration.
+    footer: "",
+  };
 
   return (
     <CalcLayout
@@ -140,7 +202,10 @@ export function DueDateTool({ locale }: { locale: Locale }) {
         >
           <div className="rounded-2xl border border-line bg-white p-5 text-center shadow-card">
             <div className="text-[13px] font-semibold text-ink-faint">{c.dd_edd_label}</div>
-            <div className="mt-1.5 font-heading text-[clamp(24px,6.5vw,34px)] font-extrabold leading-tight text-[#BE185D]">
+            {/* Brand teal, matching the share card's header. It was rose,
+                which made the page and the exported picture look like two
+                different products. */}
+            <div className="mt-1.5 font-heading text-[clamp(24px,6.5vw,34px)] font-extrabold leading-tight text-brand-700">
               {fmtDate(r.edd, locale)}
             </div>
             <div className="mt-3.5">
@@ -176,6 +241,31 @@ export function DueDateTool({ locale }: { locale: Locale }) {
             />
             <StatTile label={c.dd_trimester_label} value={trimesterLabel} />
             <StatTile label={c.dd_conception_label} value={fmtDate(r.conception, locale)} />
+          </div>
+
+          {/* Save / share. Rendered here rather than at the bottom because by
+              this point the visitor has seen the answer, which is the moment
+              they want to keep it. */}
+          <div>
+            <ShareCardButton
+              label={c.share_save}
+              busyLabel={c.share_busy}
+              doneLabel={c.share_done}
+              errorLabel={c.share_error}
+              card={() => {
+                // Built at click time, not during render: the height is
+                // measured from wrapped text, which needs a canvas and
+                // therefore a browser.
+                const data = { ...cardData, footer: window.location.host };
+                return {
+                  width: CARD_W,
+                  height: dueDateCardHeight(data),
+                  filename: `due-date-${isoDay(r.edd)}.png`,
+                  draw: (ctx) => drawDueDateCard(ctx, data),
+                };
+              }}
+            />
+            <p className="mb-0 mt-2 text-center text-[12.5px] text-ink-faint">{c.share_hint}</p>
           </div>
 
           {r.overdue && (

@@ -128,11 +128,8 @@ export function ToolsIndexClient({
                 {t.name}
               </span>
               <span className="mt-1.5 flex-1 text-[13.5px] leading-relaxed text-ink-mute">{t.tagline}</span>
-              <span className="mt-3.5 inline-flex items-center gap-1 text-[13px] font-bold text-brand-600">
+              <span className="mt-3.5 inline-flex items-center text-[13px] font-bold text-brand-600">
                 {c.index_open}
-                <span className="transition-transform duration-200 group-hover:translate-x-0.5">
-                  {locale === "bn" ? "→" : "→"}
-                </span>
               </span>
             </Link>
           ))}

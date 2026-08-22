@@ -11,6 +11,7 @@ import {
 } from "@/lib/tools/calc";
 import { getToolCopy, pick } from "@/lib/tools/copy";
 import { num, type Locale } from "@/lib/i18n";
+import type { ToolWidgetProps } from "./tool-runner";
 import {
   CalcLayout,
   CountUp,
@@ -34,7 +35,7 @@ import {
   type WeightState,
 } from "./tool-ui";
 
-export function CalorieTool({ locale }: { locale: Locale }) {
+export function CalorieTool({ locale }: ToolWidgetProps) {
   const c = getToolCopy(locale);
   const [sex, setSex] = useState<Sex>("male");
   const [age, setAge] = useState("");

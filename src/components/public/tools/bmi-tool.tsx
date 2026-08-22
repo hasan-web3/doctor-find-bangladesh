@@ -11,6 +11,7 @@ import {
 } from "@/lib/tools/calc";
 import { getToolCopy, pick } from "@/lib/tools/copy";
 import { num, type Locale } from "@/lib/i18n";
+import type { ToolWidgetProps } from "./tool-runner";
 import {
   BandScale,
   CalcLayout,
@@ -38,7 +39,9 @@ import {
 const SCALE_MIN = 15;
 const SCALE_MAX = 35;
 
-export function BmiTool({ locale }: { locale: Locale }) {
+// brandName is part of the shared widget signature (see ToolWidgetProps); this
+// tool has no share card yet, so it goes unused here.
+export function BmiTool({ locale }: ToolWidgetProps) {
   const c = getToolCopy(locale);
   const [height, setHeight] = useState<HeightState>(initialHeight);
   const [weight, setWeight] = useState<WeightState>(initialWeight);

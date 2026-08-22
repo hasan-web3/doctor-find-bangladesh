@@ -135,6 +135,18 @@ const bn = {
   dd_warning_title: "যেসব লক্ষণে দেরি করবেন না",
   dd_warning_body:
     "তীব্র মাথাব্যথা, চোখে ঝাপসা দেখা, হাত-মুখ হঠাৎ ফুলে যাওয়া, তীব্র পেটব্যথা, রক্তপাত, জ্বর, অথবা শিশুর নড়াচড়া কমে গেলে সাথে সাথে হাসপাতালে যান।",
+
+  // ---- share card ----
+  share_save: "ছবি হিসেবে সংরক্ষণ করুন",
+  share_busy: "তৈরি হচ্ছে...",
+  share_done: "হয়ে গেছে",
+  share_error: "সংরক্ষণ করা যায়নি, আবার চেষ্টা করুন",
+  share_hint: "ছবিটি ফোনে সেভ করে রাখতে বা পরিবারের সাথে শেয়ার করতে পারেন।",
+  // Deliberately shorter and blunter than the on-page disclaimer: it is
+  // rendered into the image itself, where there is no room to be gentle and no
+  // surrounding page to supply the context.
+  dd_card_disclaimer:
+    "এটি একটি আনুমানিক হিসাব, নিশ্চিত তারিখ নয়। প্রায় ২০ জনের মধ্যে ১ জনের সন্তান ঠিক এই দিনে জন্মায়। এটি কোনো রোগ নির্ণয় নয়, নিয়মিত ডাক্তারের পরামর্শ নিন।",
 } as const;
 
 const en: Record<keyof typeof bn, string> = {
@@ -252,6 +264,14 @@ const en: Record<keyof typeof bn, string> = {
   dd_warning_title: "Do not wait if you notice",
   dd_warning_body:
     "Severe headache, blurred vision, sudden swelling of the hands or face, severe abdominal pain, bleeding, fever, or reduced movement of the baby. Go to hospital straight away.",
+
+  share_save: "Save as image",
+  share_busy: "Preparing...",
+  share_done: "Done",
+  share_error: "Could not save, please try again",
+  share_hint: "Save it to your phone or share it with your family.",
+  dd_card_disclaimer:
+    "This is an estimate, not a fixed date. About 1 baby in 20 arrives exactly on this day. It is not a diagnosis, so please keep seeing your doctor.",
 };
 
 export type ToolCopy = typeof bn;
